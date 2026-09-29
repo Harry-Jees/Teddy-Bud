@@ -1,52 +1,46 @@
-"""HTTPS client for the Cloudflare Worker AI gateway.
+"""Cloudflare Worker provider adapter.
 
-The Worker is the only provider visible to the application. No NVIDIA key,
-model credential, or private conversation content is logged here.
+The adapter knows only the Worker URL and device-authenticated client. NVIDIA
+credentials never enter this process.
 """
 
 from __future__ import annotations
 
-import json
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
-
+from teddy_bud.ai.client import AIClient
 from teddy_bud.ai.models import AIRequest, AIResponse
-from teddy_bud.ai.registry import TaskRoute
+from teddy_bud.ai.registry import ModelRegistry, TaskRoute
+from teddy_bud.security.credentials import DeviceAuthenticator
+from teddy_bud.security.keystore import OSKeyStore, SecureKeyStore
+from teddy_bud.security.transport import GatewayTransport
 
 
 class GatewayError(RuntimeError):
-    """Safe, user-facing gateway failure without upstream details."""
+    pass
 
 
 class CloudflareGatewayProvider:
-    def __init__(self, gateway_url: str, *, timeout: float = 30.0):
-        if not gateway_url or not gateway_url.lower().startswith("https://"):
-            raise ValueError("TEDDY_GATEWAY_URL must be an HTTPS URL")
-        self.gateway_url = gateway_url.rstrip("/")
-        self.timeout = timeout
+    def __init__(self, gateway_url: str, *, timeout: float = 30.0, key_store: SecureKeyStore | None = None, client: AIClient | None = None):
+        self.client = client or AIClient(GatewayTransport(gateway_url, timeout=timeout), DeviceAuthenticator(key_store or OSKeyStore()))
+        self.registry = ModelRegistry.default()
 
     def complete(self, request: AIRequest, route: TaskRoute) -> AIResponse:
-        payload = {
-            "task": route.gateway_operation,
-            "messages": list(request.messages),
-            "memories": list(request.memories),
-        }
-        if request.request_id:
-            payload["request_id"] = request.request_id
-        http_request = Request(
-            self.gateway_url,
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-            method="POST",
-        )
+        model_id = request.model_id or self.registry.model_for(route.purpose).model_id
         try:
-            with urlopen(http_request, timeout=self.timeout) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
+            body = self.client.chat(model=model_id, messages=request.messages, stream=False)
+        except Exception as exc:
             raise GatewayError("The conversation service is unavailable.") from exc
-
-        text = body.get("text")
+        text = body.get("response") if isinstance(body, dict) else None
+        if not isinstance(text, str):
+            choices = body.get("choices", []) if isinstance(body, dict) else []
+            if choices:
+                text = choices[0].get("message", {}).get("content")
         if not isinstance(text, str) or not text.strip():
             raise GatewayError("The conversation service returned an invalid response.")
-        return AIResponse(text=text, request_id=body.get("request_id"))
+        return AIResponse(text=text, request_id=request.request_id, model_id=model_id)
 
+    def stream(self, request: AIRequest, route: TaskRoute):
+        model_id = request.model_id or self.registry.model_for(route.purpose).model_id
+        try:
+            yield from self.client.stream_chat(model=model_id, messages=request.messages)
+        except Exception as exc:
+            raise GatewayError("The conversation stream is unavailable.") from exc

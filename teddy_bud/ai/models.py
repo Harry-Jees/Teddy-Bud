@@ -1,8 +1,4 @@
-"""Provider-neutral AI data contracts.
-
-These contracts intentionally contain no provider credentials or NVIDIA model
-identifiers. The Cloudflare Worker selects the provider model and secret.
-"""
+"""Gateway AI data contracts."""
 
 from __future__ import annotations
 
@@ -18,12 +14,27 @@ class TaskType(StrEnum):
     SAFETY_REVIEW = "safety_review"
 
 
+class ModelPurpose(StrEnum):
+    EMOTIONAL_CONVERSATION = "emotional_conversation"
+    FAST_CONVERSATION = "fast_conversation"
+    STRUCTURED_EXTRACTION = "structured_extraction"
+    MULTIMODAL = "multimodal"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelConfig:
+    model_id: str
+    purpose: ModelPurpose
+
+
 @dataclass(frozen=True, slots=True)
 class AIRequest:
     task: TaskType
     messages: Sequence[Mapping[str, str]]
     memories: Sequence[str] = field(default_factory=tuple)
     request_id: str | None = None
+    model_id: str | None = None
+    stream: bool = False
 
 
 @dataclass(frozen=True, slots=True)
