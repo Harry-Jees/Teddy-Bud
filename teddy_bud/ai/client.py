@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .streaming import parse_sse_lines
 from teddy_bud.security.credentials import DeviceAuthenticator
-from teddy_bud.security.transport import AuthenticationError, GatewayTransport
+from teddy_bud.security.transport import AuthenticationError, GatewayResponseError, GatewayTransport
 
 
 class AIClient:
@@ -28,14 +28,20 @@ class AIClient:
             import json
 
             with response:
-                return json.loads(response.read().decode("utf-8"))
+                body = json.loads(response.read().decode("utf-8"))
+                if not isinstance(body, dict):
+                    raise GatewayResponseError("The gateway returned an invalid JSON response")
+                return body
         except AuthenticationError:
             token = self.verify_device()
             response = self.transport.request(method, path, payload=payload, token=token)
             import json
 
             with response:
-                return json.loads(response.read().decode("utf-8"))
+                body = json.loads(response.read().decode("utf-8"))
+                if not isinstance(body, dict):
+                    raise GatewayResponseError("The gateway returned an invalid JSON response")
+                return body
 
     def health(self) -> dict:
         return self.transport.get_json("/health")

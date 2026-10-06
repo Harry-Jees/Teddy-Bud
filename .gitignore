@@ -6,6 +6,13 @@ __pycache__/
 .pytest_cache/
 .pytest-tmp/
 pytest-cache-files-*/
+.buildozer/
+bin/
+dist/
+build/
+*.spec.bak
+.test-tmp-*/
+teddy-bud-tests-*/
 .kivy/
 .venv/
 venv/
@@ -21,4 +28,5 @@ dist/
 *.apk
 *.aab
 *.spec
+!buildozer.spec
 

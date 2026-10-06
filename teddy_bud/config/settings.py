@@ -11,6 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+DEFAULT_GATEWAY_URL = "https://teddy-bud-gateway.harryjees.workers.dev"
+
+
 @dataclass(frozen=True, slots=True)
 class AppSettings:
     environment: str
@@ -32,7 +35,7 @@ def load_settings(*, data_dir: Path | None = None) -> AppSettings:
     return AppSettings(
         environment=os.getenv("TEDDY_ENV", "development"),
         debug=_as_bool(os.getenv("TEDDY_DEBUG")),
-        gateway_url=os.getenv("TEDDY_GATEWAY_URL") or None,
+        gateway_url=os.getenv("TEDDY_GATEWAY_URL") or DEFAULT_GATEWAY_URL,
         database_path=root / "teddy_bud.sqlite3",
     )
 

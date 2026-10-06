@@ -8,7 +8,7 @@ def test_locked_colors_are_present():
 
 
 def test_spacing_and_radii_follow_specification():
-    assert set(SPACING.values()) == {8, 16, 24, 32, 40, 48, 64}
+    assert set(SPACING.values()) == {4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80}
     assert RADII["card"] == 20
-    assert RADII["button"] == 16
+    assert RADII["button"] == 18
 

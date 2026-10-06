@@ -23,6 +23,11 @@ class CloudflareGatewayProvider:
         self.client = client or AIClient(GatewayTransport(gateway_url, timeout=timeout), DeviceAuthenticator(key_store or OSKeyStore()))
         self.registry = ModelRegistry.default()
 
+    def clear_credentials(self) -> None:
+        authenticator = getattr(self.client, "authenticator", None)
+        if authenticator is not None:
+            authenticator.clear()
+
     def complete(self, request: AIRequest, route: TaskRoute) -> AIResponse:
         model_id = request.model_id or self.registry.model_for(route.purpose).model_id
         try:

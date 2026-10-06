@@ -34,12 +34,13 @@ class EncryptedDatabase:
             # inserting it into this single PRAGMA statement.
             escaped_key = key.decode("utf-8").replace("'", "''")
             connection.execute(f"PRAGMA key = '{escaped_key}'")
+            connection.execute("PRAGMA foreign_keys = ON")
             # Force SQLCipher to decrypt a real page. PRAGMA statements alone
             # may not fail immediately when a wrong key is supplied.
             connection.execute("SELECT count(*) FROM sqlite_master").fetchone()
             if existing_database:
-                check = connection.execute("PRAGMA cipher_integrity_check").fetchone()
-                if not check or check[0] != "ok":
+                check = connection.execute("PRAGMA integrity_check").fetchone()
+                if not check or str(check[0]).lower() != "ok":
                     connection.close()
                     raise DatabaseUnavailable("Encrypted database integrity check failed")
             self.connection = connection

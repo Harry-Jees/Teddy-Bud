@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "teddy-bud"
+version = "0.1.0"
+description = "A private Kivy conversational companion client"
+requires-python = ">=3.11"
+dependencies = [
+    "Kivy>=2.3.0,<3",
+    "keyring>=25.6,<26",
+    "sqlcipher3>=0.6.2,<0.7",
+    "cryptography>=43,<45",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0,<9"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+
+[tool.setuptools.packages.find]
+include = ["teddy_bud*"]
+
+[tool.setuptools.package-data]
+teddy_bud = ["storage/schema.sql", "ui/fonts/*.ttf", "ui/fonts/*.txt"]

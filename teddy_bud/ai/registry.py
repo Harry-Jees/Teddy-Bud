@@ -21,10 +21,10 @@ class ModelRegistry:
     @staticmethod
     def default_models() -> tuple[ModelConfig, ...]:
         return (
-            ModelConfig("deepseek-ai/deepseek-v4.1-flash", ModelPurpose.EMOTIONAL_CONVERSATION),
-            ModelConfig("nvidia/nemotron-3.5-lightning-30b-a3b", ModelPurpose.FAST_CONVERSATION),
-            ModelConfig("openai/gpt-oss-20b", ModelPurpose.STRUCTURED_EXTRACTION),
-            ModelConfig("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", ModelPurpose.MULTIMODAL),
+            ModelConfig("nvidia/llama-3.1-nemotron-70b-instruct", ModelPurpose.EMOTIONAL_CONVERSATION),
+            ModelConfig("nvidia/mistral-nemo-12b-instruct", ModelPurpose.FAST_CONVERSATION),
+            ModelConfig("qwen/qwen2.5-72b-instruct", ModelPurpose.STRUCTURED_EXTRACTION),
+            ModelConfig("meta/llama-3.1-8b-instruct", ModelPurpose.MULTIMODAL),
         )
 
     @classmethod
@@ -45,5 +45,10 @@ class ModelRegistry:
 
     def update_from_gateway(self, models: list[dict]) -> None:
         available = {item.get("id") for item in models if isinstance(item, dict)}
-        self._models = {purpose: model for purpose, model in self._models.items() if model.model_id in available}
+        updated = {purpose: model for purpose, model in self._models.items() if model.model_id in available}
+        # An empty or incompatible external catalog must not make local routing
+        # crash. Keep the last known client catalog until the gateway contract
+        # provides compatible entries.
+        if updated and updated.keys() == self._models.keys():
+            self._models = updated
 

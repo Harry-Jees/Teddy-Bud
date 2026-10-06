@@ -3,14 +3,20 @@ from __future__ import annotations
 from teddy_bud.ai.models import AIRequest, TaskType
 from teddy_bud.security.privacy import ContextLimits, minimize_memories, minimize_messages
 from teddy_bud.security.redaction import redact_secrets
-from teddy_bud.core.prompts import PERSONALITY_PROMPT, SAFETY_PROMPT
+from teddy_bud.core.prompts import MEMORY_PROMPT, PERSONALITY_PROMPT, SAFETY_PROMPT
 
 
 def build_context(task: TaskType, messages, memories=(), *, request_id=None, limits=None) -> AIRequest:
     limits = limits or ContextLimits()
-    safe_messages = tuple({"role": item["role"], "content": redact_secrets(item["content"])} for item in minimize_messages(messages, limits))
+    message_budget = max(0, limits.recent_messages - 1)
+    recent_messages = list(messages)[-message_budget:] if message_budget else []
+    safe_messages = tuple({"role": item["role"], "content": redact_secrets(item["content"])} for item in minimize_messages(recent_messages, ContextLimits(recent_messages=message_budget, memories=limits.memories, memory_characters=limits.memory_characters, message_characters=limits.message_characters)))
     safe_memories = tuple(redact_secrets(item) for item in minimize_memories(memories, limits))
-    system = {"role": "system", "content": f"{PERSONALITY_PROMPT}\n\n{SAFETY_PROMPT}"}
+    system_content = f"{PERSONALITY_PROMPT}\n\n{SAFETY_PROMPT}"
+    if safe_memories:
+        memory_context = "\n".join(f"- {memory}" for memory in safe_memories)
+        system_content += f"\n\n{MEMORY_PROMPT}\nUser-approved context:\n{memory_context}"
+    system = {"role": "system", "content": system_content}
     return AIRequest(task=task, messages=(system, *safe_messages), memories=safe_memories, request_id=request_id)
 
 

@@ -64,19 +64,23 @@ class DeviceAuthenticator:
         identity = self.ensure_identity()
         public_key = _b64(identity.private_key.public_key().public_bytes_raw())
         body = transport.post_json("/auth/register", {"deviceId": identity.device_id, "publicKey": public_key})
-        return self._set_jwt(body.get("token") or body.get("access_token") or body.get("jwt"))
+        return self._set_jwt(body.get("accessToken") or body.get("token") or body.get("access_token") or body.get("jwt"))
 
     def verify(self, transport) -> str:
         identity = self.ensure_identity()
-        timestamp = str(int(time.time()))
+        timestamp = int(time.time())
         message = f"{identity.device_id}:{timestamp}".encode("utf-8")
         signature = _b64(identity.private_key.sign(message))
         body = transport.post_json("/auth/verify", {"deviceId": identity.device_id, "timestamp": timestamp, "signature": signature})
-        return self._set_jwt(body.get("token") or body.get("access_token") or body.get("jwt"))
+        return self._set_jwt(body.get("accessToken") or body.get("token") or body.get("access_token") or body.get("jwt"))
 
     def access_token(self, transport) -> str:
         token = self.jwt()
         if token:
             return token
         return self.register(transport)
+
+    def clear(self) -> None:
+        for alias in (self.DEVICE_ID, self.PRIVATE_KEY, self.JWT):
+            self.key_store.delete_key(alias)
 

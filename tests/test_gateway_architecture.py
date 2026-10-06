@@ -17,7 +17,7 @@ def test_registry_contains_tasks_without_provider_credentials():
     registry = ModelRegistry.default()
     route = registry.route_for(TaskType.CONVERSATION)
     assert route.gateway_operation == "chat_completions"
-    assert registry.model_for(ModelPurpose.EMOTIONAL_CONVERSATION).model_id == "deepseek-ai/deepseek-v4.1-flash"
+    assert registry.model_for(ModelPurpose.EMOTIONAL_CONVERSATION).model_id == "nvidia/llama-3.1-nemotron-70b-instruct"
 
 
 def test_gateway_provider_uses_worker_client_without_credentials():
@@ -31,4 +31,4 @@ def test_gateway_provider_uses_worker_client_without_credentials():
     request = AIRequest(TaskType.CONVERSATION, ({"role": "user", "content": "hello"},))
     response = provider.complete(request, ModelRegistry.default().route_for(request.task))
     assert response.text == "hello"
-    assert client.kwargs["model"] == "deepseek-ai/deepseek-v4.1-flash"
+    assert client.kwargs["model"] == "nvidia/llama-3.1-nemotron-70b-instruct"

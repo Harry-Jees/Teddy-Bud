@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from abc import ABC, abstractmethod
 
 
@@ -44,11 +45,20 @@ class OSKeyStore(SecureKeyStore):
 
     def get_secret(self, alias: str) -> bytes | None:
         value = self._keyring.get_password(self.service_name, alias)
-        return value.encode("utf-8") if value is not None else None
+        if value is None:
+            return None
+        if value.startswith("b64:"):
+            try:
+                return base64.urlsafe_b64decode(value[4:] + "===")
+            except ValueError as exc:
+                raise SecureStorageUnavailable("Stored secure credential is invalid") from exc
+        # Backward compatibility for legacy text-only values.
+        return value.encode("utf-8")
 
     def set_secret(self, alias: str, value: bytes) -> None:
         try:
-            self._keyring.set_password(self.service_name, alias, value.decode("utf-8"))
+            encoded = "b64:" + base64.urlsafe_b64encode(value).decode("ascii")
+            self._keyring.set_password(self.service_name, alias, encoded)
         except Exception as exc:
             raise SecureStorageUnavailable("OS secure storage could not save a credential") from exc
 

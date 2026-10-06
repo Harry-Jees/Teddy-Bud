@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from socket import timeout as SocketTimeout
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -31,6 +32,16 @@ class NetworkError(GatewayTransportError):
     pass
 
 
+class GatewayResponseError(GatewayTransportError):
+    """The external gateway returned a response outside its client contract."""
+
+
+def _require_object(value, *, operation: str) -> dict:
+    if not isinstance(value, dict):
+        raise GatewayResponseError(f"The gateway returned an invalid {operation} response")
+    return value
+
+
 class GatewayTransport:
     def __init__(self, base_url: str, *, timeout: float = 30.0):
         if not base_url or not base_url.lower().startswith("https://"):
@@ -41,7 +52,7 @@ class GatewayTransport:
     def request(self, method: str, path: str, *, payload=None, token: str | None = None):
         if not path.startswith("/"):
             raise ValueError("Gateway path must be absolute")
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "User-Agent": "TeddyBud"}
         data = None
         if payload is not None:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -58,20 +69,20 @@ class GatewayTransport:
             if exc.code in (404, 503):
                 raise ModelUnavailableError("The requested gateway service is unavailable") from exc
             raise GatewayUnavailableError("The conversation service is unavailable") from exc
-        except (URLError, TimeoutError, OSError) as exc:
+        except (URLError, TimeoutError, SocketTimeout, OSError) as exc:
             raise NetworkError("The conversation service could not be reached") from exc
 
     def get_json(self, path: str, *, token: str | None = None) -> dict:
         try:
             with self.request("GET", path, token=token) as response:
-                return json.loads(response.read().decode("utf-8"))
+                return _require_object(json.loads(response.read().decode("utf-8")), operation="JSON")
         except json.JSONDecodeError as exc:
             raise GatewayUnavailableError("The gateway returned an invalid response") from exc
 
     def post_json(self, path: str, payload: dict, *, token: str | None = None) -> dict:
         try:
             with self.request("POST", path, payload=payload, token=token) as response:
-                return json.loads(response.read().decode("utf-8"))
+                return _require_object(json.loads(response.read().decode("utf-8")), operation="JSON")
         except json.JSONDecodeError as exc:
             raise GatewayUnavailableError("The gateway returned an invalid response") from exc
 
