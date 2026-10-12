@@ -159,14 +159,15 @@ export class GatewayService {
     return (body.data ?? []).map((item) => item.id).filter((model): model is string => Boolean(model));
   }
 
-  async sendChatMessage(message: string, history: GatewayMessage[]): Promise<string> {
+  async sendChatMessage(message: string, history: GatewayMessage[], sessionToken?: string): Promise<string> {
     const session = await this.ensureReady();
-    const modelOptions = await this.getModels(session.accessToken);
+    const accessToken = sessionToken || session.accessToken;
+    const modelOptions = await this.getModels(accessToken);
     const modelId = modelOptions[0] ?? DEFAULT_MODEL_ID;
 
     const messages: GatewayMessage[] = [
-      ...history.map((entry) => ({ role: entry.role, content: entry.content.trim() })).filter((entry) => entry.content),
-      { role: 'user', content: message.trim() },
+      ...history.map((entry): GatewayMessage => ({ role: entry.role, content: entry.content.trim() })).filter((entry) => entry.content),
+      { role: 'user' as const, content: message.trim() },
     ].slice(-12);
 
     const response = await fetchJson<{
@@ -176,7 +177,7 @@ export class GatewayService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         model: modelId,

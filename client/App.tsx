@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -12,10 +12,12 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  Linking,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GATEWAY_BASE_URL } from './src/config/gateway';
 import { GatewayService } from './src/services/gateway';
+import { AccessAuthService, StoredSession } from './src/services/auth';
 
 type Page = 'chat' | 'memories' | 'privacy';
 type Memory = { id: number; text: string; date: string };
@@ -35,17 +37,71 @@ const navItems: { id: Page; icon: string; label: string }[] = [
 ];
 
 const gatewayService = new GatewayService(GATEWAY_BASE_URL);
+const authService = new AccessAuthService();
 
 function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="dark-content" backgroundColor={C.canvas} />
-      <TeddyBud />
+      <AccessGate />
     </SafeAreaProvider>
   );
 }
 
-function TeddyBud() {
+function AccessGate() {
+  const [session, setSession] = useState<StoredSession | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const restore = async () => {
+      try {
+        const current = await authService.restore();
+        if (mounted) setSession(current);
+      } catch (restoreError) {
+        if (mounted) setError(restoreError instanceof Error ? restoreError.message : 'Unable to restore your sign-in.');
+      } finally {
+        if (mounted) setBusy(false);
+      }
+    };
+    restore();
+    const handleUrl = (url: string) => {
+      authService.consumeCallback(url).then(next => {
+        if (mounted && next) { setSession(next); setError(null); }
+      }).catch(callbackError => {
+        if (mounted) setError(callbackError instanceof Error ? callbackError.message : 'Sign-in could not be completed.');
+      });
+    };
+    Linking.getInitialURL().then(url => { if (url) handleUrl(url); });
+    const subscription = Linking.addEventListener('url', event => handleUrl(event.url));
+    return () => { mounted = false; subscription.remove(); };
+  }, []);
+
+  if (busy) return <AuthLoading />;
+  if (!session) return <LoginScreen error={error} onLogin={() => { setError(null); authService.beginLogin().catch(loginError => setError(loginError instanceof Error ? loginError.message : 'Unable to open sign-in.')); }} />;
+  return <TeddyBud sessionToken={session.accessToken} onLogout={() => { authService.clear(); setSession(null); }} />;
+}
+
+function AuthLoading() {
+  return <View style={styles.authScreen}><View style={styles.brandMark}><Text style={styles.brandMarkText}>tb</Text></View><Text style={styles.authTitle}>Opening your private space…</Text><Text style={styles.authBody}>Checking your secure session.</Text></View>;
+}
+
+function LoginScreen({ error, onLogin }: { error: string | null; onLogin: () => void }) {
+  return <View style={styles.authScreen}>
+    <View style={styles.authCard}>
+      <View style={styles.authMark}><Text style={styles.brandMarkText}>tb</Text></View>
+      <Text style={styles.authEyebrow}>TEDDY BUD</Text>
+      <Text style={styles.authTitle}>A little room to breathe.</Text>
+      <Text style={styles.authBody}>Sign in with Cloudflare Access to keep your Teddy Bud space private and protected.</Text>
+      {error && <View style={styles.authError}><Text style={styles.authErrorText}>{error}</Text></View>}
+      <Pressable accessibilityRole="button" onPress={onLogin} style={({ pressed }) => [styles.authButton, pressed && styles.pressed]}><Text style={styles.authButtonText}>Continue with secure sign-in</Text></Pressable>
+      <Text style={styles.authFootnote}>You’ll return to Teddy Bud automatically after authentication.</Text>
+    </View>
+  </View>;
+}
+
+function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 800;
@@ -117,7 +173,7 @@ function TeddyBud() {
       const responseText = await gatewayService.sendChatMessage(text, messages.map(message => ({
         role: message.author === 'you' ? 'user' : 'assistant',
         content: message.text,
-      })));
+      })), sessionToken);
 
       const assistantMessage: Message = {
         id: Date.now() + 1,
@@ -160,7 +216,7 @@ function TeddyBud() {
         <View style={styles.contentArea}>
           {page === 'chat' && <ChatPage wide={wide} messages={messages} draft={draft} setDraft={setDraft} onSend={sendMessage} onClear={confirmClear} isSending={isSending} chatError={chatError} />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} />}
-          {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} setRememberInSession={changeMemoryPreference} shareMemories={shareMemories} setShareMemories={setShareMemories} onClear={confirmClear} />}
+          {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} setRememberInSession={changeMemoryPreference} shareMemories={shareMemories} setShareMemories={setShareMemories} onClear={confirmClear} onLogout={onLogout} />}
         </View>
         {!wide && <BottomNav page={page} onNavigate={setPage} bottomInset={insets.bottom} />}
       </View>
@@ -274,7 +330,7 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete }
   </ScrollView>;
 }
 
-function PrivacyPage({ wide, rememberInSession, setRememberInSession, shareMemories, setShareMemories, onClear }: { wide: boolean; rememberInSession: boolean; setRememberInSession: (value: boolean) => void; shareMemories: boolean; setShareMemories: (value: boolean) => void; onClear: () => void }) {
+function PrivacyPage({ wide, rememberInSession, setRememberInSession, shareMemories, setShareMemories, onClear, onLogout }: { wide: boolean; rememberInSession: boolean; setRememberInSession: (value: boolean) => void; shareMemories: boolean; setShareMemories: (value: boolean) => void; onClear: () => void; onLogout: () => void }) {
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR CHOICES, ALWAYS</Text><Text style={styles.pageTitle}>Privacy & settings</Text><Text style={styles.pageDescription}>A few clear controls for what happens in your space.</Text></View>
     <View style={styles.privacyBanner}><View style={styles.privacyShield}><Text style={styles.shieldGlyph}>⌑</Text></View><View style={styles.privacyCopy}><Text style={styles.privacyTitle}>You’re in control here</Text><Text style={styles.privacyBody}>Chat messages are sent to the configured HTTPS gateway. This web build keeps messages and memories in app memory for this session; encrypted storage is not configured.</Text></View></View>
@@ -288,6 +344,7 @@ function PrivacyPage({ wide, rememberInSession, setRememberInSession, shareMemor
     <View style={styles.settingsCard}>
       <View style={styles.clearRow}><View style={styles.clearIcon}><Text style={styles.clearGlyph}>⌫</Text></View><View style={styles.settingText}><Text style={styles.settingTitle}>Clear this session</Text><Text style={styles.settingDescription}>Remove the messages and memories currently on screen.</Text></View><Pressable accessibilityRole="button" onPress={onClear} style={styles.clearButton}><Text style={styles.clearButtonText}>Clear</Text></Pressable></View>
     </View>
+    <View style={styles.settingsCard}><View style={styles.clearRow}><View style={styles.settingText}><Text style={styles.settingTitle}>Sign out</Text><Text style={styles.settingDescription}>End this Cloudflare Access session on this device.</Text></View><Pressable accessibilityRole="button" onPress={onLogout} style={styles.clearButton}><Text style={styles.clearButtonText}>Sign out</Text></Pressable></View></View>
     <Text style={styles.versionText}>TEDDY BUD  ·  PRIVATE BY DESIGN</Text>
   </ScrollView>;
 }
@@ -301,6 +358,7 @@ function Button({ label, onPress, tone = 'primary', disabled = false }: { label:
 }
 
 const styles = StyleSheet.create({
+  authScreen: { flex: 1, backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center', padding: 24 }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#9A8E82', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 11, lineHeight: 16, textAlign: 'center' },
   root: { flex: 1, flexDirection: 'row', backgroundColor: C.canvas }, main: { flex: 1, minWidth: 0 },
   sidebar: { width: 264, backgroundColor: '#F2ECE3', borderRightWidth: 1, borderRightColor: C.line, paddingHorizontal: 22, paddingTop: 30, paddingBottom: 24 },
   sidebarBrand: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 46 }, brandMark: { width: 42, height: 42, borderRadius: 15, backgroundColor: C.cocoa, justifyContent: 'center', alignItems: 'center' }, brandMarkText: { color: '#FFF9F3', fontSize: 18, fontWeight: '700', letterSpacing: -1 }, brandCopy: { justifyContent: 'center' }, brandName: { color: C.ink, fontSize: 16, letterSpacing: -0.4, fontWeight: '700' }, sidebarCaption: { color: C.muted, fontSize: 11, marginTop: 2 }, sidebarLabel: { color: '#A2968A', fontSize: 10, letterSpacing: 1.5, fontWeight: '700', marginBottom: 12, marginLeft: 12 },
