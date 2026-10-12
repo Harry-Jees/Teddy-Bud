@@ -1,2 +1,0 @@
-"""Kivy presentation layer."""
-

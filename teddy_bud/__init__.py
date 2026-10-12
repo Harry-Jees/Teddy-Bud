@@ -1,2 +1,0 @@
-"""Teddy Bud application package."""
-
