@@ -114,6 +114,7 @@ function AuthLoading() {
 
 function BrowserLoginScreen({ error, onLogin }: { error: string | null; onLogin: (session: StoredSession) => void }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState(() => browserAuthService.getRememberedEmail());
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -122,13 +123,14 @@ function BrowserLoginScreen({ error, onLogin }: { error: string | null; onLogin:
   const [formError, setFormError] = useState<string | null>(null);
   const validEmail = /^\S+@\S+\.\S+$/.test(email.trim());
   const validLogin = validEmail && password.length > 0;
-  const validSignup = validEmail && password.length >= 8 && password.length <= 128 && password === confirmPassword;
+  const validSignup = fullName.trim().length > 0 && fullName.trim().length <= 100
+    && validEmail && password.length >= 8 && password.length <= 128 && password === confirmPassword;
 
   const submitSignup = async () => {
     if (!validSignup || submitting) return;
     setSubmitting(true); setFormError(null);
     try {
-      await browserAuthService.beginSignup(email, password);
+      await browserAuthService.beginSignup(fullName, email, password);
       setSignupSent(true);
     } catch (signupError) {
       setFormError(signupError instanceof Error ? signupError.message : 'Unable to create your account.');
@@ -160,6 +162,7 @@ function BrowserLoginScreen({ error, onLogin }: { error: string | null; onLogin:
         <Text style={styles.authBody}>Check your inbox at {email.trim()} and open the Supabase confirmation link. You can sign in after confirming.</Text>
         <Pressable accessibilityRole="button" onPress={() => { setMode('login'); setSignupSent(false); setPassword(''); setConfirmPassword(''); setFormError(null); }} style={styles.authToggle}><Text style={styles.authToggleText}>Back to sign in</Text></Pressable>
       </> : mode === 'signup' ? <>
+        <TextInput value={fullName} onChangeText={setFullName} autoComplete="name" textContentType="name" placeholder="Full name" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Full name" />
         <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="Email address" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Email address" />
         <TextInput value={password} onChangeText={setPassword} autoCapitalize="none" autoComplete="new-password" secureTextEntry placeholder="Password (at least 8 characters)" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Password" />
         <TextInput value={confirmPassword} onChangeText={setConfirmPassword} autoCapitalize="none" autoComplete="new-password" secureTextEntry placeholder="Confirm password" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Confirm password" />
@@ -347,7 +350,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
       setMessages(current => [...current, assistantMessage].slice(-200));
     } catch (error) {
-      if (Platform.OS === 'web' && !(await browserAuthService.restore())) {
+      if ((error as { status?: number }).status === 401 && !(await browserAuthService.restore())) {
         onLogout();
         return;
       }

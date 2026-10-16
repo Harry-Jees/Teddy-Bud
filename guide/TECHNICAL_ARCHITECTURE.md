@@ -29,10 +29,10 @@ The client relies entirely on an external Cloudflare Worker gateway via HTTPS. F
 - The client must not infer gateway routes, response schemas, model IDs, token semantics, or deployment behavior that have not been explicitly supplied by the gateway contract.
 
 ## 5. Browser and native authentication
-Web and native clients create accounts and sign in with email and password.
-Supabase Auth stores passwords and enforces email confirmation; Resend delivers
+Web and native clients create accounts with a name, email, and password, and
+sign in with email and password. Supabase Auth stores credentials and enforces email confirmation; Resend delivers
 the confirmation emails through Supabase's custom SMTP configuration.
-`public.user_profiles` mirrors each `auth.users.id` using an insert trigger and
+`public.user_profiles` stores the signup name and mirrors each `auth.users.id` using an insert trigger and
 has row-level security so users can select only their own row. The Worker
 validates the Supabase identity and, using that user's Supabase access token,
 checks the RLS-protected profile row before issuing its own bearer token for

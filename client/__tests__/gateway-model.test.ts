@@ -1,7 +1,7 @@
 import { GatewayService } from '../src/services/gateway';
 
 const auth = {
-  restore: jest.fn(async () => null),
+  restore: jest.fn(async () => ({ accessToken: 'test-token', expiresAt: Date.now() + 60_000 })),
   refresh: jest.fn(async () => ({ accessToken: 'test-token', expiresAt: Date.now() + 60_000 })),
   clear: jest.fn(async () => undefined),
 };
@@ -38,7 +38,7 @@ describe('GatewayService chat model selection', () => {
       .mockResolvedValueOnce(response({ choices: [{ message: { content: 'That sounds like a lot to carry.' } }] }));
     globalThis.fetch = fetchMock;
 
-    const gateway = new GatewayService('https://gateway.test', auth, auth);
+    const gateway = new GatewayService('https://gateway.test', auth);
     const result = await gateway.sendChatMessage('I feel overwhelmed.', [], 'test-token');
 
     expect(result).toBe('That sounds like a lot to carry.');
@@ -66,7 +66,7 @@ describe('GatewayService chat model selection', () => {
       .mockResolvedValueOnce(response({ choices: [{ message: { content: 'I hear you.' } }] }));
     globalThis.fetch = fetchMock;
 
-    const gateway = new GatewayService('https://gateway.test', auth, auth);
+    const gateway = new GatewayService('https://gateway.test', auth);
     await gateway.sendChatMessage('I feel sad today.', [], 'test-token');
 
     const firstChatRequest = JSON.parse(fetchMock.mock.calls[1][1].body as string);
@@ -83,7 +83,7 @@ describe('GatewayService chat model selection', () => {
       .mockResolvedValueOnce(response({ choices: [{ message: { content: 'I am here with you.' } }] }));
     globalThis.fetch = fetchMock;
 
-    const gateway = new GatewayService('https://gateway.test', auth, auth);
+    const gateway = new GatewayService('https://gateway.test', auth);
     const result = await gateway.sendChatMessage('I feel alone.', [], 'expired-token');
 
     expect(result).toBe('I am here with you.');

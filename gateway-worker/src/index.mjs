@@ -452,15 +452,18 @@ async function loginWithPassword(request, env) {
 async function signupWithSupabase(request, env) {
   const parsed = await readJson(request);
   if (parsed.error) return parsed.error;
-  const { email, password, redirectTo } = parsed.value ?? {};
+  const { fullName: rawFullName, email, password, redirectTo } = parsed.value ?? {};
+  const fullName = typeof rawFullName === 'string' ? rawFullName.trim() : '';
   if (
-    typeof email !== 'string'
+    fullName.length < 1
+    || fullName.length > 100
+    || typeof email !== 'string'
     || !/^\S+@\S+\.\S+$/.test(email.trim())
     || email.trim().length > 320
     || typeof password !== 'string'
     || password.length < 8
     || password.length > 128
-  ) return json(400, { error: 'Enter a valid email address and a password of 8–128 characters.' });
+  ) return json(400, { error: 'Enter your name, a valid email address, and a password of 8–128 characters.' });
   if (!await rateLimit(request, env, 'signup', 10)) return json(429, { error: 'Too many sign-up attempts. Try again later.' });
   const safeRedirect = allowedEmailRedirect(redirectTo, env);
   if (!safeRedirect) return json(400, { error: 'The email confirmation redirect is not allowed.' });
@@ -468,7 +471,11 @@ async function signupWithSupabase(request, env) {
   const { response, payload } = await supabaseRequest(env, `signup?redirect_to=${encodeURIComponent(safeRedirect)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      password,
+      data: { full_name: fullName },
+    }),
   });
   if (!response.ok) {
     const message = typeof payload?.msg === 'string' ? payload.msg : payload?.message;

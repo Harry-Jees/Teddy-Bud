@@ -262,6 +262,7 @@ test('Supabase manages email signup, confirmation, and email-password sign-in', 
       const body = JSON.parse(init.body);
       assert.equal(body.email, 'person@example.com');
       assert.equal(body.password, 'a-long-test-password');
+      assert.deepEqual(body.data, { full_name: 'Person Example' });
       return new Response(JSON.stringify({ user: { id: supabaseUserId, email: body.email } }), { status: 200 });
     }
     if (requestUrl.pathname.endsWith('/rest/v1/user_profiles')) {
@@ -300,6 +301,7 @@ test('Supabase manages email signup, confirmation, and email-password sign-in', 
 
   try {
     const unsafeRedirect = await jsonResponse(await worker.fetch(request('/auth/signup', 'POST', {
+      fullName: 'Person Example',
       email: 'person@example.com',
       password: 'a-long-test-password',
       redirectTo: 'https://attacker.example/auth/callback',
@@ -308,6 +310,7 @@ test('Supabase manages email signup, confirmation, and email-password sign-in', 
     assert.equal(requests.length, 0);
 
     const sent = await jsonResponse(await worker.fetch(request('/auth/signup', 'POST', {
+      fullName: 'Person Example',
       email: 'Person@example.com',
       password: 'a-long-test-password',
       redirectTo: 'http://localhost:5173/auth/callback',

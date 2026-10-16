@@ -19,8 +19,9 @@ original Worker.
 
 4. Create a Supabase project. Apply
    [`supabase/migrations/20261014165000_create_user_profiles.sql`](../supabase/migrations/20261014165000_create_user_profiles.sql)
-   from the repository root using the Supabase SQL Editor, or apply it with
-   `supabase db push` after linking the correct project. It creates
+   and [`supabase/migrations/20261016123000_add_full_name_to_user_profiles.sql`](../supabase/migrations/20261016123000_add_full_name_to_user_profiles.sql)
+   from the repository root using the Supabase SQL Editor, or apply them with
+   `supabase db push` after linking the correct project. They create
    `public.user_profiles`, enables row-level security, creates a profile for
    existing and new Auth users, and allows an authenticated user to read only
    the row whose `user_id` matches `auth.uid()`.
@@ -69,8 +70,9 @@ original Worker.
 The new Worker is intentionally named `teddy-bud-browser-gateway`; deployment
 does not overwrite `teddy-bud-gateway`. Supabase Auth stores account credentials
 and enforces email confirmation; Supabase sends those emails through Resend
-SMTP. Each Auth UUID is mirrored to `public.user_profiles` by a database
-trigger. On confirmation and password login, the Worker presents the user's
+SMTP. Each Auth UUID and signup name are mirrored to `public.user_profiles` by a
+database trigger. Email and password credentials remain managed by Supabase
+Auth; the Worker never stores the password. On confirmation and password login, the Worker presents the user's
 Supabase access token to the profile REST endpoint; RLS ensures that the user
 can only see their own matching `user_id`. The Worker issues a Teddy Bud
 one-hour JWT only after that cross-check succeeds. Passwords and Supabase

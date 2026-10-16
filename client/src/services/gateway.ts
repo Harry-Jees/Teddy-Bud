@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { browserAuthService } from './browserAuth';
-import { DeviceAuthService, deviceAuthService } from './deviceAuth';
+import type { StoredSession } from './deviceAuth';
 
 export type GatewayMessageRole = 'user' | 'assistant' | 'system';
 export type GatewayContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } };
@@ -30,7 +30,11 @@ const VISION_HINTS = ['vision', 'vl', 'llava', 'pixtral', 'gemma-3'];
 const CHAT_MODEL_HINTS = ['chat', 'instruct', 'llama', 'qwen', 'deepseek', 'gemma', 'mistral', 'mixtral', 'nemotron'];
 const NON_CHAT_MODEL_HINTS = ['embed', 'rerank', 'asr', 'tts', 'speech', 'guard', 'reward'];
 type HttpError = Error & { status?: number };
-type SessionAuth = Pick<DeviceAuthService, 'restore' | 'refresh' | 'clear'>;
+type SessionAuth = {
+  restore(): Promise<StoredSession | null>;
+  refresh(): Promise<StoredSession>;
+  clear(): Promise<void>;
+};
 
 function sleep(ms: number) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function isRetryableStatus(status: number) { return status === 408 || status === 425 || status === 429 || status >= 500; }
@@ -89,31 +93,26 @@ function preferredChatModels(catalog: GatewayModel[]): GatewayModel[] {
 }
 
 export class GatewayService {
-  constructor(private readonly baseUrl: string, private readonly nativeAuth: SessionAuth = deviceAuthService, private readonly browserAuth: SessionAuth = browserAuthService) {}
+  constructor(private readonly baseUrl: string, private readonly nativeAuth: SessionAuth = browserAuthService, private readonly browserAuth: SessionAuth = browserAuthService) {}
 
   private get auth() { return Platform.OS === 'web' ? this.browserAuth : this.nativeAuth; }
 
   private async token(sessionToken?: string) {
-    if (sessionToken && Platform.OS !== 'web') return sessionToken;
-
     const session = await this.auth.restore();
     if (session) {
-      if (Platform.OS === 'web' && session.expiresAt <= Date.now() + 30_000) return (await this.auth.refresh()).accessToken;
+      if (session.expiresAt <= Date.now() + 30_000) return (await this.auth.refresh()).accessToken;
       return session.accessToken;
     }
 
-    if (Platform.OS === 'web') {
-      try {
-        return (await this.auth.refresh()).accessToken;
-      } catch (error) {
-        if (sessionToken) return sessionToken;
-        if ((error as HttpError).status === 401) await this.auth.clear();
-        throw new Error('Your session has ended. Please log in again.');
-      }
+    if (sessionToken) {
+      throw Object.assign(new Error('Your session has ended. Please log in again.'), { status: 401 });
     }
-
-    if (sessionToken) return sessionToken;
-    throw new Error('Your session has ended. Please log in again.');
+    try {
+      return (await this.auth.refresh()).accessToken;
+    } catch (error) {
+      if ((error as HttpError).status === 401) await this.auth.clear();
+      throw error;
+    }
   }
 
   private async requestWithToken<T>(path: string, init: RequestInit, sessionToken?: string): Promise<T> {

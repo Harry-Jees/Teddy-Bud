@@ -106,14 +106,14 @@ export class BrowserAuthService {
     return current;
   }
 
-  async beginSignup(email: string, password: string): Promise<void> {
+  async beginSignup(fullName: string, email: string, password: string): Promise<void> {
     const redirectTo = Platform.OS === 'web'
       ? `${window.location.origin}/auth/callback`
       : 'teddybud://auth/callback';
     await request<{ verificationRequired: boolean }>('/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim(), password, redirectTo }),
+      body: JSON.stringify({ fullName: fullName.trim(), email: email.trim(), password, redirectTo }),
     });
     this.rememberEmail(email);
   }
@@ -148,7 +148,7 @@ export class BrowserAuthService {
 
   async refresh(): Promise<StoredSession> {
     const current = inMemorySession ?? await this.readStoredSession();
-    if (!current) throw new Error('Your session has ended. Please log in again.');
+    if (!current) throw Object.assign(new Error('Your session has ended. Please log in again.'), { status: 401 });
     try {
       const response = await request<LoginResponse>('/auth/refresh', { method: 'POST', headers: { Authorization: `Bearer ${current.accessToken}` } });
       return await this.save(response);

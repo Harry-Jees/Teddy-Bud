@@ -11,10 +11,12 @@ The web target uses Vite and React Native Web to render the same app UI in a des
 3. Start the hot-reloading preview with `npm run web`; it opens the browser automatically.
 4. If it does not open automatically, visit [http://localhost:5173](http://localhost:5173).
 
-Users create accounts and sign in with an email address and password. Supabase
-Auth stores credentials and enforces email confirmation; its custom SMTP
-settings use Resend to deliver confirmation emails. A database trigger mirrors
-each Supabase Auth UUID into the RLS-protected `user_profiles` table. The
+Users create accounts with a full name, email address, and password, then sign
+in with email and password. Supabase Auth stores the email and password
+(passwords are handled by Supabase Auth, never stored by Teddy Bud) and enforces
+email confirmation; its custom SMTP settings use Resend to deliver confirmation
+emails. A database trigger stores the account name and mirrors each Supabase
+Auth UUID into the RLS-protected `user_profiles` table. The
 Cloudflare gateway checks that profile with the user's Supabase token before
 issuing a Teddy Bud session. Teddy Bud never stores passwords or Supabase
 access tokens. Browser tokens are kept in
