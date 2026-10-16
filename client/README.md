@@ -11,10 +11,44 @@ The web target uses Vite and React Native Web to render the same app UI in a des
 3. Start the hot-reloading preview with `npm run web`; it opens the browser automatically.
 4. If it does not open automatically, visit [http://localhost:5173](http://localhost:5173).
 
-The browser preview sends chat requests to the configured Cloudflare Worker gateway. Messages and memories stay in app memory for the session; encrypted storage is not configured.
-The Cloudflare Worker base URL is built into `src/config/gateway.ts`; users do not enter or change it.
+Users create accounts and sign in with an email address and password. Supabase
+Auth stores credentials and enforces email confirmation; its custom SMTP
+settings use Resend to deliver confirmation emails. A database trigger mirrors
+each Supabase Auth UUID into the RLS-protected `user_profiles` table. The
+Cloudflare gateway checks that profile with the user's Supabase token before
+issuing a Teddy Bud session. Teddy Bud never stores passwords or Supabase
+access tokens. Browser tokens are kept in
+`sessionStorage`; native tokens use platform secure storage. Chat history,
+saved memories, and preferences persist locally, scoped to the Supabase account.
+Native database files use SQLCipher with a key stored in Keychain/Keystore.
+Browser data uses IndexedDB and is not encrypted by Teddy Bud;
+use a trusted, device-protected browser profile and clear local data when needed.
+Saved memories are sent to the AI provider only when memory sharing is enabled.
+
+The gateway URL is built into `src/config/gateway.ts`; users do not enter or
+change it. The browser gateway is deployed separately from the original
+gateway. Configure Supabase Auth to use Resend SMTP and apply the profile-table
+migration in `supabase/migrations`. Configure the Worker with `SUPABASE_URL`,
+`SUPABASE_ANON_KEY`, `AUTH_REDIRECT_ORIGINS`, and `JWT_SIGNING_SECRET`; model
+and chat endpoints also require `NVIDIA_KEY_1`. The Resend API key belongs in
+Supabase SMTP settings, not the app or Worker. Keep credentials out of the app.
+The Worker’s
+separate Cloudflare Access redirect endpoint is optional.
+
+After enabling SQLCipher in the native SQLite build configuration, reinstall
+native dependencies and rebuild the app (`bundle exec pod install` for iOS).
+Existing plain-SQLite development data is not migrated automatically.
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+
+## Conversation model behavior
+
+The gateway prefers NVIDIA's `nvidia/nemotron-3.5-lightning-30b-a3b` for
+low-latency chat, then tries the hosted Mistral Nemo Minitron 8B and Nemotron
+70B models if NVIDIA reports that a model function is unavailable. The client
+limits replies to 220 tokens and supplies instructions to respond briefly and
+empathetically, noticing emotional tone without diagnosing or labeling the
+person. Hosted model availability may vary by NVIDIA account.
 
 ## Step 1: Start Metro
 

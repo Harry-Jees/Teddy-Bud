@@ -4,9 +4,6 @@ import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   plugins: [react()],
-  define: {
-    __TEDDY_ACCESS_LOGIN_URL__: JSON.stringify(process.env.VITE_CLOUDFLARE_ACCESS_LOGIN_URL || ''),
-  },
   resolve: {
     alias: {
       'react-native': 'react-native-web',

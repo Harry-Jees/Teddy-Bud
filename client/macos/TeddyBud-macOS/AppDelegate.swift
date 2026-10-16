@@ -1,4 +1,5 @@
 import SwiftUI
+import Carbon
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
@@ -30,6 +31,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     reactNativeDelegate = delegate
     reactNativeFactory = factory
+  }
+
+  func applicationDidFinishLaunching(_ notification: Notification) {
+    NSAppleEventManager.shared().setEventHandler(
+      RCTLinkingManager.self,
+      andSelector: NSSelectorFromString("getUrlEventHandler:withReplyEvent:"),
+      forEventClass: AEEventClass(kInternetEventClass),
+      andEventID: AEEventID(kAEGetURL)
+    )
   }
 }
 
