@@ -522,6 +522,7 @@ test('authenticated chat requests are forwarded to NVIDIA and return its complet
     assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
     assert.equal(upstreamRequest.url, 'https://integrate.api.nvidia.com/v1/chat/completions');
     assert.equal(upstreamRequest.init.headers.Authorization, 'Bearer test-nvidia-key');
+    assert.ok(upstreamRequest.init.signal instanceof AbortSignal);
     assert.deepEqual(JSON.parse(upstreamRequest.init.body), chatBody);
     assert.equal(result.body.choices[0].message.content, 'I hear you. What feels most important right now?');
   } finally {

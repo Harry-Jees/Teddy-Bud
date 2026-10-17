@@ -60,12 +60,14 @@ Existing plain-SQLite development data is not migrated automatically.
 
 ## Conversation model behavior
 
-The gateway prefers NVIDIA's `nvidia/nemotron-3.5-lightning-30b-a3b` for
-low-latency chat, then tries the hosted Mistral Nemo Minitron 8B and Nemotron
-70B models if NVIDIA reports that a model function is unavailable. The client
-limits replies to 220 tokens and supplies instructions to respond briefly and
+The gateway prefers NVIDIA's `nvidia/nemotron-3-super-120b-a12b` for
+conversation and allows up to 1024 output tokens so model reasoning does not
+consume the entire reply budget. Coding and vision requests remain limited to
+220 output tokens. The client supplies instructions to respond briefly and
 empathetically, noticing emotional tone without diagnosing or labeling the
-person. Hosted model availability may vary by NVIDIA account.
+person. If the preferred model returns no text or is unavailable, the client
+tries other chat-capable models from NVIDIA's catalog; model availability may
+vary by account.
 
 ## Step 1: Start Metro
 

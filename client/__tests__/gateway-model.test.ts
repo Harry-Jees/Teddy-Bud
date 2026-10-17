@@ -31,6 +31,7 @@ describe('GatewayService chat model selection', () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({
         data: [
+          { id: 'nvidia/nemotron-3-super-120b-a12b' },
           { id: 'nvidia/llama-3.1-nemotron-70b-instruct' },
           { id: 'nvidia/nemotron-3.5-lightning-30b-a3b' },
         ],
@@ -46,20 +47,45 @@ describe('GatewayService chat model selection', () => {
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer test-token' }));
     expect(fetchMock.mock.calls[1][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer test-token' }));
     const chatRequest = JSON.parse(fetchMock.mock.calls[1][1].body as string);
-    expect(chatRequest.model).toBe('nvidia/nemotron-3.5-lightning-30b-a3b');
+    expect(chatRequest.model).toBe('nvidia/nemotron-3-super-120b-a12b');
     expect(chatRequest.messages[0]).toEqual(expect.objectContaining({
       role: 'system',
       content: expect.stringContaining('without labeling, diagnosing'),
     }));
-    expect(chatRequest.max_tokens).toBe(220);
+    expect(chatRequest.max_tokens).toBe(1024);
+  });
+
+  it('falls back when a model uses its output budget without returning a text reply', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({
+        data: [
+          { id: 'nvidia/nemotron-3-super-120b-a12b' },
+          { id: 'ai21labs/jamba-1.5-large-instruct' },
+        ],
+      }))
+      .mockResolvedValueOnce(response({
+        choices: [{ finish_reason: 'length', message: { content: null } }],
+      }))
+      .mockResolvedValueOnce(response({ choices: [{ message: { content: 'I hear you.' } }] }));
+    globalThis.fetch = fetchMock;
+
+    const gateway = new GatewayService('https://gateway.test', auth);
+    const result = await gateway.sendChatMessage('I feel overwhelmed.', [
+      { role: 'user', content: 'I have a lot on my mind.' },
+      { role: 'assistant', content: 'That sounds difficult.' },
+    ], 'test-token');
+
+    expect(result).toBe('I hear you.');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).max_tokens).toBe(1024);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body as string).model).toBe('ai21labs/jamba-1.5-large-instruct');
   });
 
   it('falls back to the next preferred catalog model when NVIDIA returns 404', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({
         data: [
+          { id: 'nvidia/nemotron-3-super-120b-a12b' },
           { id: 'nvidia/nemotron-3.5-lightning-30b-a3b' },
-          { id: 'nvidia/mistral-nemo-minitron-8b-8k-instruct' },
         ],
       }))
       .mockResolvedValueOnce(response({ detail: 'Function not found.' }, 404))
@@ -71,8 +97,29 @@ describe('GatewayService chat model selection', () => {
 
     const firstChatRequest = JSON.parse(fetchMock.mock.calls[1][1].body as string);
     const secondChatRequest = JSON.parse(fetchMock.mock.calls[2][1].body as string);
-    expect(firstChatRequest.model).toBe('nvidia/nemotron-3.5-lightning-30b-a3b');
-    expect(secondChatRequest.model).toBe('nvidia/mistral-nemo-minitron-8b-8k-instruct');
+    expect(firstChatRequest.model).toBe('nvidia/nemotron-3-super-120b-a12b');
+    expect(secondChatRequest.model).toBe('nvidia/nemotron-3.5-lightning-30b-a3b');
+  });
+
+  it('falls back to another chat model after an upstream timeout', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({
+        data: [
+          { id: 'nvidia/nemotron-3-super-120b-a12b' },
+          { id: 'ai21labs/jamba-1.5-large-instruct' },
+        ],
+      }))
+      .mockResolvedValueOnce(response({ error: { message: 'Upstream timed out.' } }, 524))
+      .mockResolvedValueOnce(response({ choices: [{ message: { content: 'I am here.' } }] }));
+    globalThis.fetch = fetchMock;
+
+    const gateway = new GatewayService('https://gateway.test', auth);
+    const result = await gateway.sendChatMessage('I feel overwhelmed.', [], 'test-token');
+
+    expect(result).toBe('I am here.');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).model).toBe('nvidia/nemotron-3-super-120b-a12b');
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body as string).model).toBe('ai21labs/jamba-1.5-large-instruct');
   });
 
   it('refreshes once after a chat request returns 401, then retries with the renewed bearer token', async () => {

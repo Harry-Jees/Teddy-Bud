@@ -12,9 +12,7 @@ export interface SendChatOptions { modelId?: string; task?: 'conversation' | 'co
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 350;
 const PREFERRED_CHAT_MODELS = [
-  'nvidia/nemotron-3.5-lightning-30b-a3b',
-  'nvidia/mistral-nemo-minitron-8b-8k-instruct',
-  'nvidia/llama-3.1-nemotron-70b-instruct',
+  'nvidia/nemotron-3-super-120b-a12b',
 ];
 const CONVERSATION_GUIDANCE = [
   'You are Teddy Bud, a warm, thoughtful conversational companion.',
@@ -39,13 +37,13 @@ type SessionAuth = {
 function sleep(ms: number) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function isRetryableStatus(status: number) { return status === 408 || status === 425 || status === 429 || status >= 500; }
 
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+async function fetchJson<T>(url: string, init?: RequestInit, maxRetries = MAX_RETRIES): Promise<T> {
   let lastError: HttpError = Object.assign(new Error('Request failed.'), { status: undefined });
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     let response: Response;
     try { response = await fetch(url, init); } catch (error) {
       lastError = error instanceof Error ? error as HttpError : Object.assign(new Error('Request failed.'), { status: undefined });
-      if (attempt === MAX_RETRIES) throw lastError;
+      if (attempt === maxRetries) throw lastError;
       await sleep(RETRY_DELAY_MS * (attempt + 1));
       continue;
     }
@@ -54,7 +52,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
     if (response.ok) return payload as T;
     const error = Object.assign(new Error(payload?.error?.message ?? payload?.message ?? `Request failed (${response.status}).`), { status: response.status });
-    if (!isRetryableStatus(response.status) || attempt === MAX_RETRIES) throw error;
+    if (!isRetryableStatus(response.status) || attempt === maxRetries) throw error;
     lastError = error;
     await sleep(RETRY_DELAY_MS * (attempt + 1));
   }
@@ -116,11 +114,11 @@ export class GatewayService {
     }
   }
 
-  private async requestWithToken<T>(path: string, init: RequestInit, sessionToken?: string): Promise<T> {
+  private async requestWithToken<T>(path: string, init: RequestInit, sessionToken?: string, maxRetries = MAX_RETRIES): Promise<T> {
     let currentToken = await this.token(sessionToken);
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        return await fetchJson<T>(`${this.baseUrl}${path}`, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${currentToken}` } });
+        return await fetchJson<T>(`${this.baseUrl}${path}`, { ...init, headers: { ...(init.headers ?? {}), Authorization: `Bearer ${currentToken}` } }, maxRetries);
       } catch (error) {
         if ((error as HttpError).status !== 401 || attempt === 1) throw error;
         try {
@@ -168,7 +166,14 @@ export class GatewayService {
       { role: 'user', content: message.trim() },
     ].map(entry => ({ role: entry.role as GatewayMessageRole, content: typeof entry.content === 'string' ? entry.content.trim() : entry.content })).filter(entry => Array.isArray(entry.content) || Boolean(entry.content)).slice(-13);
     if (options.imageDataUrl) { const last = messages[messages.length - 1]; last.content = [{ type: 'text', text: message.trim() }, { type: 'image_url', image_url: { url: options.imageDataUrl, detail: 'auto' } }]; }
-    const body: Record<string, unknown> = { model: selected.id, messages, stream: false, max_tokens: 220, temperature: 0.65, top_p: 0.9 };
+    const body: Record<string, unknown> = {
+      model: selected.id,
+      messages,
+      stream: false,
+      max_tokens: options.task === 'coding' || options.task === 'vision' ? 220 : 1024,
+      temperature: 0.65,
+      top_p: 0.9,
+    };
     if (options.enableWebBrowsing) body.tools = [{ type: 'web_search' }];
     const modelCandidates = options.modelId || requiredCapability
       ? [selected]
@@ -177,13 +182,15 @@ export class GatewayService {
     for (const model of modelCandidates) {
       body.model = model.id;
       try {
-        const response = await this.requestWithToken<{ choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } }>('/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, accessToken);
+        const response = await this.requestWithToken<{ choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } }>('/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, accessToken, 0);
         const content = response.choices?.[0]?.message?.content;
         if (!content) throw new Error(response.error?.message ?? 'No reply was returned by the conversation service.');
         return content.trim();
       } catch (error) {
         lastError = error;
-        if ((error as HttpError).status !== 404 || options.modelId || requiredCapability || model === modelCandidates[modelCandidates.length - 1]) throw error;
+        const status = (error as HttpError).status;
+        const canTryNextModel = status === undefined || status === 404 || status === 410 || isRetryableStatus(status);
+        if (!canTryNextModel || options.modelId || requiredCapability || model === modelCandidates[modelCandidates.length - 1]) throw error;
       }
     }
     throw lastError instanceof Error ? lastError : new Error('No chat-capable AI model is currently available from the conversation service.');

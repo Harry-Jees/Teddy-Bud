@@ -406,6 +406,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     };
 
     if (!messageToRetry) setMessages(current => [...current, userMessage].slice(-200));
+    if (!messageToRetry) setRetryMessage(null);
     setDraft('');
     setIsSending(true);
     setChatError(null);
@@ -548,8 +549,8 @@ function BottomNav({ page, onNavigate, bottomInset }: { page: Page; onNavigate: 
   </Pressable>)}</View>;
 }
 
-function ChatPage({ wide, messages, draft, setDraft, onSend, onRetry, retryPending, onClear, onNewConversation, isSending, chatError, imageAttached, onAttachImage, onRemoveImage, enableWebBrowsing, setEnableWebBrowsing, codingMode, setCodingMode }: { wide: boolean; messages: Message[]; draft: string; setDraft: (value: string) => void; onSend: () => void; onRetry: () => void; retryPending: boolean; onClear: () => void; onNewConversation: () => void; isSending: boolean; chatError: string | null; imageAttached: boolean; onAttachImage: (dataUrl: string) => void; onRemoveImage: () => void; enableWebBrowsing: boolean; setEnableWebBrowsing: (value: boolean) => void; codingMode: boolean; setCodingMode: (value: boolean) => void }) {
-  const canSend = !!draft.trim() && !isSending && !retryPending;
+export function ChatPage({ wide, messages, draft, setDraft, onSend, onRetry, retryPending, onClear, onNewConversation, isSending, chatError, imageAttached, onAttachImage, onRemoveImage, enableWebBrowsing, setEnableWebBrowsing, codingMode, setCodingMode }: { wide: boolean; messages: Message[]; draft: string; setDraft: (value: string) => void; onSend: () => void; onRetry: () => void; retryPending: boolean; onClear: () => void; onNewConversation: () => void; isSending: boolean; chatError: string | null; imageAttached: boolean; onAttachImage: (dataUrl: string) => void; onRemoveImage: () => void; enableWebBrowsing: boolean; setEnableWebBrowsing: (value: boolean) => void; codingMode: boolean; setCodingMode: (value: boolean) => void }) {
+  const canSend = !!draft.trim() && !isSending;
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => { scrollRef.current?.scrollToEnd({ animated: true }); }, [messages.length, isSending]);
   const chooseImage = () => {
@@ -588,14 +589,14 @@ function ChatPage({ wide, messages, draft, setDraft, onSend, onRetry, retryPendi
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
       <View style={styles.composerCard}>
         {!!imageAttached && <View style={styles.attachmentRow}><Text style={styles.attachmentText}>Image attached</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={onRemoveImage} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
-        <TextInput value={draft} onChangeText={setDraft} placeholder="Message Teddy Bud…" placeholderTextColor={C.muted} multiline maxLength={2000} style={styles.composerInput} accessibilityLabel="Write a message" />
+        <TextInput value={draft} onChangeText={setDraft} onSubmitEditing={() => onSend()} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder="Message Teddy Bud…" placeholderTextColor={C.muted} multiline maxLength={2000} style={styles.composerInput} accessibilityLabel="Write a message" />
         <View style={styles.composerBottomRow}>
           <View style={styles.chatTools}>
             <Pressable accessibilityRole="button" accessibilityLabel="Attach an image" onPress={chooseImage} disabled={isSending} style={({ pressed }) => [styles.toolIconButton, pressed && styles.pressed]}><Text style={styles.toolIconGlyph}>＋</Text></Pressable>
             <Pressable accessibilityRole="switch" accessibilityState={{ checked: enableWebBrowsing }} onPress={() => setEnableWebBrowsing(!enableWebBrowsing)} disabled={isSending || codingMode} style={[styles.toolButton, enableWebBrowsing && styles.toolButtonActive]}><Text style={[styles.toolButtonText, enableWebBrowsing && styles.toolButtonTextActive]}>◎ Browse</Text></Pressable>
             <Pressable accessibilityRole="switch" accessibilityState={{ checked: codingMode }} onPress={() => { setCodingMode(!codingMode); if (!codingMode) { setEnableWebBrowsing(false); onRemoveImage(); } }} disabled={isSending} style={[styles.toolButton, codingMode && styles.toolButtonActive]}><Text style={[styles.toolButtonText, codingMode && styles.toolButtonTextActive]}>⌘ Code</Text></Pressable>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={onSend} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, pressed && styles.pressed]}><Text style={[styles.sendGlyph, canSend && styles.sendGlyphActive]}>{isSending ? '…' : '↑'}</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={() => onSend()} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, pressed && styles.pressed]}><Text style={[styles.sendGlyph, canSend && styles.sendGlyphActive]}>{isSending ? '…' : '↑'}</Text></Pressable>
         </View>
       </View>
       {wide && <Text style={styles.composerFootnote}>{isSending ? 'Sending to the companion service…' : 'Your conversation is saved on this device.'}</Text>}

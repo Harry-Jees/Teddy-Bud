@@ -1,6 +1,7 @@
 const ACCESS_TOKEN_SECONDS = 60 * 60;
 const RATE_WINDOW_SECONDS = 15 * 60;
 const NVIDIA_API = 'https://integrate.api.nvidia.com/v1';
+const NVIDIA_CHAT_TIMEOUT_MS = 30_000;
 const encoder = new TextEncoder();
 let cachedAccessKeys;
 
@@ -861,11 +862,20 @@ async function completions(request, env) {
   if (!parsed.value || typeof parsed.value.model !== 'string' || !Array.isArray(parsed.value.messages)) {
     return json(400, { error: { message: 'A model and messages array are required.' } });
   }
-  const response = await fetch(`${NVIDIA_API}/chat/completions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(parsed.value),
-  });
+  let response;
+  try {
+    response = await fetch(`${NVIDIA_API}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(parsed.value),
+      signal: AbortSignal.timeout(NVIDIA_CHAT_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+      return json(504, { error: { message: 'The AI provider timed out. Please retry or use another model.' } });
+    }
+    throw error;
+  }
   if (!response.ok) {
     const responseText = await response.text();
     let payload;
