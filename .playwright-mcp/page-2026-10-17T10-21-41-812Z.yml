@@ -1,0 +1,11 @@
+- generic [ref=f2e5]:
+  - generic "Teddy Bud" [ref=f2e7]:
+    - img "Teddy Bud" [ref=f2e9]
+  - generic [ref=f2e10]: TEDDY BUD
+  - generic [ref=f2e11]: A little room to breathe.
+  - generic [ref=f2e12]: Sign in with your email and password.
+  - textbox "Email address" [ref=f2e13]
+  - textbox "Password" [ref=f2e14]
+  - button "Sign in" [disabled]
+  - generic [ref=f2e16]: New to Teddy Bud? Create an account and confirm your email once.
+  - button "Create an account" [ref=f2e17] [cursor=pointer]

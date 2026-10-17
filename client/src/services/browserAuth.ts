@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import type { StoredSession } from './deviceAuth';
 import { GATEWAY_BASE_URL } from '../config/gateway';
@@ -111,15 +111,42 @@ export class BrowserAuthService {
   }
 
   async beginSignup(fullName: string, email: string, password: string): Promise<void> {
-    const redirectTo = Platform.OS === 'web'
-      ? `${window.location.origin}/auth/callback`
-      : 'teddybud://auth/callback';
     await request<{ verificationRequired: boolean }>('/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fullName: fullName.trim(), email: email.trim(), password, redirectTo }),
+      body: JSON.stringify({ fullName: fullName.trim(), email: email.trim(), password }),
     });
     this.rememberEmail(email);
+  }
+
+  async verifySignupOtp(email: string, token: string): Promise<StoredSession> {
+    const response = await request<LoginResponse>('/auth/verify-signup-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim(), token: token.trim() }),
+    });
+    return this.save(response);
+  }
+
+  async resendSignupOtp(email: string): Promise<void> {
+    await request<{ verificationRequired: boolean }>('/auth/resend-signup-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim() }),
+    });
+  }
+
+  async signInWithGoogle(): Promise<void> {
+    const callback = Platform.OS === 'web'
+      ? `${window.location.origin}/auth/callback`
+      : 'teddybud://auth/callback';
+    const startUrl = new URL(`${GATEWAY_BASE_URL}/auth/google/start`);
+    startUrl.searchParams.set('redirect_uri', callback);
+    if (Platform.OS === 'web') {
+      window.location.assign(startUrl.toString());
+      return;
+    }
+    await Linking.openURL(startUrl.toString());
   }
 
   async consumeCallback(callbackUrl: string): Promise<StoredSession | null> {
@@ -128,6 +155,20 @@ export class BrowserAuthService {
     const accessToken = fragment.get('access_token') ?? callback.searchParams.get('access_token');
     const callbackError = fragment.get('error_description') ?? callback.searchParams.get('error_description');
     if (callbackError) throw new Error(callbackError);
+    const code = callback.searchParams.get('code');
+    const oauthState = callback.searchParams.get('oauth_state');
+    if (code || oauthState) {
+      if (!code || !oauthState) throw new Error('The Google sign-in response is incomplete. Please try again.');
+      const result = await request<LoginResponse>('/auth/google/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, state: oauthState }),
+      });
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.history.replaceState(null, '', `${window.location.origin}/`);
+      }
+      return this.save(result);
+    }
     if (!accessToken) return null;
     const result = await request<LoginResponse>('/auth/verify-email', {
       method: 'POST',

@@ -2,7 +2,7 @@
 
 This is a separate Cloudflare Worker project, deployed at
 `https://teddy-bud-browser-gateway.harryjees.workers.dev`. It delegates
-email/password accounts and email confirmation to Supabase Auth, issues
+email/password and Google OAuth authentication to Supabase Auth, issues
 one-hour server-side sessions, supports native Ed25519 registration/
 verification, an optional Cloudflare Access redirect, and proxies authenticated
 NVIDIA model/chat requests. It does not deploy automatically or replace the
@@ -25,8 +25,12 @@ original Worker.
    `public.user_profiles`, enables row-level security, creates a profile for
    existing and new Auth users, and allows an authenticated user to read only
    the row whose `user_id` matches `auth.uid()`.
-5. In Supabase Authentication settings, enable email confirmations and
-   configure Resend as Supabase's custom SMTP provider:
+5. To support email/password signup, enable email confirmations and configure
+   the signup Confirmation email template to include the one-time code, for
+   example `{{ .Token }}`. The Supabase built-in mailer is restricted to
+   authorized team addresses and low-volume testing; public email signup needs
+   a mail provider and verified sender domain. If using Resend as Supabase's
+   custom SMTP provider:
    - SMTP host: `smtp.resend.com`
    - Port: `465` (SSL) or `587` (STARTTLS)
    - Username: `resend`
@@ -34,38 +38,43 @@ original Worker.
    - Sender address: an address on a domain verified in Resend
 
    Keep the Resend API key in Supabase's SMTP settings only. The Worker does
-   not send email directly; Supabase Auth creates and verifies credentials and
-   asks Resend to deliver confirmation emails. Also add these URLs to Supabase's
-   Auth redirect allow list:
-   - `http://localhost:5173/auth/callback` for local web development.
-   - `https://YOUR_APP_HOST/auth/callback` for the deployed web app.
-   - `teddybud://auth/callback` for native builds.
+   not send email directly; Supabase Auth creates and verifies credentials
+   and asks the configured SMTP provider to deliver confirmation emails.
 
-6. Configure the gateway:
+6. To enable no-email/no-SMS Google sign-in, enable Google under Supabase
+   Authentication → Providers. Create a Google Web OAuth client and set its
+   authorized redirect URI to
+   `https://<project-ref>.supabase.co/auth/v1/callback`. Enter that client ID
+   and secret in Supabase's Google provider settings. In Supabase Auth URL
+   Configuration, allow `teddybud://auth/callback`,
+   `http://localhost:3040/auth/callback`, and the deployed web callback URL.
+   OAuth authorization uses PKCE; the Worker exchanges the short-lived code
+   server-side and consumes each pending state once.
+
+7. Configure the gateway:
 
    ```powershell
    npx wrangler secret put JWT_SIGNING_SECRET
    npx wrangler secret put NVIDIA_KEY_1
    npx wrangler secret put SUPABASE_URL
    npx wrangler secret put SUPABASE_ANON_KEY
-   npx wrangler secret put AUTH_REDIRECT_ORIGINS
    ```
 
    Use the Supabase project URL and publishable/anon key; never use a
-   `service_role` or secret key. Set `AUTH_REDIRECT_ORIGINS` to a comma-separated
-   list of allowed origins, for example
-   `http://localhost:5173,https://YOUR_APP_HOST,teddybud://auth`. Generate the
-   JWT secret locally (`openssl rand -base64 48`). Do not put keys in source
-   control.
-7. (Optional) For the separate Cloudflare Access login, also configure
-   `ACCESS_ISSUER`, `ACCESS_AUD`, and use an appropriate
-   `AUTH_REDIRECT_ORIGINS` allow list. Attach the Worker to a custom hostname.
+   `service_role` or secret key. Generate the JWT secret locally
+   (`openssl rand -base64 48`). Do not put keys in source control.
+8. For production web Google sign-in, configure the non-secret Worker variable
+   `AUTH_REDIRECT_ORIGINS` as a comma-separated list of approved web origins,
+   such as `https://your-app.vercel.app`. Localhost callbacks and the native
+   `teddybud://auth/callback` URI are handled separately. (Optional) For the
+   separate Cloudflare Access login, also configure `ACCESS_ISSUER` and
+   `ACCESS_AUD`. Attach the Worker to a custom hostname.
    Create a Cloudflare Access
    self-hosted application on that hostname, protect only `/auth/login`, and
    enable One-time PIN with the allowed email identities. Access must inject
    `Cf-Access-Jwt-Assertion` for requests that reach the Worker. A `workers.dev`
    hostname alone is not an Access-protected login endpoint.
-8. Deploy Worker updates with `npm run deploy`.
+9. Deploy Worker updates with `npm run deploy`.
 
 The new Worker is intentionally named `teddy-bud-browser-gateway`; deployment
 does not overwrite `teddy-bud-gateway`. Supabase Auth stores account credentials
@@ -79,8 +88,12 @@ one-hour JWT only after that cross-check succeeds. Passwords and Supabase
 access tokens are not persisted by the Worker. Durable Objects store only
 Teddy Bud sessions and rate limits.
 `/auth/refresh` renews an active session and `/auth/logout` revokes it
-immediately. Authenticated model and chat requests are proxied from Cloudflare
-to NVIDIA; the NVIDIA key remains a Worker secret and is never sent to clients.
+immediately. Signup codes are verified at `/auth/verify-signup-otp` and can be
+resent at `/auth/resend-signup-otp`. Google OAuth starts at `/auth/google/start`
+and completes at `/auth/google/complete`; the pending PKCE verifier is held in
+a short-lived Durable Object record. Authenticated model and chat requests are
+proxied from Cloudflare to NVIDIA; the NVIDIA key remains a Worker secret and
+is never sent to clients.
 
 ## Local verification
 

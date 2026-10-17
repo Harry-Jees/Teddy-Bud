@@ -452,7 +452,7 @@ async function loginWithPassword(request, env) {
 async function signupWithSupabase(request, env) {
   const parsed = await readJson(request);
   if (parsed.error) return parsed.error;
-  const { fullName: rawFullName, email, password, redirectTo } = parsed.value ?? {};
+  const { fullName: rawFullName, email, password } = parsed.value ?? {};
   const fullName = typeof rawFullName === 'string' ? rawFullName.trim() : '';
   if (
     fullName.length < 1
@@ -465,10 +465,8 @@ async function signupWithSupabase(request, env) {
     || password.length > 128
   ) return json(400, { error: 'Enter your name, a valid email address, and a password of 8–128 characters.' });
   if (!await rateLimit(request, env, 'signup', 10)) return json(429, { error: 'Too many sign-up attempts. Try again later.' });
-  const safeRedirect = allowedEmailRedirect(redirectTo, env);
-  if (!safeRedirect) return json(400, { error: 'The email confirmation redirect is not allowed.' });
 
-  const { response, payload } = await supabaseRequest(env, `signup?redirect_to=${encodeURIComponent(safeRedirect)}`, {
+  const { response, payload } = await supabaseRequest(env, 'signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -492,7 +490,63 @@ async function signupWithSupabase(request, env) {
   if (typeof payload?.user?.id !== 'string') {
     return json(502, { error: 'Supabase did not return a valid account after sign-up.' });
   }
-  return json(200, { verificationRequired: true, message: 'Check your email for the confirmation link.' });
+  return json(200, { verificationRequired: true, message: 'Check your email for a verification code.' });
+}
+
+async function verifySignupOtp(request, env) {
+  const parsed = await readJson(request);
+  if (parsed.error) return parsed.error;
+  const { email, token } = parsed.value ?? {};
+  if (
+    typeof email !== 'string'
+    || !/^\S+@\S+\.\S+$/.test(email.trim())
+    || email.trim().length > 320
+    || typeof token !== 'string'
+    || !/^\d{6,10}$/.test(token.trim())
+  ) return json(400, { error: 'Enter a valid email address and the verification code from your email.' });
+  if (!await rateLimit(request, env, 'signup-otp-verify', 10)) {
+    return json(429, { error: 'Too many verification attempts. Request a new code and try again.' });
+  }
+
+  const { response, payload } = await supabaseRequest(env, 'verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'signup', email: email.trim().toLowerCase(), token: token.trim() }),
+  });
+  if (!response.ok || typeof payload?.access_token !== 'string' || typeof payload?.user?.id !== 'string') {
+    return json(401, { error: 'That verification code is invalid or expired. Check the code or request another.' });
+  }
+  if (!payload.user.email_confirmed_at) {
+    return json(401, { error: 'Supabase did not confirm this email. Check the email template configuration.' });
+  }
+  if (!await hasSupabaseProfile(env, payload.user.id, payload.access_token)) {
+    return json(403, { error: 'This account is not registered in the Teddy Bud profile table.' });
+  }
+  return authResponse(payload.user.id, 'user', env);
+}
+
+async function resendSignupOtp(request, env) {
+  const parsed = await readJson(request);
+  if (parsed.error) return parsed.error;
+  const { email } = parsed.value ?? {};
+  if (typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email.trim()) || email.trim().length > 320) {
+    return json(400, { error: 'Enter a valid email address to request a new verification code.' });
+  }
+  if (!await rateLimit(request, env, 'signup-otp-resend', 3)) {
+    return json(429, { error: 'Too many code requests. Please wait before requesting another.' });
+  }
+  const { response, payload } = await supabaseRequest(env, 'resend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'signup', email: email.trim().toLowerCase() }),
+  });
+  if (!response.ok) {
+    const message = typeof payload?.msg === 'string' ? payload.msg : payload?.message;
+    return json(response.status >= 400 && response.status < 500 ? response.status : 502, {
+      error: typeof message === 'string' ? message : 'Could not resend your verification code.',
+    });
+  }
+  return json(200, { verificationRequired: true, message: 'A new verification code was sent.' });
 }
 
 async function verifySupabaseEmail(request, env) {
@@ -508,6 +562,106 @@ async function verifySupabaseEmail(request, env) {
     return json(403, { error: 'This account is not registered in the Teddy Bud profile table.' });
   }
   return authResponse(user.id, 'user', env);
+}
+
+function allowedOAuthRedirect(value, env) {
+  if (typeof value !== 'string' || value.length > 500) return null;
+  try {
+    const callback = new URL(value);
+    if (callback.search || callback.hash || callback.username || callback.password) return null;
+    if (
+      callback.protocol === 'teddybud:'
+      && callback.host === 'auth'
+      && callback.pathname === '/callback'
+    ) return callback;
+    if (callback.pathname !== '/auth/callback' || (callback.protocol !== 'https:' && callback.protocol !== 'http:')) return null;
+
+    const allowedOrigins = typeof env.AUTH_REDIRECT_ORIGINS === 'string'
+      ? env.AUTH_REDIRECT_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
+      : [];
+    const isLocalhost = callback.protocol === 'http:'
+      && (callback.hostname === 'localhost' || callback.hostname === '127.0.0.1');
+    if (!isLocalhost && !allowedOrigins.includes(callback.origin)) return null;
+    return callback;
+  } catch {
+    return null;
+  }
+}
+
+async function startGoogleOAuth(request, env) {
+  const callback = allowedOAuthRedirect(new URL(request.url).searchParams.get('redirect_uri'), env);
+  if (!callback) return json(400, { error: 'The Google sign-in callback is not allowed.' });
+  if (!await rateLimit(request, env, 'google-oauth-start', 20)) {
+    return json(429, { error: 'Too many sign-in attempts. Try again later.' });
+  }
+
+  const state = base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)));
+  const verifier = base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = base64UrlEncode(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(verifier))));
+  const now = Math.floor(Date.now() / 1000);
+  const pending = {
+    userId: 'oauth-pending',
+    kind: 'oauth-pending',
+    refreshUntil: now + 10 * 60,
+    codeVerifier: verifier,
+  };
+  await writeSession(env, `oauth:${state}`, pending);
+
+  callback.searchParams.set('oauth_state', state);
+  const { url } = supabaseConfig(env);
+  const authorize = new URL(`${url}/auth/v1/authorize`);
+  authorize.searchParams.set('provider', 'google');
+  authorize.searchParams.set('redirect_to', callback.toString());
+  authorize.searchParams.set('code_challenge', challenge);
+  authorize.searchParams.set('code_challenge_method', 's256');
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: authorize.toString(),
+      'Cache-Control': 'no-store',
+      'Referrer-Policy': 'no-referrer',
+    },
+  });
+}
+
+async function completeGoogleOAuth(request, env) {
+  const parsed = await readJson(request);
+  if (parsed.error) return parsed.error;
+  const { code, state } = parsed.value ?? {};
+  if (
+    typeof code !== 'string'
+    || code.length < 1
+    || code.length > 2048
+    || typeof state !== 'string'
+    || !/^[A-Za-z0-9_-]{43}$/.test(state)
+  ) return json(400, { error: 'The Google sign-in response is invalid or incomplete.' });
+  if (!await rateLimit(request, env, 'google-oauth-complete', 20)) {
+    return json(429, { error: 'Too many sign-in attempts. Try again later.' });
+  }
+
+  const pending = await consumeSession(env, `oauth:${state}`);
+  if (
+    !pending
+    || pending.kind !== 'oauth-pending'
+    || typeof pending.codeVerifier !== 'string'
+    || pending.refreshUntil <= Math.floor(Date.now() / 1000)
+  ) return json(401, { error: 'The Google sign-in request expired. Please try again.' });
+
+  const { response, payload } = await supabaseRequest(env, 'token?grant_type=pkce', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ auth_code: code, code_verifier: pending.codeVerifier }),
+  });
+  if (
+    !response.ok
+    || typeof payload?.access_token !== 'string'
+    || typeof payload?.user?.id !== 'string'
+    || !payload.user.email_confirmed_at
+  ) return json(401, { error: 'Google sign-in could not be verified by Supabase. Please try again.' });
+  if (!await hasSupabaseProfile(env, payload.user.id, payload.access_token)) {
+    return json(403, { error: 'This account is not registered in the Teddy Bud profile table.' });
+  }
+  return authResponse(payload.user.id, 'user', env);
 }
 
 async function loginWithSupabase(request, env) {
@@ -582,6 +736,13 @@ async function writeSession(env, sessionId, session) {
     body: JSON.stringify(session),
   });
   if (!response.ok) throw new Error('Session storage request failed.');
+}
+
+async function consumeSession(env, sessionId) {
+  const response = await sessionStub(env, sessionId).fetch('https://session/session/consume', { method: 'POST' });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error('Session storage request failed.');
+  return response.json();
 }
 
 async function deleteSession(env, sessionId) {
@@ -742,6 +903,10 @@ async function route(request, env) {
   if (url.pathname === '/health' && request.method === 'GET') return health(env);
   if (url.pathname === '/auth/login' && request.method === 'GET') return accessLogin(request, env);
   if (url.pathname === '/auth/signup' && request.method === 'POST') return signupWithSupabase(request, env);
+  if (url.pathname === '/auth/google/start' && request.method === 'GET') return startGoogleOAuth(request, env);
+  if (url.pathname === '/auth/google/complete' && request.method === 'POST') return completeGoogleOAuth(request, env);
+  if (url.pathname === '/auth/verify-signup-otp' && request.method === 'POST') return verifySignupOtp(request, env);
+  if (url.pathname === '/auth/resend-signup-otp' && request.method === 'POST') return resendSignupOtp(request, env);
   if (url.pathname === '/auth/verify-email' && request.method === 'POST') return verifySupabaseEmail(request, env);
   if (url.pathname === '/auth/login' && request.method === 'POST') return loginWithSupabase(request, env);
   if (url.pathname === '/auth/refresh' && request.method === 'POST') return refresh(request, env);
@@ -823,6 +988,14 @@ export class GatewayStateStore {
       await this.ctx.storage.put('rate', rate);
       await this.ctx.storage.setAlarm(rate.windowEndsAt);
       return json(200, { allowed: true });
+    }
+
+    if (pathname === '/session/consume' && request.method === 'POST') {
+      const session = await this.ctx.storage.get('session');
+      if (!session) return new Response(null, { status: 404 });
+      await this.ctx.storage.delete('session');
+      await this.ctx.storage.deleteAlarm();
+      return json(200, session);
     }
 
     if (pathname !== '/session') return json(404, { error: 'Not found.' });

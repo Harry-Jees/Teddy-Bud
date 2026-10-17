@@ -12,7 +12,9 @@ The client app is built in React Native. It operates as a thin, secure client co
 The client relies entirely on an external Cloudflare Worker gateway via HTTPS. Fake transports/mocks should only be used in unit tests, not for live capabilities.
 
 ### External Endpoints
-- `POST /auth/signup`: Create a Supabase email/password account and send an email confirmation link.
+- `POST /auth/signup`: Create a Supabase email/password account and send a verification code.
+- `POST /auth/verify-signup-otp`: Verify an email signup code and create a Teddy Bud session.
+- `POST /auth/resend-signup-otp`: Resend an email signup code.
 - `POST /auth/verify-email`: Validate a confirmed Supabase access token and create a Teddy Bud session.
 - `POST /auth/login`: Sign in to Supabase with email and password, then create a Teddy Bud session.
 - `GET /auth/login`: Optional Cloudflare Access redirect flow.
@@ -29,9 +31,15 @@ The client relies entirely on an external Cloudflare Worker gateway via HTTPS. F
 - The client must not infer gateway routes, response schemas, model IDs, token semantics, or deployment behavior that have not been explicitly supplied by the gateway contract.
 
 ## 5. Browser and native authentication
-Web and native clients create accounts with a name, email, and password, and
-sign in with email and password. Supabase Auth stores credentials and enforces email confirmation; Resend delivers
-the confirmation emails through Supabase's custom SMTP configuration.
+Web and native clients can create accounts with a name, email, and password,
+then verify the email with a signup OTP before signing in. Supabase Auth stores
+credentials and enforces email confirmation; its Confirmation email template
+must include `{{ .Token }}`. Email delivery uses the configured Supabase mailer.
+Alternatively, Google OAuth signs users in without requiring email or SMS
+delivery. The gateway starts an OAuth PKCE flow, stores the verifier and state
+temporarily in Durable Objects, exchanges the returned code with Supabase Auth,
+and checks the user's profile before issuing a Teddy Bud session. The Google
+client secret stays in Supabase and is never sent to the app.
 `public.user_profiles` stores the signup name and mirrors each `auth.users.id` using an insert trigger and
 has row-level security so users can select only their own row. The Worker
 validates the Supabase identity and, using that user's Supabase access token,

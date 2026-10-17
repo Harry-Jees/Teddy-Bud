@@ -11,12 +11,16 @@ The web target uses Vite and React Native Web to render the same app UI in a des
 3. Start the hot-reloading preview with `npm run web`; it opens the browser automatically.
 4. If it does not open automatically, visit [http://localhost:5173](http://localhost:5173).
 
-Users create accounts with a full name, email address, and password, then sign
-in with email and password. Supabase Auth stores the email and password
-(passwords are handled by Supabase Auth, never stored by Teddy Bud) and enforces
-email confirmation; its custom SMTP settings use Resend to deliver confirmation
-emails. A database trigger stores the account name and mirrors each Supabase
-Auth UUID into the RLS-protected `user_profiles` table. The
+Users can create accounts with a full name, email address, and password, then
+verify the email with a one-time code sent by Supabase. Configure Supabase's
+signup Confirmation email template to include `{{ .Token }}`. The built-in
+Supabase mailer is restricted to authorized team addresses and low-volume
+testing; public email signup requires a mail provider and a verified sender
+domain. Google sign-in is the no-email/SMS option. Supabase Auth stores the
+email and password (passwords are handled by Supabase Auth, never stored by
+Teddy Bud) and enforces email confirmation. A database trigger stores the
+account name and mirrors each Supabase Auth UUID into the RLS-protected
+`user_profiles` table. The
 Cloudflare gateway checks that profile with the user's Supabase token before
 issuing a Teddy Bud session. Teddy Bud never stores passwords or Supabase
 access tokens. Browser tokens are kept in
@@ -27,15 +31,26 @@ Browser data uses IndexedDB and is not encrypted by Teddy Bud;
 use a trusted, device-protected browser profile and clear local data when needed.
 Saved memories are sent to the AI provider only when memory sharing is enabled.
 
+Google sign-in is also available without email or SMS verification. Enable the
+Google provider in Supabase and configure its Web OAuth client ID and secret.
+In Google Cloud, use
+`https://lvfvlrazovppkorkpwqz.supabase.co/auth/v1/callback` as the authorized
+redirect URI. In Supabase Auth URL configuration, allow the app callback
+`teddybud://auth/callback`, the local web callback
+`http://localhost:3040/auth/callback`, and the deployed web callback URL.
+The mobile callback uses the `teddybud` app URL scheme. OAuth authorization
+codes use PKCE and are exchanged by the gateway; Google client secrets remain
+in Supabase and are never shipped with the app.
+
 The gateway URL is built into `src/config/gateway.ts`; users do not enter or
-change it. The browser gateway is deployed separately from the original
-gateway. Configure Supabase Auth to use Resend SMTP and apply the profile-table
-migration in `supabase/migrations`. Configure the Worker with `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, `AUTH_REDIRECT_ORIGINS`, and `JWT_SIGNING_SECRET`; model
-and chat endpoints also require `NVIDIA_KEY_1`. The Resend API key belongs in
-Supabase SMTP settings, not the app or Worker. Keep credentials out of the app.
-The Worker’s
-separate Cloudflare Access redirect endpoint is optional.
+change it. Signup code verification does not rely on an app callback URL.
+The browser gateway is deployed separately from the original gateway. The
+profile-table migrations are in `supabase/migrations`. Configure the Worker
+with `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `AUTH_REDIRECT_ORIGINS`, and
+`JWT_SIGNING_SECRET`; model and chat endpoints also require `NVIDIA_KEY_1`.
+OAuth provider secrets belong in Supabase, not the app. Keep credentials out
+of source control. The Worker’s separate Cloudflare Access redirect endpoint
+is optional.
 
 After enabling SQLCipher in the native SQLite build configuration, reinstall
 native dependencies and rebuild the app (`bundle exec pod install` for iOS).

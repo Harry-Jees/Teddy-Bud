@@ -46,6 +46,17 @@ const teddyBudLogo: ImageSourcePropType = typeof teddyBudLogoAsset === 'string'
   ? { uri: teddyBudLogoAsset }
   : teddyBudLogoAsset;
 
+function isAuthCallbackUrl(value: string): boolean {
+  try {
+    const callback = new URL(value);
+    return (callback.protocol === 'https:' || callback.protocol === 'http:')
+      ? callback.pathname === '/auth/callback'
+      : callback.protocol === 'teddybud:' && callback.hostname === 'auth' && callback.pathname === '/callback';
+  } catch {
+    return false;
+  }
+}
+
 function App() {
   return (
     <SafeAreaProvider>
@@ -67,7 +78,7 @@ function AccessGate() {
         const callbackUrl = Platform.OS === 'web'
           ? typeof window !== 'undefined' && window.location.pathname === '/auth/callback' ? window.location.href : null
           : await Linking.getInitialURL();
-        const current = callbackUrl?.includes('/auth/callback')
+        const current = callbackUrl && isAuthCallbackUrl(callbackUrl)
           ? await browserAuthService.consumeCallback(callbackUrl)
           : await browserAuthService.restore();
         if (mounted) setSession(current);
@@ -80,7 +91,7 @@ function AccessGate() {
     const subscription = Platform.OS === 'web'
       ? null
       : Linking.addEventListener('url', ({ url }) => {
-        if (!url.includes('/auth/callback')) return;
+        if (!isAuthCallbackUrl(url)) return;
         void browserAuthService.consumeCallback(url).then(next => {
           if (!mounted) return;
           if (next) {
@@ -88,7 +99,7 @@ function AccessGate() {
             setSession(next);
           }
         }).catch(callbackError => {
-          if (mounted) setError(callbackError instanceof Error ? callbackError.message : 'Email confirmation failed.');
+          if (mounted) setError(callbackError instanceof Error ? callbackError.message : 'Sign-in could not be completed.');
         });
       });
     restore();
@@ -119,6 +130,7 @@ function BrowserLoginScreen({ error, onLogin }: { error: string | null; onLogin:
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [signupSent, setSignupSent] = useState(false);
+  const [signupOtp, setSignupOtp] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const validEmail = /^\S+@\S+\.\S+$/.test(email.trim());
@@ -151,23 +163,67 @@ function BrowserLoginScreen({ error, onLogin }: { error: string | null; onLogin:
     }
   };
 
+  const submitGoogleLogin = async () => {
+    if (submitting) return;
+    setSubmitting(true); setFormError(null);
+    try {
+      await browserAuthService.signInWithGoogle();
+      if (Platform.OS !== 'web') setSubmitting(false);
+    } catch (googleError) {
+      setFormError(googleError instanceof Error ? googleError.message : 'Unable to start Google sign-in.');
+      setSubmitting(false);
+    }
+  };
+
+  const submitSignupOtp = async () => {
+    if (!/^\d{6,10}$/.test(signupOtp.trim()) || submitting) return;
+    setSubmitting(true); setFormError(null);
+    try {
+      onLogin(await browserAuthService.verifySignupOtp(email, signupOtp));
+    } catch (verificationError) {
+      setFormError(verificationError instanceof Error ? verificationError.message : 'Unable to verify your email code.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resendSignupOtp = async () => {
+    if (submitting) return;
+    setSubmitting(true); setFormError(null);
+    try {
+      await browserAuthService.resendSignupOtp(email);
+      setSignupOtp('');
+    } catch (resendError) {
+      setFormError(resendError instanceof Error ? resendError.message : 'Unable to resend your email code.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return <View style={styles.authScreen}>
     <View style={styles.authCard}>
       <View style={styles.authMark}><Image source={teddyBudLogo} style={styles.authLogo} accessibilityLabel="Teddy Bud" /></View>
       <Text style={styles.authEyebrow}>TEDDY BUD</Text>
       <Text style={styles.authTitle}>{mode === 'signup' ? 'Create your private space.' : 'A little room to breathe.'}</Text>
-      <Text style={styles.authBody}>{mode === 'signup' ? 'Create an account with your email and password. Confirm your email once to finish.' : 'Sign in with your email and password.'}</Text>
+      <Text style={styles.authBody}>{signupSent ? 'Enter the verification code sent to your email to finish creating your account.' : mode === 'signup' ? 'Create an account with your email and password. Enter the code we email you to verify your address.' : 'Sign in with your email and password.'}</Text>
       {(error || formError) && <View style={styles.authError}><Text style={styles.authErrorText}>{formError || error}</Text></View>}
+      {!signupSent && <>
+        <Pressable accessibilityRole="button" disabled={submitting} onPress={submitGoogleLogin} style={({ pressed }) => [styles.googleAuthButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}><Text style={styles.googleAuthButtonText}>{submitting ? 'Opening Google…' : 'Continue with Google'}</Text></Pressable>
+        <Text style={styles.authDivider}>OR CONTINUE WITH EMAIL</Text>
+      </>}
       {signupSent ? <>
-        <Text style={styles.authBody}>Check your inbox at {email.trim()} and open the Supabase confirmation link. You can sign in after confirming.</Text>
-        <Pressable accessibilityRole="button" onPress={() => { setMode('login'); setSignupSent(false); setPassword(''); setConfirmPassword(''); setFormError(null); }} style={styles.authToggle}><Text style={styles.authToggleText}>Back to sign in</Text></Pressable>
+        <Text style={styles.authBody}>Check your inbox at {email.trim()} for a one-time verification code.</Text>
+        <TextInput value={signupOtp} onChangeText={value => setSignupOtp(value.replace(/\D/g, '').slice(0, 10))} autoCapitalize="none" keyboardType="number-pad" placeholder="Email verification code" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Email verification code" />
+        <Pressable accessibilityRole="button" disabled={!/^\d{6,10}$/.test(signupOtp.trim()) || submitting} onPress={submitSignupOtp} style={({ pressed }) => [styles.authButton, (!/^\d{6,10}$/.test(signupOtp.trim()) || submitting) && styles.buttonDisabled, pressed && styles.pressed]}><Text style={styles.authButtonText}>{submitting ? 'Verifying…' : 'Verify email'}</Text></Pressable>
+        <Pressable accessibilityRole="button" disabled={submitting} onPress={resendSignupOtp} style={styles.authToggle}><Text style={styles.authToggleText}>{submitting ? 'Sending…' : 'Resend code'}</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => { setMode('login'); setSignupSent(false); setSignupOtp(''); setPassword(''); setConfirmPassword(''); setFormError(null); }} style={styles.authToggle}><Text style={styles.authToggleText}>Back to sign in</Text></Pressable>
       </> : mode === 'signup' ? <>
         <TextInput value={fullName} onChangeText={setFullName} autoComplete="name" textContentType="name" placeholder="Full name" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Full name" />
         <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="Email address" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Email address" />
         <TextInput value={password} onChangeText={setPassword} autoCapitalize="none" autoComplete="new-password" secureTextEntry placeholder="Password (at least 8 characters)" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Password" />
         <TextInput value={confirmPassword} onChangeText={setConfirmPassword} autoCapitalize="none" autoComplete="new-password" secureTextEntry placeholder="Confirm password" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Confirm password" />
         <Pressable accessibilityRole="button" disabled={!validSignup || submitting} onPress={submitSignup} style={({ pressed }) => [styles.authButton, (!validSignup || submitting) && styles.buttonDisabled, pressed && styles.pressed]}><Text style={styles.authButtonText}>{submitting ? 'Creating account…' : 'Create account'}</Text></Pressable>
-        <Text style={styles.authFootnote}>Supabase securely handles your password and sends an email confirmation link.</Text>
+        <Text style={styles.authFootnote}>Supabase securely handles your password and emails a one-time verification code.</Text>
         <Pressable accessibilityRole="button" onPress={() => { setMode('login'); setFormError(null); }} style={styles.authToggle}><Text style={styles.authToggleText}>Already have an account? Sign in</Text></Pressable>
       </> : <>
         <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="Email address" placeholderTextColor={C.muted} style={styles.authInput} accessibilityLabel="Email address" />
@@ -598,6 +654,9 @@ const styles = StyleSheet.create({
   authPasswordInput: { flex: 1, height: '100%', paddingHorizontal: 14, color: C.ink, fontSize: 13 },
   showPasswordButton: { minWidth: 55, height: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
   showPasswordText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
+  googleAuthButton: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  googleAuthButtonText: { color: C.ink, fontSize: 13, fontWeight: '700' },
+  authDivider: { color: C.muted, fontSize: 9, letterSpacing: 1.2, textAlign: 'center', marginVertical: 16 },
   authToggle: { alignSelf: 'center', minHeight: 38, justifyContent: 'center', marginTop: 8 },
   authToggleText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
   authScreen: { flex: 1, backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center', padding: 24 }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 20 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#9A8E82', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 11, lineHeight: 16, textAlign: 'center' },

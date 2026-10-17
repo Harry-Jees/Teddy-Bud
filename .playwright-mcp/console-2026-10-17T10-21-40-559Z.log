@@ -1,0 +1,4 @@
+[    1162ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:3040/:0
+[ 3210888ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:3040/:0
+[ 3210922ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:3040/:0
+[ 3236889ms] [ERROR] Failed to load resource: the server responded with a status of 400 () @ https://teddy-bud-browser-gateway.harryjees.workers.dev/auth/signup:0

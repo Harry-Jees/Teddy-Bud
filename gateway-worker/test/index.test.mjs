@@ -71,6 +71,13 @@ class MemorySessions {
           this.values.set(id, state);
           return new Response(JSON.stringify({ allowed: true }), { status: 200 });
         }
+        if (pathname === '/session/consume' && method === 'POST') {
+          if (!state.session) return new Response(null, { status: 404 });
+          const session = state.session;
+          delete state.session;
+          this.values.set(id, state);
+          return new Response(JSON.stringify(session), { status: 200 });
+        }
         if (pathname !== '/session') return new Response(null, { status: 404 });
         if (method === 'GET') {
           return state.session ? new Response(JSON.stringify(state.session), { status: 200 }) : new Response(null, { status: 404 });
@@ -246,7 +253,7 @@ test('Access login reports missing deployment configuration', async () => {
   assert.match(response.body.error, /not configured/);
 });
 
-test('Supabase manages email signup, confirmation, and email-password sign-in', async () => {
+test('Supabase manages email signup OTP verification, resend, and email-password sign-in', async () => {
   const env = makeEnv();
   const requests = [];
   const supabaseUserId = '11111111-1111-4111-8111-111111111111';
@@ -258,12 +265,33 @@ test('Supabase manages email signup, confirmation, and email-password sign-in', 
     const headers = new Headers(init.headers);
     assert.equal(headers.get('apikey'), env.SUPABASE_ANON_KEY);
     if (requestUrl.pathname.endsWith('/auth/v1/signup')) {
-      assert.equal(requestUrl.searchParams.get('redirect_to'), 'http://localhost:5173/auth/callback');
+      assert.equal(requestUrl.searchParams.has('redirect_to'), false);
       const body = JSON.parse(init.body);
       assert.equal(body.email, 'person@example.com');
       assert.equal(body.password, 'a-long-test-password');
       assert.deepEqual(body.data, { full_name: 'Person Example' });
       return new Response(JSON.stringify({ user: { id: supabaseUserId, email: body.email } }), { status: 200 });
+    }
+    if (requestUrl.pathname.endsWith('/auth/v1/verify')) {
+      const body = JSON.parse(init.body);
+      assert.equal(body.type, 'signup');
+      assert.equal(body.email, 'person@example.com');
+      if (body.token !== '123456') {
+        return new Response(JSON.stringify({ msg: 'Token has expired or is invalid' }), { status: 403 });
+      }
+      return new Response(JSON.stringify({
+        access_token: 'confirmed-email-token',
+        user: {
+          id: supabaseUserId,
+          email: body.email,
+          email_confirmed_at: '2026-10-14T10:00:00Z',
+        },
+      }), { status: 200 });
+    }
+    if (requestUrl.pathname.endsWith('/auth/v1/resend')) {
+      const body = JSON.parse(init.body);
+      assert.deepEqual(body, { type: 'signup', email: 'person@example.com' });
+      return new Response(JSON.stringify({ message_id: 'test-message' }), { status: 200 });
     }
     if (requestUrl.pathname.endsWith('/rest/v1/user_profiles')) {
       assert.equal(requestUrl.searchParams.get('select'), 'user_id');
@@ -300,38 +328,31 @@ test('Supabase manages email signup, confirmation, and email-password sign-in', 
   };
 
   try {
-    const unsafeRedirect = await jsonResponse(await worker.fetch(request('/auth/signup', 'POST', {
-      fullName: 'Person Example',
-      email: 'person@example.com',
-      password: 'a-long-test-password',
-      redirectTo: 'https://attacker.example/auth/callback',
-    }), env));
-    assert.equal(unsafeRedirect.status, 400);
-    assert.equal(requests.length, 0);
-
     const sent = await jsonResponse(await worker.fetch(request('/auth/signup', 'POST', {
       fullName: 'Person Example',
       email: 'Person@example.com',
       password: 'a-long-test-password',
-      redirectTo: 'http://localhost:5173/auth/callback',
     }), env));
     assert.equal(sent.status, 200);
     assert.equal(sent.body.verificationRequired, true);
 
-    const unconfirmed = await jsonResponse(await worker.fetch(request('/auth/verify-email', 'POST', {
-      accessToken: 'pending-email-token',
+    const invalidOtp = await jsonResponse(await worker.fetch(request('/auth/verify-signup-otp', 'POST', {
+      email: 'person@example.com',
+      token: '000000',
     }), env));
-    assert.equal(unconfirmed.status, 401);
+    assert.equal(invalidOtp.status, 401);
 
     profileMissing = true;
-    const unregisteredProfile = await jsonResponse(await worker.fetch(request('/auth/verify-email', 'POST', {
-      accessToken: 'confirmed-email-token',
+    const unregisteredProfile = await jsonResponse(await worker.fetch(request('/auth/verify-signup-otp', 'POST', {
+      email: 'person@example.com',
+      token: '123456',
     }), env));
     assert.equal(unregisteredProfile.status, 403);
 
     profileMissing = false;
-    const verified = await jsonResponse(await worker.fetch(request('/auth/verify-email', 'POST', {
-      accessToken: 'confirmed-email-token',
+    const verified = await jsonResponse(await worker.fetch(request('/auth/verify-signup-otp', 'POST', {
+      email: 'Person@example.com',
+      token: '123456',
     }), env));
     assert.equal(verified.status, 200);
     assert.equal(verified.body.userId, supabaseUserId);
@@ -339,6 +360,12 @@ test('Supabase manages email signup, confirmation, and email-password sign-in', 
     assert.match(verified.body.accessToken, /^[\w-]+\.[\w-]+\.[\w-]+$/);
     const claims = JSON.parse(Buffer.from(verified.body.accessToken.split('.')[1], 'base64url').toString('utf8'));
     assert.equal(claims.sub, supabaseUserId);
+
+    const resent = await jsonResponse(await worker.fetch(request('/auth/resend-signup-otp', 'POST', {
+      email: 'Person@example.com',
+    }), env));
+    assert.equal(resent.status, 200);
+    assert.equal(resent.body.verificationRequired, true);
 
     const loggedIn = await jsonResponse(await worker.fetch(request('/auth/login', 'POST', {
       email: 'PERSON@example.com',
@@ -360,11 +387,99 @@ test('Supabase manages email signup, confirmation, and email-password sign-in', 
     }), env));
     assert.equal(missingLoginProfile.status, 403);
 
-    assert.equal(requests.length, 11);
+    assert.equal(requests.length, 12);
     assert.equal(env.SESSIONS.values.has('account-directory'), false);
   } finally {
     globalThis.fetch = oldFetch;
   }
+});
+
+test('Google OAuth uses PKCE, validates the Supabase identity, and consumes its state once', async () => {
+  const env = makeEnv();
+  const callback = 'http://localhost:3040/auth/callback';
+  const started = await worker.fetch(request(`/auth/google/start?redirect_uri=${encodeURIComponent(callback)}`), env);
+  assert.equal(started.status, 302);
+
+  const authorization = new URL(started.headers.get('Location'));
+  assert.equal(authorization.origin, env.SUPABASE_URL);
+  assert.equal(authorization.pathname, '/auth/v1/authorize');
+  assert.equal(authorization.searchParams.get('provider'), 'google');
+  assert.equal(authorization.searchParams.get('code_challenge_method'), 's256');
+  const redirectTo = new URL(authorization.searchParams.get('redirect_to'));
+  assert.equal(redirectTo.origin, 'http://localhost:3040');
+  assert.equal(redirectTo.pathname, '/auth/callback');
+  const state = redirectTo.searchParams.get('oauth_state');
+  assert.match(state, /^[A-Za-z0-9_-]{43}$/);
+  const codeVerifierChallenge = authorization.searchParams.get('code_challenge');
+  assert.match(codeVerifierChallenge, /^[A-Za-z0-9_-]{43}$/);
+
+  const oldFetch = globalThis.fetch;
+  let tokenExchangeCount = 0;
+  globalThis.fetch = async (url, init) => {
+    const requestUrl = new URL(String(url));
+    const headers = new Headers(init.headers);
+    assert.equal(headers.get('apikey'), env.SUPABASE_ANON_KEY);
+    if (requestUrl.pathname.endsWith('/auth/v1/token')) {
+      tokenExchangeCount += 1;
+      assert.equal(requestUrl.searchParams.get('grant_type'), 'pkce');
+      const body = JSON.parse(init.body);
+      assert.equal(body.auth_code, 'google-one-time-code');
+      const challenge = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body.code_verifier))).toString('base64url');
+      assert.equal(challenge, codeVerifierChallenge);
+      return new Response(JSON.stringify({
+        access_token: 'supabase-google-token',
+        user: {
+          id: '22222222-2222-4222-8222-222222222222',
+          email: 'google-user@example.com',
+          email_confirmed_at: '2026-10-17T12:00:00Z',
+        },
+      }), { status: 200 });
+    }
+    if (requestUrl.pathname.endsWith('/rest/v1/user_profiles')) {
+      assert.equal(headers.get('Authorization'), 'Bearer supabase-google-token');
+      return new Response(JSON.stringify([{ user_id: '22222222-2222-4222-8222-222222222222' }]), { status: 200 });
+    }
+    throw new Error(`Unexpected Supabase request: ${requestUrl}`);
+  };
+
+  try {
+    const completed = await jsonResponse(await worker.fetch(request('/auth/google/complete', 'POST', {
+      code: 'google-one-time-code',
+      state,
+    }), env));
+    assert.equal(completed.status, 200);
+    assert.equal(completed.body.userId, '22222222-2222-4222-8222-222222222222');
+    assert.match(completed.body.accessToken, /^[\w-]+\.[\w-]+\.[\w-]+$/);
+
+    const replayed = await jsonResponse(await worker.fetch(request('/auth/google/complete', 'POST', {
+      code: 'google-one-time-code',
+      state,
+    }), env));
+    assert.equal(replayed.status, 401);
+    assert.equal(tokenExchangeCount, 1);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('Google OAuth rejects unapproved callbacks and incomplete exchange data', async () => {
+  const env = makeEnv();
+  const nativeStart = await worker.fetch(
+    request(`/auth/google/start?redirect_uri=${encodeURIComponent('teddybud://auth/callback')}`),
+    env,
+  );
+  assert.equal(nativeStart.status, 302);
+
+  const unsafeCallback = await jsonResponse(await worker.fetch(
+    request(`/auth/google/start?redirect_uri=${encodeURIComponent('https://attacker.example/auth/callback')}`),
+    env,
+  ));
+  assert.equal(unsafeCallback.status, 400);
+
+  const missingState = await jsonResponse(await worker.fetch(request('/auth/google/complete', 'POST', {
+    code: 'google-one-time-code',
+  }), env));
+  assert.equal(missingState.status, 400);
 });
 
 test('authenticated chat requests are forwarded to NVIDIA and return its completion', async () => {
