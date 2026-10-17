@@ -75,9 +75,13 @@ export class BrowserAuthService {
   }
 
   private async readStoredSession(): Promise<StoredSession | null> {
-    const saved = Platform.OS === 'web'
-      ? sessionStore()?.getItem(SESSION_KEY) ?? null
-      : (await Keychain.getGenericPassword({ service: NATIVE_SESSION_SERVICE }))?.password ?? null;
+    let saved: string | null;
+    if (Platform.OS === 'web') {
+      saved = sessionStore()?.getItem(SESSION_KEY) ?? null;
+    } else {
+      const credentials = await Keychain.getGenericPassword({ service: NATIVE_SESSION_SERVICE });
+      saved = credentials && typeof credentials !== 'boolean' ? credentials.password : null;
+    }
     if (!saved) return null;
     try {
       const session: unknown = JSON.parse(saved);

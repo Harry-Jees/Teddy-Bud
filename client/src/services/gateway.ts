@@ -98,6 +98,7 @@ export class GatewayService {
   private get auth() { return Platform.OS === 'web' ? this.browserAuth : this.nativeAuth; }
 
   private async token(sessionToken?: string) {
+    if (sessionToken) return sessionToken;
     const session = await this.auth.restore();
     if (session) {
       if (session.expiresAt <= Date.now() + 30_000) return (await this.auth.refresh()).accessToken;
