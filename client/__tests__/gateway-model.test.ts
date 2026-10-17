@@ -76,6 +76,7 @@ describe('GatewayService chat model selection', () => {
   });
 
   it('refreshes once after a chat request returns 401, then retries with the renewed bearer token', async () => {
+    auth.restore.mockImplementation(async () => ({ accessToken: 'expired-token', expiresAt: Date.now() + 60_000 }));
     auth.refresh.mockResolvedValueOnce({ accessToken: 'refreshed-token', expiresAt: Date.now() + 60_000 });
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({ data: [{ id: 'nvidia/nemotron-3.5-lightning-30b-a3b' }] }))

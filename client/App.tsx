@@ -198,6 +198,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [localDataRetry, setLocalDataRetry] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [enableWebBrowsing, setEnableWebBrowsing] = useState(false);
   const [codingMode, setCodingMode] = useState(false);
@@ -272,6 +273,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     if (messages.length === 0) {
       setDraft('');
       setChatError(null);
+      setRetryMessage(null);
       setImageDataUrl(null);
       return;
     }
@@ -282,6 +284,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         setMessages([]);
         setDraft('');
         setChatError(null);
+        setRetryMessage(null);
         setImageDataUrl(null);
       },
     );
@@ -295,6 +298,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         setMessages([]);
         setMemories([]);
         setDraft('');
+        setRetryMessage(null);
+        setChatError(null);
         setLocalDataError(null);
         setLocalDataReady(true);
       }).catch(error => {
@@ -333,8 +338,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     }
   };
 
-  const sendMessage = async () => {
-    const text = draft.trim();
+  const sendMessage = async (messageToRetry?: string) => {
+    const text = messageToRetry ?? draft.trim();
     if (!text || isSending) return;
 
     const userMessage: Message = {
@@ -344,13 +349,14 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     };
 
-    setMessages(current => [...current, userMessage].slice(-200));
+    if (!messageToRetry) setMessages(current => [...current, userMessage].slice(-200));
     setDraft('');
     setIsSending(true);
     setChatError(null);
 
     try {
-      const responseText = await gatewayService.sendChatMessage(text, messages.map(message => ({
+      const history = messageToRetry ? messages.slice(0, -1) : messages;
+      const responseText = await gatewayService.sendChatMessage(text, history.map(message => ({
         role: message.author === 'you' ? 'user' : 'assistant',
         content: message.text,
       })), sessionToken, {
@@ -368,6 +374,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       };
 
       setMessages(current => [...current, assistantMessage].slice(-200));
+      setRetryMessage(null);
     } catch (error) {
       if ((error as { status?: number }).status === 401 && !(await browserAuthService.restore())) {
         onLogout();
@@ -375,13 +382,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       }
       const message = error instanceof Error ? error.message : 'The conversation service is unavailable right now.';
       setChatError(message);
-      const unavailableMessage: Message = {
-        id: Date.now() + 2,
-        text: 'I couldn’t reach the conversation service right now. Please try again in a moment.',
-        author: 'teddy',
-        time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-      };
-      setMessages(current => [...current, unavailableMessage].slice(-200));
+      setRetryMessage(text);
     } finally {
       setImageDataUrl(null);
       setIsSending(false);
@@ -406,7 +407,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
         <View style={styles.contentArea}>
           {localDataError ? <LocalDataError error={localDataError} onRetry={retryLocalData} onClear={clearUnavailableLocalData} /> : !localDataReady ? <LocalDataLoading /> : <>
-          {page === 'chat' && <ChatPage wide={wide} messages={messages} draft={draft} setDraft={setDraft} onSend={sendMessage} onNewConversation={startNewConversation} isSending={isSending} chatError={chatError} imageAttached={Boolean(imageDataUrl)} onAttachImage={(dataUrl) => setImageDataUrl(dataUrl)} onRemoveImage={() => setImageDataUrl(null)} enableWebBrowsing={enableWebBrowsing} setEnableWebBrowsing={setEnableWebBrowsing} codingMode={codingMode} setCodingMode={setCodingMode} />}
+          {page === 'chat' && <ChatPage wide={wide} messages={messages} draft={draft} setDraft={setDraft} onSend={sendMessage} onRetry={() => retryMessage && sendMessage(retryMessage)} retryPending={Boolean(retryMessage)} onClear={confirmClear} onNewConversation={startNewConversation} isSending={isSending} chatError={chatError} imageAttached={Boolean(imageDataUrl)} onAttachImage={(dataUrl) => setImageDataUrl(dataUrl)} onRemoveImage={() => setImageDataUrl(null)} enableWebBrowsing={enableWebBrowsing} setEnableWebBrowsing={setEnableWebBrowsing} codingMode={codingMode} setCodingMode={setCodingMode} />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} />}
           {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} setRememberInSession={changeMemoryPreference} shareMemories={shareMemories} setShareMemories={setShareMemories} onClear={confirmClear} onLogout={onLogout} />}
           </>}
@@ -491,8 +492,8 @@ function BottomNav({ page, onNavigate, bottomInset }: { page: Page; onNavigate: 
   </Pressable>)}</View>;
 }
 
-function ChatPage({ wide, messages, draft, setDraft, onSend, onNewConversation, isSending, chatError, imageAttached, onAttachImage, onRemoveImage, enableWebBrowsing, setEnableWebBrowsing, codingMode, setCodingMode }: { wide: boolean; messages: Message[]; draft: string; setDraft: (value: string) => void; onSend: () => void; onNewConversation: () => void; isSending: boolean; chatError: string | null; imageAttached: boolean; onAttachImage: (dataUrl: string) => void; onRemoveImage: () => void; enableWebBrowsing: boolean; setEnableWebBrowsing: (value: boolean) => void; codingMode: boolean; setCodingMode: (value: boolean) => void }) {
-  const canSend = !!draft.trim() && !isSending;
+function ChatPage({ wide, messages, draft, setDraft, onSend, onRetry, retryPending, onClear, onNewConversation, isSending, chatError, imageAttached, onAttachImage, onRemoveImage, enableWebBrowsing, setEnableWebBrowsing, codingMode, setCodingMode }: { wide: boolean; messages: Message[]; draft: string; setDraft: (value: string) => void; onSend: () => void; onRetry: () => void; retryPending: boolean; onClear: () => void; onNewConversation: () => void; isSending: boolean; chatError: string | null; imageAttached: boolean; onAttachImage: (dataUrl: string) => void; onRemoveImage: () => void; enableWebBrowsing: boolean; setEnableWebBrowsing: (value: boolean) => void; codingMode: boolean; setCodingMode: (value: boolean) => void }) {
+  const canSend = !!draft.trim() && !isSending && !retryPending;
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => { scrollRef.current?.scrollToEnd({ animated: true }); }, [messages.length, isSending]);
   const chooseImage = () => {
@@ -506,7 +507,7 @@ function ChatPage({ wide, messages, draft, setDraft, onSend, onNewConversation, 
   return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={[styles.chatHeader, wide && styles.chatHeaderWide]}>
       <View style={styles.chatHeaderCopy}><Text style={styles.eyebrow}>YOUR SPACE</Text><Text style={styles.pageTitle}>A little room to breathe</Text></View>
-      <View style={styles.headerActions}>{wide && <View style={styles.privatePill}><View style={styles.privateDot} /><Text style={styles.privateLabel}>Saved on this device</Text></View>}<Pressable accessibilityRole="button" accessibilityLabel="Start a new chat" onPress={onNewConversation} style={({ pressed }) => [styles.headerNewChat, pressed && styles.pressed]}><Text style={styles.headerNewChatGlyph}>＋</Text>{wide && <Text style={styles.headerNewChatLabel}>New chat</Text>}</Pressable></View>
+      <View style={styles.headerActions}>{wide && <View style={styles.privatePill}><View style={styles.privateDot} /><Text style={styles.privateLabel}>Saved on this device</Text></View>}<Pressable accessibilityRole="button" accessibilityLabel="Clear local data" onPress={onClear} style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}><Text style={styles.moreGlyph}>···</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Start a new chat" onPress={onNewConversation} style={({ pressed }) => [styles.headerNewChat, pressed && styles.pressed]}><Text style={styles.headerNewChatGlyph}>＋</Text>{wide && <Text style={styles.headerNewChatLabel}>New chat</Text>}</Pressable></View>
     </View>
     <ScrollView ref={scrollRef} style={styles.chatScroll} contentContainerStyle={[styles.chatContent, wide && styles.chatContentWide, messages.length === 0 && styles.emptyContent]} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
       {messages.length === 0 ? <View style={styles.emptyState}>
@@ -525,7 +526,7 @@ function ChatPage({ wide, messages, draft, setDraft, onSend, onNewConversation, 
           <View style={[styles.messageBubble, message.author === 'you' ? styles.userBubble : styles.teddyBubble]}><Text style={[styles.messageText, message.author === 'you' && styles.userMessageText]}>{message.text}</Text><Text style={[styles.messageTime, message.author === 'you' && styles.userMessageTime]}>{message.time}</Text></View>
         </View>)}
         {isSending && <View style={styles.sendingRow}><View style={styles.teddyAvatarSmall}><Text style={styles.teddyAvatarText}>tb</Text></View><View style={styles.typingBubble}><Text style={styles.typingText}>Thinking…</Text></View></View>}
-        {chatError && <View style={styles.errorBanner}><Text style={styles.errorText}>{chatError}</Text></View>}
+        {chatError && <View style={styles.errorBanner}><Text style={styles.errorText}>{chatError}</Text>{retryPending && <Pressable accessibilityRole="button" onPress={onRetry} disabled={isSending} style={styles.retryButton}><Text style={styles.retryButtonText}>Retry</Text></Pressable>}</View>}
       </View>}
     </ScrollView>
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
@@ -612,7 +613,7 @@ const styles = StyleSheet.create({
   contentArea: { flex: 1, minHeight: 0 }, chatPage: { flex: 1 }, chatHeader: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, chatHeaderWide: { paddingHorizontal: 48, paddingTop: 20, paddingBottom: 14 }, chatHeaderCopy: { flex: 1 }, chatSubtitle: { color: C.muted, fontSize: 12, marginTop: 6 }, privatePill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#E6E5E1', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: C.paper }, privateDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#7A9875' }, privateLabel: { color: C.green, fontSize: 10, fontWeight: '600' }, eyebrow: { color: C.cocoa, fontSize: 9, letterSpacing: 1.7, fontWeight: '700', marginBottom: 7 }, pageTitle: { color: C.ink, fontSize: 22, fontWeight: '600', letterSpacing: -0.55 }, headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 }, servicePill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, serviceDot: { width: 6, height: 6, backgroundColor: '#BC9E79', borderRadius: 4 }, serviceText: { color: C.muted, fontSize: 10, fontWeight: '600' }, moreButton: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line }, moreGlyph: { color: C.muted, fontSize: 20, lineHeight: 23, marginTop: -10 },
   chatScroll: { flex: 1 }, chatContent: { paddingHorizontal: 20, paddingBottom: 26, flexGrow: 1 }, chatContentWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64 }, emptyContent: { justifyContent: 'center' }, emptyState: { width: '100%', maxWidth: 720, alignSelf: 'center', alignItems: 'center', paddingTop: 14, paddingBottom: 20 }, emptyHeroMark: { width: 58, height: 58, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: C.cocoa, shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 }, emptyHeroLogo: { width: 58, height: 58, borderRadius: 20 }, emptyGreeting: { color: C.ink, fontSize: 30, lineHeight: 38, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, emptyDescription: { maxWidth: 440, color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 9, marginBottom: 28 }, starterGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }, starterCard: { width: '31.8%', minWidth: 175, minHeight: 92, borderRadius: 18, borderWidth: 1, borderColor: '#E7E4DE', backgroundColor: '#FFFFFF', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#302821', shadowOpacity: 0.025, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, starterCardMobile: { width: '48%', minWidth: 120, minHeight: 78, padding: 10, gap: 7 }, starterCardPressed: { backgroundColor: '#F8F6F2', borderColor: '#D4C8BA' }, starterIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F3F0EB', alignItems: 'center', justifyContent: 'center' }, starterIconText: { color: C.cocoa, fontSize: 17 }, starterCopy: { flex: 1 }, starterTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, starterDescription: { color: C.muted, fontSize: 10, lineHeight: 14, marginTop: 4 }, starterArrow: { color: '#A69A8E', fontSize: 13, alignSelf: 'flex-start' }, conversationColumn: { width: '100%', maxWidth: 760, alignSelf: 'center' }, dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 10, marginBottom: 24 }, dividerLine: { height: 1, backgroundColor: C.line, flex: 1 }, dayText: { color: '#A2968A', fontSize: 9, letterSpacing: 1.5, fontWeight: '700' }, welcomeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }, teddyAvatar: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center' }, teddyAvatarText: { color: '#FFF9F3', fontSize: 12, fontWeight: '700', letterSpacing: -0.4 }, welcomeBubble: { backgroundColor: C.paper, borderWidth: 1, borderColor: '#E9E0D5', borderRadius: 5, borderTopRightRadius: 22, borderBottomRightRadius: 22, borderBottomLeftRadius: 22, paddingHorizontal: 20, paddingVertical: 18, maxWidth: 640, flex: 1, shadowColor: '#60432F', shadowOpacity: 0.035, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 1 }, messageMeta: { color: '#A2968A', fontSize: 8, letterSpacing: 1.25, fontWeight: '700', marginBottom: 9 }, welcomeText: { color: C.ink, fontSize: 16, lineHeight: 25, letterSpacing: -0.1 }, welcomeHint: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 6 },
   connectCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2ECE3', borderRadius: 16, padding: 14, marginTop: 22, marginLeft: 44, gap: 12, maxWidth: 555 }, connectIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center' }, connectIconText: { color: C.cocoa, fontSize: 17 }, connectCopy: { flex: 1 }, connectTitle: { fontSize: 12, fontWeight: '700', color: C.ink, marginBottom: 4 }, connectBody: { fontSize: 11, color: C.muted, lineHeight: 16 }, connectArrow: { color: C.cocoa, fontSize: 24 }, promptWrap: { marginTop: 22, marginLeft: 44 }, promptHeading: { color: '#796D62', fontSize: 11, fontWeight: '600', marginBottom: 10, marginLeft: 2 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, promptChip: { borderWidth: 1, borderColor: '#E3D9CD', backgroundColor: '#FBF8F3', borderRadius: 18, paddingHorizontal: 14, minHeight: 38, justifyContent: 'center' }, promptChipText: { color: C.cocoaDark, fontSize: 11, fontWeight: '500' },
-  messageRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end', marginTop: 14 }, messageRowYou: { justifyContent: 'flex-end' }, teddyAvatarSmall: { width: 27, height: 27, borderRadius: 10, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center' }, messageBubble: { maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 }, teddyBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: C.cocoa, borderBottomRightRadius: 4 }, messageText: { color: C.ink, fontSize: 14, lineHeight: 21 }, userMessageText: { color: C.white }, messageTime: { color: C.muted, fontSize: 9, textAlign: 'right', marginTop: 5 }, userMessageTime: { color: '#E8D9CC' }, sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, marginBottom: 8 }, typingBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }, typingText: { color: C.muted, fontSize: 12, fontWeight: '600' }, errorBanner: { backgroundColor: '#FCE9E3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 }, errorText: { color: '#8D473F', fontSize: 11, lineHeight: 16 },
+  messageRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end', marginTop: 14 }, messageRowYou: { justifyContent: 'flex-end' }, teddyAvatarSmall: { width: 27, height: 27, borderRadius: 10, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center' }, messageBubble: { maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 }, teddyBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: C.cocoa, borderBottomRightRadius: 4 }, messageText: { color: C.ink, fontSize: 14, lineHeight: 21 }, userMessageText: { color: C.white }, messageTime: { color: C.muted, fontSize: 9, textAlign: 'right', marginTop: 5 }, userMessageTime: { color: '#E8D9CC' }, sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, marginBottom: 8 }, typingBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }, typingText: { color: C.muted, fontSize: 12, fontWeight: '600' }, errorBanner: { backgroundColor: '#FCE9E3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 }, errorText: { color: '#8D473F', fontSize: 11, lineHeight: 16 }, retryButton: { alignSelf: 'flex-start', marginTop: 8, minHeight: 30, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#FFFFFF' }, retryButtonText: { color: '#8D473F', fontSize: 11, fontWeight: '700' },
   composerWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 92, maxWidth: 760, alignSelf: 'center', width: '100%', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDDCD6', borderRadius: 23, paddingHorizontal: 14, paddingTop: 7, paddingBottom: 8, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerBottomRow: { minHeight: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 3 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 }, toolIconButton: { width: 31, height: 31, borderRadius: 11, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 9, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, toolButton: { minHeight: 30, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', backgroundColor: '#FFFFFF', paddingHorizontal: 10, justifyContent: 'center' }, toolButtonActive: { borderColor: '#CBA98F', backgroundColor: C.peachLight }, toolButtonText: { color: C.muted, fontSize: 10, fontWeight: '600' }, toolButtonTextActive: { color: C.cocoaDark }, attachmentPill: { minHeight: 30, borderRadius: 13, backgroundColor: C.greenLight, paddingHorizontal: 10, justifyContent: 'center' }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { width: '100%', color: C.ink, fontSize: 14, paddingTop: 10, paddingBottom: 6, maxHeight: 110, minHeight: 40 }, sendButton: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F0EFEC', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: '#4E6556' }, sendGlyph: { color: '#9A8E82', fontSize: 22, lineHeight: 26, fontWeight: '500' }, sendGlyphActive: { color: C.white }, composerFootnote: { color: '#9A8E82', fontSize: 9, textAlign: 'center', marginTop: 8, lineHeight: 14 },
   bottomNav: { height: 62, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }, bottomNavItem: { flex: 1, height: 54, alignItems: 'center', justifyContent: 'center', gap: 2 }, bottomIcon: { fontSize: 19, color: '#9B9085', lineHeight: 22 }, bottomIconActive: { color: C.cocoa }, bottomLabel: { fontSize: 9, color: '#93877C', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' },
   pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#8E8175', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#9B9085', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#8A7D70', fontSize: 17 }, deleteGlyph: { color: '#A17C70', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 10, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
