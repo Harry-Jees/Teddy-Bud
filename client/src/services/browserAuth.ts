@@ -1,6 +1,6 @@
 import { Linking, Platform } from 'react-native';
 import * as Keychain from 'react-native-keychain';
-import type { StoredSession } from './deviceAuth';
+import type { StoredSession } from './session';
 import { GATEWAY_BASE_URL } from '../config/gateway';
 
 type LoginResponse = { accessToken: string; expiresIn?: number; userId?: string };
@@ -8,14 +8,9 @@ type LoginResponse = { accessToken: string; expiresIn?: number; userId?: string 
 const SESSION_KEY = 'teddy-bud:browser-session';
 const NATIVE_SESSION_SERVICE = 'com.teddybud.account-auth';
 let inMemorySession: StoredSession | null = null;
-const REMEMBERED_EMAIL_KEY = 'teddy-bud:remembered-email';
 
 function sessionStore(): Storage | null {
   return typeof window !== 'undefined' && window.sessionStorage ? window.sessionStorage : null;
-}
-
-function persistentStore(): Storage | null {
-  return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null;
 }
 
 function expiresAt(token: string, expiresIn: number) {
@@ -62,18 +57,6 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
 }
 
 export class BrowserAuthService {
-  getRememberedEmail(): string {
-    try {
-      return persistentStore()?.getItem(REMEMBERED_EMAIL_KEY)?.trim() ?? '';
-    } catch {
-      return '';
-    }
-  }
-
-  rememberEmail(email: string): void {
-    persistentStore()?.setItem(REMEMBERED_EMAIL_KEY, email.trim());
-  }
-
   private async readStoredSession(): Promise<StoredSession | null> {
     let saved: string | null;
     if (Platform.OS === 'web') {
@@ -110,32 +93,6 @@ export class BrowserAuthService {
     return current;
   }
 
-  async beginSignup(fullName: string, email: string, password: string): Promise<void> {
-    await request<{ verificationRequired: boolean }>('/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fullName: fullName.trim(), email: email.trim(), password }),
-    });
-    this.rememberEmail(email);
-  }
-
-  async verifySignupOtp(email: string, token: string): Promise<StoredSession> {
-    const response = await request<LoginResponse>('/auth/verify-signup-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim(), token: token.trim() }),
-    });
-    return this.save(response);
-  }
-
-  async resendSignupOtp(email: string): Promise<void> {
-    await request<{ verificationRequired: boolean }>('/auth/resend-signup-otp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim() }),
-    });
-  }
-
   async signInWithGoogle(): Promise<void> {
     const callback = Platform.OS === 'web'
       ? `${window.location.origin}/auth/callback`
@@ -151,43 +108,20 @@ export class BrowserAuthService {
 
   async consumeCallback(callbackUrl: string): Promise<StoredSession | null> {
     const callback = new URL(callbackUrl);
-    const fragment = new URLSearchParams(callback.hash.slice(1));
-    const accessToken = fragment.get('access_token') ?? callback.searchParams.get('access_token');
-    const callbackError = fragment.get('error_description') ?? callback.searchParams.get('error_description');
+    const callbackError = callback.searchParams.get('error_description');
     if (callbackError) throw new Error(callbackError);
     const code = callback.searchParams.get('code');
     const oauthState = callback.searchParams.get('oauth_state');
-    if (code || oauthState) {
-      if (!code || !oauthState) throw new Error('The Google sign-in response is incomplete. Please try again.');
-      const result = await request<LoginResponse>('/auth/google/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, state: oauthState }),
-      });
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.history.replaceState(null, '', `${window.location.origin}/`);
-      }
-      return this.save(result);
-    }
-    if (!accessToken) return null;
-    const result = await request<LoginResponse>('/auth/verify-email', {
+    if (!code && !oauthState) return null;
+    if (!code || !oauthState) throw new Error('The Google sign-in response is incomplete. Please try again.');
+    const result = await request<LoginResponse>('/auth/google/complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accessToken }),
+      body: JSON.stringify({ code, state: oauthState }),
     });
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.history.replaceState(null, '', `${window.location.origin}/`);
     }
-    return this.save(result);
-  }
-
-  async login(email: string, password: string): Promise<StoredSession> {
-    const result = await request<LoginResponse>('/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim(), password }),
-    });
-    this.rememberEmail(email);
     return this.save(result);
   }
 

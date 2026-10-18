@@ -1,4 +1,4 @@
-import { LocalAppData, LocalDataService } from '../src/services/localData';
+import { findRelevantChatHistory, LocalAppData, LocalDataService } from '../src/services/localData';
 
 var mockDatabase: Map<string, string>;
 var mockEncryptionPassword: string | null;
@@ -30,7 +30,7 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 function emptyData(): LocalAppData {
-  return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false };
+  return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false };
 }
 
 describe('LocalDataService', () => {
@@ -54,6 +54,7 @@ describe('LocalDataService', () => {
       memories: [{ id: 2, text: 'A saved note', date: 'Today' }],
       rememberInSession: true,
       shareMemories: true,
+      shareChatHistory: true,
     };
     await service.save('account-a', accountData);
 
@@ -93,12 +94,14 @@ describe('LocalDataService', () => {
       memories,
       rememberInSession: true,
       shareMemories: true,
+      shareChatHistory: true,
     });
     const saved = await service.load('account-a');
 
     expect(saved.conversations).toHaveLength(3);
     expect(saved.conversations.find(conversation => conversation.id === 'chat-0')?.messages).toHaveLength(205);
     expect(saved.memories).toHaveLength(52);
+    expect(saved.shareChatHistory).toBe(true);
   });
 
   test('migrates a previous single-chat data record without dropping messages', async () => {
@@ -110,6 +113,7 @@ describe('LocalDataService', () => {
       memories: [],
       rememberInSession: true,
       shareMemories: false,
+      shareChatHistory: true,
     }));
 
     const migrated = await service.load('account-a');
@@ -118,6 +122,7 @@ describe('LocalDataService', () => {
     expect(migrated.conversations[0].title).toBe('First message');
     expect(migrated.conversations[0].messages).toHaveLength(2);
     expect(migrated.activeConversationId).toBe(migrated.conversations[0].id);
+    expect(migrated.shareChatHistory).toBe(true);
   });
 
   test('does not keep or share memories when memory storage is disabled', async () => {
@@ -126,11 +131,52 @@ describe('LocalDataService', () => {
       memories: [{ id: 1, text: 'Private note', date: 'Today' }],
       rememberInSession: false,
       shareMemories: true,
+      shareChatHistory: true,
     });
 
     expect(await service.load('account-a')).toEqual({
       ...emptyData(),
       rememberInSession: false,
+      shareChatHistory: true,
     });
+  });
+});
+
+describe('cross-chat history retrieval', () => {
+  const conversation = (id: string, messages: LocalAppData['conversations'][number]['messages']) => ({
+    id,
+    title: id,
+    createdAt: '2026-01-01T09:00:00.000Z',
+    updatedAt: '2026-01-01T09:00:00.000Z',
+    messages,
+  });
+
+  test('selects relevant user excerpts from other chats and excludes the active chat and assistant messages', () => {
+    const excerpts = findRelevantChatHistory([
+      conversation('old', [
+        { id: 1, text: 'I am training for a half marathon and worried about my knee injury.', author: 'you', time: '9:00 AM' },
+        { id: 2, text: 'You mentioned a knee injury while training.', author: 'teddy', time: '9:01 AM' },
+      ]),
+      conversation('active', [
+        { id: 3, text: 'My marathon knee injury is improving.', author: 'you', time: '9:02 AM' },
+      ]),
+      conversation('unrelated', [
+        { id: 4, text: 'I am learning to bake sourdough bread.', author: 'you', time: '9:03 AM' },
+      ]),
+    ], 'active', 'How is my marathon knee injury plan going?');
+
+    expect(excerpts).toEqual(['I am training for a half marathon and worried about my knee injury.']);
+  });
+
+  test('bounds the number and size of selected excerpts', () => {
+    const conversations = Array.from({ length: 8 }, (_, index) => conversation(`chat-${index}`, [
+      { id: index, text: `My marathon knee plan ${'progress '.repeat(120)}`, author: 'you', time: '9:00 AM' },
+    ]));
+
+    const excerpts = findRelevantChatHistory(conversations, null, 'How is my marathon knee plan?');
+
+    expect(excerpts).toHaveLength(3);
+    expect(excerpts.every(excerpt => excerpt.length <= 700)).toBe(true);
+    expect(excerpts.join('').length).toBeLessThanOrEqual(2_400);
   });
 });

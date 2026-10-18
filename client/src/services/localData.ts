@@ -28,10 +28,24 @@ export type LocalAppData = {
   memories: LocalMemory[];
   rememberInSession: boolean;
   shareMemories: boolean;
+  shareChatHistory: boolean;
 };
 
 const DATA_KEY_PREFIX = 'teddy-bud:local-data:';
 const MAX_MEMORY_LENGTH = 500;
+const MAX_CROSS_CHAT_CONTEXT_CHARS = 2_400;
+const MAX_CROSS_CHAT_EXCERPTS = 3;
+const MAX_CROSS_CHAT_EXCERPT_LENGTH = 700;
+const SEARCH_STOPWORDS = new Set([
+  'about', 'after', 'again', 'also', 'and', 'are', 'because', 'been', 'before', 'being',
+  'but', 'can', 'could', 'did', 'does', 'doing', 'for', 'from', 'get', 'got', 'had',
+  'has', 'have', 'her', 'here', 'him', 'his', 'how', 'into', 'its', 'just', 'like',
+  'make', 'maybe', 'more', 'most', 'much', 'myself', 'not', 'now', 'only', 'our',
+  'out', 'over', 'really', 'same', 'she', 'should', 'some', 'than', 'that', 'the',
+  'their', 'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through',
+  'very', 'was', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'will',
+  'with', 'would', 'you', 'your',
+]);
 
 let storagePromise: Promise<LocalStore> | null = null;
 
@@ -106,7 +120,70 @@ function normalize(value: unknown): LocalAppData {
       : [],
     rememberInSession,
     shareMemories: rememberInSession && data.shareMemories === true,
+    shareChatHistory: data.shareChatHistory === true,
   };
+}
+
+function searchTerms(text: string): Set<string> {
+  return new Set(
+    (text.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [])
+      .filter(term => !SEARCH_STOPWORDS.has(term)),
+  );
+}
+
+export function findRelevantChatHistory(
+  conversations: LocalConversation[],
+  activeConversationId: string | null,
+  message: string,
+): string[] {
+  const queryTerms = searchTerms(message);
+  if (!queryTerms.size) return [];
+
+  const candidates = conversations
+    .filter(conversation => conversation.id !== activeConversationId)
+    .flatMap(conversation => conversation.messages
+      .filter(item => item.author === 'you' && item.text.trim())
+      .map(item => ({ text: item.text.trim(), terms: searchTerms(item.text) })))
+    .filter(item => item.terms.size > 0);
+  if (!candidates.length) return [];
+
+  const documentFrequency = new Map<string, number>();
+  for (const candidate of candidates) {
+    for (const term of queryTerms) {
+      if (candidate.terms.has(term)) {
+        documentFrequency.set(term, (documentFrequency.get(term) ?? 0) + 1);
+      }
+    }
+  }
+
+  const termWeights = new Map<string, number>();
+  for (const term of queryTerms) {
+    termWeights.set(term, Math.log(1 + (candidates.length + 1) / (1 + (documentFrequency.get(term) ?? 0))));
+  }
+  const totalWeight = [...termWeights.values()].reduce((sum, weight) => sum + weight, 0);
+  const relevant = candidates
+    .map((candidate, index) => {
+      const score = [...queryTerms]
+        .filter(term => candidate.terms.has(term))
+        .reduce((sum, term) => sum + (termWeights.get(term) ?? 0), 0) / totalWeight;
+      return { ...candidate, score, index };
+    })
+    .filter(candidate => candidate.score >= 0.25)
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+
+  const excerpts: string[] = [];
+  let used = 0;
+  for (const item of relevant) {
+    if (excerpts.length >= MAX_CROSS_CHAT_EXCERPTS || used >= MAX_CROSS_CHAT_CONTEXT_CHARS) break;
+    const available = Math.min(MAX_CROSS_CHAT_EXCERPT_LENGTH, MAX_CROSS_CHAT_CONTEXT_CHARS - used);
+    const excerpt = item.text.length > available
+      ? `${item.text.slice(0, available - 1).trimEnd()}…`
+      : item.text;
+    if (!excerpt) continue;
+    excerpts.push(excerpt);
+    used += excerpt.length;
+  }
+  return excerpts;
 }
 
 function isLocalMessage(message: unknown): message is LocalMessage {
@@ -131,7 +208,7 @@ export class LocalDataService {
     if (!owner) throw new Error('A signed-in account is required to load local data.');
     await this.writeQueue;
     const saved = await (await getStorage()).getItem(key(owner));
-    if (!saved) return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false };
+    if (!saved) return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false };
     try {
       return normalize(JSON.parse(saved));
     } catch {

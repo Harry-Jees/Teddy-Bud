@@ -2,8 +2,21 @@ const ACCESS_TOKEN_SECONDS = 60 * 60;
 const RATE_WINDOW_SECONDS = 15 * 60;
 const NVIDIA_API = 'https://integrate.api.nvidia.com/v1';
 const NVIDIA_CHAT_TIMEOUT_MS = 30_000;
+const CRISIS_GUIDANCE = [
+  'SAFETY PRIORITY: The latest user message may describe suicide, self-harm, an overdose, or an immediate threat to someone. This signal can be wrong; do not label or diagnose.',
+  'Respond calmly and compassionately. Ask one direct, brief question about whether anyone is in immediate danger or has already been hurt or taken something.',
+  'If danger may be immediate or injury/overdose has happened, urge contacting local emergency services or going to the nearest emergency department now. Encourage getting near a trusted person and moving away from anything that could be used for harm, if safe.',
+  'If there is no immediate danger, encourage reaching a trusted person or local crisis helpline. Do not provide methods, request graphic details, shame, argue, promise secrecy, imply monitoring, or overwhelm them with generic advice. You are not emergency care.',
+].join(' ');
+const CRISIS_PATTERNS = [
+  /\b(?:i(?:'m| am)(?: feeling)? suicidal|i feel suicidal|i (?:have|am having) suicidal thoughts|i want to die|i don't want to live|i do not want to live|i wish i (?:were|was) dead|my life isn't worth living)\b/i,
+  /\b(?:i(?:'ve| have) been thinking about (?:suicide|killing myself|ending my life|hurting myself|harming myself)|i am thinking about (?:suicide|killing myself|ending my life|hurting myself|harming myself)|i'm thinking about (?:suicide|killing myself|ending my life|hurting myself|harming myself)|thinking about (?:suicide|killing myself|ending my life|hurting myself|harming myself))\b/i,
+  /\b(?:i (?:intend to|plan to|might|could|will|am going to|'m going to|think i might|think i will) (?:kill myself|end my life|hurt myself|harm myself|commit suicide)|i am planning to (?:kill myself|end my life|hurt myself|harm myself)|i am considering (?:suicide|killing myself|ending my life|hurting myself|harming myself)|i'm considering (?:suicide|killing myself|ending my life|hurting myself|harming myself)|i feel like (?:killing myself|hurting myself|ending my life)|i want to (?:kill myself|end my life|hurt myself|harm myself))\b/i,
+  /\b(?:i (?:already |just )?(?:overdosed|cut myself|hurt myself|harmed myself)|i took (?:too many|all|a lot of) (?:pills|medications?))\b/i,
+  /\b(?:my (?:friend|partner|child|parent|sibling|roommate)|someone i know)\b.{0,70}\b(?:suicid(?:e|al)|kill (?:themselves|themself|himself|herself)|hurt (?:themselves|themself|himself|herself)|self[- ]harm|overdos(?:e|ing)|want(?:s)? to die|doesn't want to live)\b/i,
+  /\b(?:i (?:might|want to|am going to|will|plan to) (?:hurt|harm|kill|attack) (?:someone|him|her|them|my (?:friend|partner|parent|boss))|i am in immediate danger|i'm in immediate danger|i can't keep myself safe|i cannot keep myself safe)\b/i,
+];
 const encoder = new TextEncoder();
-let cachedAccessKeys;
 
 function json(status, body) {
   return new Response(JSON.stringify(body), {
@@ -138,13 +151,6 @@ function allowedEmailRedirect(value, env) {
   }
 }
 
-async function getConfirmedSupabaseUser(env, accessToken) {
-  const { response, payload } = await supabaseRequest(env, 'user', { accessToken });
-  if (!response.ok || typeof payload?.id !== 'string' || typeof payload.email !== 'string') return null;
-  if (!payload.email_confirmed_at) return null;
-  return payload;
-}
-
 async function hash(value) {
   return base64UrlEncode(new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(value))));
 }
@@ -201,368 +207,6 @@ async function issueSession(userId, kind, env) {
 
 async function authResponse(userId, kind, env) {
   return json(200, await issueSession(userId, kind, env));
-}
-
-async function accessKeys(issuer) {
-  if (cachedAccessKeys?.issuer === issuer && cachedAccessKeys.expiresAt > Date.now()) {
-    return cachedAccessKeys.keys;
-  }
-  const response = await fetch(`${issuer}/cdn-cgi/access/certs`, { headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error('Cloudflare Access signing keys could not be loaded.');
-  const payload = await response.json();
-  if (!Array.isArray(payload.keys) || payload.keys.length === 0) {
-    throw new Error('Cloudflare Access did not return signing keys.');
-  }
-  cachedAccessKeys = { issuer, keys: payload.keys, expiresAt: Date.now() + 60 * 60 * 1000 };
-  return payload.keys;
-}
-
-async function verifyAccessAssertion(token, env) {
-  const issuer = typeof env.ACCESS_ISSUER === 'string' ? env.ACCESS_ISSUER.replace(/\/+$/, '') : '';
-  const audience = typeof env.ACCESS_AUD === 'string' ? env.ACCESS_AUD.trim() : '';
-  if (!issuer.startsWith('https://') || !audience) return null;
-
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  let header;
-  let claims;
-  try {
-    header = decodeJson(parts[0]);
-    claims = decodeJson(parts[1]);
-  } catch {
-    return null;
-  }
-  if (header.alg !== 'RS256' || typeof header.kid !== 'string') return null;
-
-  const keys = await accessKeys(issuer);
-  const jwk = keys.find(key => key.kid === header.kid && key.kty === 'RSA');
-  if (!jwk) return null;
-  const key = await crypto.subtle.importKey(
-    'jwk',
-    jwk,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['verify'],
-  );
-  const validSignature = await crypto.subtle.verify(
-    'RSASSA-PKCS1-v1_5',
-    key,
-    base64UrlDecode(parts[2]),
-    encoder.encode(`${parts[0]}.${parts[1]}`),
-  );
-  const now = Math.floor(Date.now() / 1000);
-  const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-  if (
-    !validSignature
-    || claims.iss !== issuer
-    || !audiences.includes(audience)
-    || typeof claims.sub !== 'string'
-    || typeof claims.exp !== 'number'
-    || claims.exp <= now
-    || typeof claims.iat !== 'number'
-    || claims.iat > now + 60
-    || (typeof claims.nbf === 'number' && claims.nbf > now)
-  ) return null;
-  return claims;
-}
-
-async function accessLogin(request, env) {
-  if (!env.ACCESS_ISSUER || !env.ACCESS_AUD || !env.AUTH_REDIRECT_ORIGINS) {
-    return json(503, { error: 'Cloudflare Access sign-in is not configured for this gateway.' });
-  }
-  if (!await rateLimit(request, env, 'access-login', 20)) {
-    return json(429, { error: 'Too many sign-in attempts. Try again later.' });
-  }
-  const url = new URL(request.url);
-  const redirectUri = url.searchParams.get('redirect_uri') ?? '';
-  const state = url.searchParams.get('state') ?? '';
-  const allowedOrigins = typeof env.AUTH_REDIRECT_ORIGINS === 'string'
-    ? env.AUTH_REDIRECT_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
-    : [];
-  let callback;
-  try {
-    callback = new URL(redirectUri);
-  } catch {
-    return json(400, { error: 'The sign-in callback is invalid.' });
-  }
-  if (
-    !allowedOrigins.includes(callback.origin)
-    || callback.pathname !== '/auth/callback'
-    || callback.search
-    || callback.hash
-    || !/^[A-Za-z0-9_-]{22,128}$/.test(state)
-  ) return json(400, { error: 'The sign-in callback could not be verified.' });
-
-  const assertion = request.headers.get('Cf-Access-Jwt-Assertion');
-  if (!assertion) return json(401, { error: 'Complete Cloudflare Access email verification to continue.' });
-  const identity = await verifyAccessAssertion(assertion, env);
-  if (!identity) return json(401, { error: 'Cloudflare Access identity is invalid or expired.' });
-
-  const session = await issueSession(identity.sub, 'user', env);
-  const callbackState = new URL(redirectUri);
-  const fragment = new URLSearchParams({
-    access_token: session.accessToken,
-    expires_in: String(session.expiresIn),
-    state,
-  });
-  callbackState.hash = fragment.toString();
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: callbackState.toString(),
-      'Cache-Control': 'no-store',
-      'Referrer-Policy': 'no-referrer',
-    },
-  });
-}
-
-/*
-async function sendSignupCode(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { email: rawEmail, userId: rawUserId, password } = parsed.value ?? {};
-  if (
-    typeof rawEmail !== 'string'
-    || !/^\S+@\S+\.\S+$/.test(rawEmail.trim())
-    || rawEmail.trim().length > 320
-    || typeof rawUserId !== 'string'
-    || !/^[A-Za-z0-9._-]{3,32}$/.test(rawUserId)
-    || typeof password !== 'string'
-    || password.length < 12
-    || password.length > 128
-  ) {
-    return json(400, { error: 'Enter a valid email, a user ID of 3–32 letters, numbers, dots, underscores, or hyphens, and a password of 12–128 characters.' });
-  }
-  if (!env.RESEND_API_KEY) return json(503, { error: 'Email provider is not configured.' });
-  if (!await rateLimit(request, env, 'send-signup-code', 10)) return json(429, { error: 'Too many sign-in attempts. Try again later.' });
-
-  const email = rawEmail.trim().toLowerCase();
-  const userId = rawUserId.toLowerCase();
-  const [existingUserId, existingEmail] = await Promise.all([
-    readAccount(env, userId),
-    readAccountByEmail(env, email),
-  ]);
-  if (existingUserId) return json(409, { error: 'That user ID is already in use.' });
-  if (existingEmail) return json(409, { error: 'That email address is already registered.' });
-
-  const code = createOtp();
-  const otpId = crypto.randomUUID();
-  const now = Math.floor(Date.now() / 1000);
-  const expiresIn = 5 * 60; // 5 minutes
-  const refreshUntil = now + expiresIn;
-  const codeHash = await hash(`${code}:${otpId}`);
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const passwordHash = await hashPassword(password, salt);
-  const attempts = 5;
-
-  try {
-    await writeSession(env, otpId, {
-      userId,
-      kind: 'signup-otp',
-      refreshUntil,
-      codeHash,
-      attempts,
-      pendingAccount: { userId, email, salt: base64UrlEncode(salt), passwordHash: base64UrlEncode(passwordHash) },
-    });
-  } catch {
-    return json(500, { error: 'Could not create OTP session.' });
-  }
-
-  const from = typeof env.RESEND_FROM === 'string' && env.RESEND_FROM ? env.RESEND_FROM : 'Teddy Bud <onboarding@resend.dev>';
-  const body = {
-    from,
-    to: [email],
-    subject: 'Verify your email for Teddy Bud',
-    html: `<p>Your email verification code is <strong>${code}</strong>. It expires in ${Math.floor(expiresIn / 60)} minutes.</p>`,
-  };
-
-  const resp = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    // cleanup stored OTP to avoid orphaned sessions
-    try { await deleteSession(env, otpId); } catch {}
-    return json(502, { error: 'Failed to send email.' });
-  }
-
-  return json(200, { otpId, expiresIn });
-}
-
-async function verifySignupCode(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { otpId, code } = parsed.value ?? {};
-  if (typeof otpId !== 'string' || typeof code !== 'string') return json(400, { error: 'Invalid verification request.' });
-  const session = await readSession(env, otpId);
-  const now = Math.floor(Date.now() / 1000);
-  if (!session) return json(400, { error: 'This sign-in session does not exist or has expired.' });
-  if (session.refreshUntil <= now) {
-    try { await deleteSession(env, otpId); } catch {}
-    return json(401, { error: 'The code has expired. Please request a new one.' });
-  }
-  if (typeof session.attempts !== 'number' || session.attempts <= 0) {
-    try { await deleteSession(env, otpId); } catch {}
-    return json(401, { error: 'Too many invalid attempts.' });
-  }
-  const expectedHash = session.codeHash;
-  const providedHash = await hash(`${code}:${otpId}`);
-  if (expectedHash === providedHash && session.kind === 'signup-otp' && session.pendingAccount) {
-    const account = {
-      ...session.pendingAccount,
-      createdAt: now,
-      emailVerified: true,
-    };
-    const created = await createAccount(env, account);
-    try { await deleteSession(env, otpId); } catch {}
-    if (!created) return json(409, { error: 'That user ID or email is already registered.' });
-    return authResponse(account.userId, 'user', env);
-  }
-  // decrement attempts
-  session.attempts = (session.attempts || 1) - 1;
-  try { await writeSession(env, otpId, session); } catch {}
-  return json(401, { error: 'Invalid code.' , attemptsLeft: session.attempts});
-}
-
-async function loginWithPassword(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { userId: rawUserId, password } = parsed.value ?? {};
-  if (
-    typeof rawUserId !== 'string'
-    || !/^[A-Za-z0-9._-]{3,32}$/.test(rawUserId)
-    || typeof password !== 'string'
-    || password.length > 128
-  ) return json(400, { error: 'Enter a valid user ID and password.' });
-  const userId = rawUserId.toLowerCase();
-  if (!await rateLimit(request, env, `password-login:${await hash(userId)}`, 10)) {
-    return json(429, { error: 'Too many sign-in attempts. Try again later.' });
-  }
-  const account = await readAccount(env, userId);
-  const salt = account ? base64UrlDecode(account.salt) : new Uint8Array(16);
-  const expectedHash = account ? base64UrlDecode(account.passwordHash) : new Uint8Array(32);
-  const actualHash = await hashPassword(password, salt);
-  if (!account || !secureEqual(actualHash, expectedHash)) {
-    return json(401, { error: 'The user ID or password is incorrect.' });
-  }
-  return authResponse(account.userId, 'user', env);
-}
-*/
-
-async function signupWithSupabase(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { fullName: rawFullName, email, password } = parsed.value ?? {};
-  const fullName = typeof rawFullName === 'string' ? rawFullName.trim() : '';
-  if (
-    fullName.length < 1
-    || fullName.length > 100
-    || typeof email !== 'string'
-    || !/^\S+@\S+\.\S+$/.test(email.trim())
-    || email.trim().length > 320
-    || typeof password !== 'string'
-    || password.length < 8
-    || password.length > 128
-  ) return json(400, { error: 'Enter your name, a valid email address, and a password of 8–128 characters.' });
-  if (!await rateLimit(request, env, 'signup', 10)) return json(429, { error: 'Too many sign-up attempts. Try again later.' });
-
-  const { response, payload } = await supabaseRequest(env, 'signup', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: email.trim().toLowerCase(),
-      password,
-      data: { full_name: fullName },
-    }),
-  });
-  if (!response.ok) {
-    const message = typeof payload?.msg === 'string' ? payload.msg : payload?.message;
-    if (typeof message === 'string' && /already registered|already exists/i.test(message)) {
-      return json(409, { error: 'An account with this email may already exist.' });
-    }
-    return json(response.status >= 400 && response.status < 500 ? response.status : 502, {
-      error: typeof message === 'string' ? message : 'Could not create your account.',
-    });
-  }
-  if (payload?.session || payload?.user?.email_confirmed_at) {
-    return json(503, { error: 'Email confirmation must be enabled in the Supabase project settings.' });
-  }
-  if (typeof payload?.user?.id !== 'string') {
-    return json(502, { error: 'Supabase did not return a valid account after sign-up.' });
-  }
-  return json(200, { verificationRequired: true, message: 'Check your email for a verification code.' });
-}
-
-async function verifySignupOtp(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { email, token } = parsed.value ?? {};
-  if (
-    typeof email !== 'string'
-    || !/^\S+@\S+\.\S+$/.test(email.trim())
-    || email.trim().length > 320
-    || typeof token !== 'string'
-    || !/^\d{6,10}$/.test(token.trim())
-  ) return json(400, { error: 'Enter a valid email address and the verification code from your email.' });
-  if (!await rateLimit(request, env, 'signup-otp-verify', 10)) {
-    return json(429, { error: 'Too many verification attempts. Request a new code and try again.' });
-  }
-
-  const { response, payload } = await supabaseRequest(env, 'verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'signup', email: email.trim().toLowerCase(), token: token.trim() }),
-  });
-  if (!response.ok || typeof payload?.access_token !== 'string' || typeof payload?.user?.id !== 'string') {
-    return json(401, { error: 'That verification code is invalid or expired. Check the code or request another.' });
-  }
-  if (!payload.user.email_confirmed_at) {
-    return json(401, { error: 'Supabase did not confirm this email. Check the email template configuration.' });
-  }
-  if (!await hasSupabaseProfile(env, payload.user.id, payload.access_token)) {
-    return json(403, { error: 'This account is not registered in the Teddy Bud profile table.' });
-  }
-  return authResponse(payload.user.id, 'user', env);
-}
-
-async function resendSignupOtp(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { email } = parsed.value ?? {};
-  if (typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email.trim()) || email.trim().length > 320) {
-    return json(400, { error: 'Enter a valid email address to request a new verification code.' });
-  }
-  if (!await rateLimit(request, env, 'signup-otp-resend', 3)) {
-    return json(429, { error: 'Too many code requests. Please wait before requesting another.' });
-  }
-  const { response, payload } = await supabaseRequest(env, 'resend', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'signup', email: email.trim().toLowerCase() }),
-  });
-  if (!response.ok) {
-    const message = typeof payload?.msg === 'string' ? payload.msg : payload?.message;
-    return json(response.status >= 400 && response.status < 500 ? response.status : 502, {
-      error: typeof message === 'string' ? message : 'Could not resend your verification code.',
-    });
-  }
-  return json(200, { verificationRequired: true, message: 'A new verification code was sent.' });
-}
-
-async function verifySupabaseEmail(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { accessToken } = parsed.value ?? {};
-  if (typeof accessToken !== 'string' || accessToken.length > 8192) {
-    return json(400, { error: 'The email confirmation link is invalid or incomplete.' });
-  }
-  const user = await getConfirmedSupabaseUser(env, accessToken);
-  if (!user) return json(401, { error: 'Email confirmation could not be verified. Please try signing in after confirming your email.' });
-  if (!await hasSupabaseProfile(env, user.id, accessToken)) {
-    return json(403, { error: 'This account is not registered in the Teddy Bud profile table.' });
-  }
-  return authResponse(user.id, 'user', env);
 }
 
 function allowedOAuthRedirect(value, env) {
@@ -658,52 +302,20 @@ async function completeGoogleOAuth(request, env) {
     || typeof payload?.access_token !== 'string'
     || typeof payload?.user?.id !== 'string'
     || !payload.user.email_confirmed_at
+    || (payload.user.app_metadata?.provider !== 'google'
+      && !(Array.isArray(payload.user.app_metadata?.providers)
+        && payload.user.app_metadata.providers.includes('google')))
   ) return json(401, { error: 'Google sign-in could not be verified by Supabase. Please try again.' });
   if (!await hasSupabaseProfile(env, payload.user.id, payload.access_token)) {
     return json(403, { error: 'This account is not registered in the Teddy Bud profile table.' });
   }
-  return authResponse(payload.user.id, 'user', env);
-}
-
-async function loginWithSupabase(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { email, password } = parsed.value ?? {};
-  if (
-    typeof email !== 'string'
-    || !/^\S+@\S+\.\S+$/.test(email.trim())
-    || email.trim().length > 320
-    || typeof password !== 'string'
-    || password.length < 1
-    || password.length > 128
-  ) return json(400, { error: 'Enter a valid email address and password.' });
-  if (!await rateLimit(request, env, 'password-login', 10)) {
-    return json(429, { error: 'Too many sign-in attempts. Try again later.' });
-  }
-
-  const { response, payload } = await supabaseRequest(env, 'token?grant_type=password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
-  });
-  if (!response.ok || typeof payload?.access_token !== 'string' || typeof payload?.user?.id !== 'string') {
-    const message = typeof payload?.msg === 'string' ? payload.msg : payload?.message;
-    if (typeof message === 'string' && /email not confirmed/i.test(message)) {
-      return json(401, { error: 'Please confirm your email before signing in.' });
-    }
-    return json(401, { error: 'The email or password is incorrect.' });
-  }
-  if (!payload.user.email_confirmed_at) return json(401, { error: 'Please confirm your email before signing in.' });
-  if (!await hasSupabaseProfile(env, payload.user.id, payload.access_token)) {
-    return json(403, { error: 'This account is not registered in the Teddy Bud profile table.' });
-  }
-  return authResponse(payload.user.id, 'user', env);
+  return authResponse(payload.user.id, 'google-user', env);
 }
 
 async function refresh(request, env) {
   const claims = await bearerClaims(request, env, true);
   const now = Math.floor(Date.now() / 1000);
-  if (!claims || claims.rfe <= now) {
+  if (!claims || claims.kind !== 'google-user' || claims.rfe <= now) {
     return json(401, { error: 'Token is invalid or refresh window has expired. Please log in again.' });
   }
   const refreshUntil = now + ACCESS_TOKEN_SECONDS;
@@ -778,58 +390,6 @@ async function logout(request, env) {
   return json(200, { success: true });
 }
 
-function decodeBase64(value) {
-  const binary = atob(value);
-  return Uint8Array.from(binary, character => character.charCodeAt(0));
-}
-
-async function register(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { deviceId, publicKey } = parsed.value ?? {};
-  if (typeof deviceId !== 'string' || deviceId.length > 100 || typeof publicKey !== 'string') {
-    return json(400, { error: 'Invalid device registration.' });
-  }
-  let bytes;
-  try {
-    bytes = decodeBase64(publicKey);
-    if (bytes.length !== 32) throw new Error('Invalid Ed25519 key length.');
-  } catch {
-    return json(400, { error: 'Invalid device registration.' });
-  }
-  const key = `device:${deviceId}`;
-  const existing = await env.DEVICE_KEYS.get(key);
-  if (existing && existing !== publicKey) return json(409, { error: 'Device is already registered.' });
-  await env.DEVICE_KEYS.put(key, publicKey);
-  return authResponse(deviceId, 'device', env);
-}
-
-async function verifyDevice(request, env) {
-  const parsed = await readJson(request);
-  if (parsed.error) return parsed.error;
-  const { deviceId, timestamp, signature } = parsed.value ?? {};
-  if (typeof deviceId !== 'string' || !Number.isInteger(timestamp) || typeof signature !== 'string') {
-    return json(400, { error: 'Invalid device verification request.' });
-  }
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - timestamp) > 300) return json(401, { error: 'Device verification timestamp is invalid.' });
-  const publicKey = await env.DEVICE_KEYS.get(`device:${deviceId}`);
-  if (!publicKey) return json(401, { error: 'This device is not registered.' });
-  try {
-    const key = await crypto.subtle.importKey('raw', decodeBase64(publicKey), { name: 'Ed25519' }, false, ['verify']);
-    const valid = await crypto.subtle.verify(
-      { name: 'Ed25519' },
-      key,
-      decodeBase64(signature),
-      encoder.encode(`${deviceId}:${timestamp}`),
-    );
-    if (!valid) return json(401, { error: 'Device verification failed.' });
-  } catch {
-    return json(401, { error: 'Device verification failed.' });
-  }
-  return authResponse(deviceId, 'device', env);
-}
-
 function apiKey(env) {
   for (let index = 1; index <= 10; index += 1) {
     const key = env[`NVIDIA_KEY_${index}`];
@@ -852,6 +412,32 @@ async function models(request, env) {
   return new Response(response.body, { status: response.status, headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' } });
 }
 
+function textFromContent(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter(part => part && typeof part.text === 'string')
+    .map(part => part.text)
+    .join('\n');
+}
+
+function hasRecentCrisisSignal(messages) {
+  let checkedUserMessages = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role !== 'user') continue;
+    checkedUserMessages += 1;
+    if (hasCrisisSignal(textFromContent(messages[index].content))) return true;
+    if (checkedUserMessages === 3) break;
+  }
+  return false;
+}
+
+function hasCrisisSignal(message) {
+  if (/^i(?:'m| am) not suicidal[.!]?$/i.test(message.trim())) return false;
+  return /^\s*suicidal[.!]?\s*$/i.test(message)
+    || CRISIS_PATTERNS.some(pattern => pattern.test(message));
+}
+
 async function completions(request, env) {
   const claims = await bearerClaims(request, env);
   if (!claims) return json(401, { error: { message: 'Unauthorized.' } });
@@ -862,12 +448,20 @@ async function completions(request, env) {
   if (!parsed.value || typeof parsed.value.model !== 'string' || !Array.isArray(parsed.value.messages)) {
     return json(400, { error: { message: 'A model and messages array are required.' } });
   }
+  const upstreamBody = { ...parsed.value, messages: [...parsed.value.messages] };
+  if (hasRecentCrisisSignal(upstreamBody.messages)) {
+    const firstUserIndex = upstreamBody.messages.findIndex(message => message?.role === 'user');
+    upstreamBody.messages.splice(firstUserIndex < 0 ? upstreamBody.messages.length : firstUserIndex, 0, {
+      role: 'system',
+      content: CRISIS_GUIDANCE,
+    });
+  }
   let response;
   try {
     response = await fetch(`${NVIDIA_API}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(parsed.value),
+      body: JSON.stringify(upstreamBody),
       signal: AbortSignal.timeout(NVIDIA_CHAT_TIMEOUT_MS),
     });
   } catch (error) {
@@ -911,18 +505,10 @@ async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
   if (url.pathname === '/health' && request.method === 'GET') return health(env);
-  if (url.pathname === '/auth/login' && request.method === 'GET') return accessLogin(request, env);
-  if (url.pathname === '/auth/signup' && request.method === 'POST') return signupWithSupabase(request, env);
   if (url.pathname === '/auth/google/start' && request.method === 'GET') return startGoogleOAuth(request, env);
   if (url.pathname === '/auth/google/complete' && request.method === 'POST') return completeGoogleOAuth(request, env);
-  if (url.pathname === '/auth/verify-signup-otp' && request.method === 'POST') return verifySignupOtp(request, env);
-  if (url.pathname === '/auth/resend-signup-otp' && request.method === 'POST') return resendSignupOtp(request, env);
-  if (url.pathname === '/auth/verify-email' && request.method === 'POST') return verifySupabaseEmail(request, env);
-  if (url.pathname === '/auth/login' && request.method === 'POST') return loginWithSupabase(request, env);
   if (url.pathname === '/auth/refresh' && request.method === 'POST') return refresh(request, env);
   if (url.pathname === '/auth/logout' && request.method === 'POST') return logout(request, env);
-  if (url.pathname === '/auth/register' && request.method === 'POST') return register(request, env);
-  if (url.pathname === '/auth/verify' && request.method === 'POST') return verifyDevice(request, env);
   if (url.pathname === '/v1/models' && request.method === 'GET') return models(request, env);
   if (url.pathname === '/v1/chat/completions' && request.method === 'POST') return completions(request, env);
   return json(404, { error: { message: 'Unknown endpoint.', type: 'Not Found', code: 404 } });

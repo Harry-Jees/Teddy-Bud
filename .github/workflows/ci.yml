@@ -1,0 +1,128 @@
+name: CI and platform builds
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client-checks:
+    name: Client checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm test -- --runInBand
+      - run: npx tsc --noEmit
+      - run: npm run build:web
+      - if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: teddy-bud-web
+          path: client/dist/
+          if-no-files-found: error
+
+  worker-tests:
+    name: Gateway Worker tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gateway-worker/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  android-build:
+    name: Android debug build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+          cache-dependency-path: client/android/**/*.gradle*
+      - run: npm ci --prefix client
+      - run: bash client/android/gradlew -p client/android assembleDebug -PreactNativeArchitectures=arm64-v8a
+      - uses: actions/upload-artifact@v4
+        with:
+          name: teddy-bud-android-debug
+          path: client/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  apple-builds:
+    name: ${{ matrix.name }} build
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iOS simulator
+            project_dir: ios
+            workspace: client/ios/TeddyBud.xcworkspace
+            scheme: TeddyBud
+            destination: generic/platform=iOS Simulator
+            app_path: client/ios/build/Build/Products/Debug-iphonesimulator/TeddyBud.app
+          - name: macOS
+            project_dir: macos
+            workspace: client/macos/TeddyBud.xcworkspace
+            scheme: TeddyBud-macOS
+            destination: generic/platform=macOS
+            app_path: client/macos/build/Build/Products/Debug/TeddyBud.app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci --prefix client
+      - run: pod install --project-directory=client/${{ matrix.project_dir }}
+      - name: Build Apple app
+        run: >-
+          xcodebuild
+          -workspace "${{ matrix.workspace }}"
+          -scheme "${{ matrix.scheme }}"
+          -destination "${{ matrix.destination }}"
+          -derivedDataPath "client/${{ matrix.project_dir }}/build"
+          CODE_SIGNING_ALLOWED=NO
+          build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: teddy-bud-${{ matrix.project_dir }}
+          path: ${{ matrix.app_path }}
+          if-no-files-found: error

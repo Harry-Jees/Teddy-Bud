@@ -11,19 +11,31 @@ The web target uses Vite and React Native Web to render the same app UI in a des
 3. Start the hot-reloading preview with `npm run web`; it opens the browser automatically.
 4. If it does not open automatically, visit [http://localhost:5173](http://localhost:5173).
 
-Users can create accounts with a full name, email address, and password, then
-verify the email with a one-time code sent by Supabase. Configure Supabase's
-signup Confirmation email template to include `{{ .Token }}`. The built-in
-Supabase mailer is restricted to authorized team addresses and low-volume
-testing; public email signup requires a mail provider and a verified sender
-domain. Google sign-in is the no-email/SMS option. Supabase Auth stores the
-email and password (passwords are handled by Supabase Auth, never stored by
-Teddy Bud) and enforces email confirmation. A database trigger stores the
-account name and mirrors each Supabase Auth UUID into the RLS-protected
-`user_profiles` table. The
-Cloudflare gateway checks that profile with the user's Supabase token before
-issuing a Teddy Bud session. Teddy Bud never stores passwords or Supabase
-access tokens. Browser tokens are kept in
+## Platform coverage and GitHub Actions
+
+Teddy Bud has native project targets for Android, iOS, and macOS. The Vite web
+app is the cross-platform option for Windows and Linux, and also runs in
+browsers on macOS, Android, and iOS. A native Windows desktop project is not
+currently included.
+
+The GitHub Actions workflow at `../.github/workflows/ci.yml` runs on every push,
+pull request, or manual dispatch. It runs client tests, TypeScript checks, and
+the web production build on Linux, Windows, and macOS runners; builds an
+arm64 Android debug APK and iOS Simulator/macOS apps; and runs the gateway
+Worker tests. Build outputs are attached to the workflow run as artifacts.
+This is validation and artifact creation, not automatic production deployment
+or publishing to app stores; those require hosting configuration, signing
+credentials, and release setup.
+
+Google is the only sign-in and account-verification method. There are no
+email/password forms, email verification codes, or alternate sign-in routes.
+Enable Google in Supabase Auth, configure its OAuth client, and disable the
+Email provider so Supabase cannot create email/password accounts. Google
+confirms the account email during OAuth. A database trigger mirrors each
+Supabase Auth UUID into the RLS-protected `user_profiles` table. The Cloudflare
+gateway verifies that the Supabase identity came from Google and checks the
+profile before issuing a Teddy Bud session. Teddy Bud never stores Google
+passwords or Supabase access tokens. Browser tokens are kept in
 `sessionStorage`; native tokens use platform secure storage. Chat history,
 saved memories, and preferences persist locally, scoped to the Supabase account.
 Native database files use SQLCipher with a key stored in Keychain/Keystore.
@@ -31,26 +43,24 @@ Browser data uses IndexedDB and is not encrypted by Teddy Bud;
 use a trusted, device-protected browser profile and clear local data when needed.
 Saved memories are sent to the AI provider only when memory sharing is enabled.
 
-Google sign-in is also available without email or SMS verification. Enable the
-Google provider in Supabase and configure its Web OAuth client ID and secret.
-In Google Cloud, use
+Configure the Google provider in Supabase with its Web OAuth client ID and
+secret. In Google Cloud, use
 `https://lvfvlrazovppkorkpwqz.supabase.co/auth/v1/callback` as the authorized
 redirect URI. In Supabase Auth URL configuration, allow the app callback
-`teddybud://auth/callback`, the local web callback
-`http://localhost:3040/auth/callback`, and the deployed web callback URL.
+`teddybud://auth/callback`, the local web callbacks
+`http://localhost:5173/auth/callback` and
+`http://127.0.0.1:5173/auth/callback`, and the deployed web callback URL.
 The mobile callback uses the `teddybud` app URL scheme. OAuth authorization
 codes use PKCE and are exchanged by the gateway; Google client secrets remain
 in Supabase and are never shipped with the app.
 
 The gateway URL is built into `src/config/gateway.ts`; users do not enter or
-change it. Signup code verification does not rely on an app callback URL.
-The browser gateway is deployed separately from the original gateway. The
-profile-table migrations are in `supabase/migrations`. Configure the Worker
-with `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `AUTH_REDIRECT_ORIGINS`, and
+change it. The browser gateway is deployed separately from the original
+gateway. The profile-table migrations are in `supabase/migrations`. Configure
+The Worker with `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `AUTH_REDIRECT_ORIGINS`, and
 `JWT_SIGNING_SECRET`; model and chat endpoints also require `NVIDIA_KEY_1`.
 OAuth provider secrets belong in Supabase, not the app. Keep credentials out
-of source control. The Worker’s separate Cloudflare Access redirect endpoint
-is optional.
+of source control.
 
 After enabling SQLCipher in the native SQLite build configuration, reinstall
 native dependencies and rebuild the app (`bundle exec pod install` for iOS).
@@ -73,12 +83,50 @@ Chat history is organized into separate conversations and saved locally on
 the device without an application-defined chat or message count limit. Device
 storage quotas still apply. Recent conversation context is sent to the model
 within a bounded input window, while the full local chat remains available in
-chat history.
+chat history. By default, messages from other chats are not shared. The
+separate **Use other chats for context** privacy setting is off by default; when
+enabled, the app selects up to three relevant excerpts from other saved user
+messages on-device (at most 2,400 characters) and sends only those excerpts
+with the current chat request. This is lightweight keyword matching, not
+semantic search. Turn it off at any time to stop sharing those excerpts.
 
 Teddy Bud may suggest saving only an exceptionally important, lasting fact;
 ordinary details are not enough. Nothing is saved unless the user approves the
 prompt. Approved memories stay on the device and are included in future chats
-only when memory sharing is enabled in Privacy.
+only when **Share relevant memories** is enabled in Privacy.
+
+## Emotional support and safety
+
+The conversation model is instructed to notice emotional cues in context,
+respond empathetically without presenting an emotion label or diagnosis, and
+ask rather than assume when a feeling is unclear. This is not a separately
+validated sentiment-analysis or clinical assessment system, and it can
+misunderstand tone, idioms, or risk.
+
+For selected direct phrases about suicide, self-harm, overdose, or immediate
+danger, the chat displays an inline crisis-support widget with a tap-to-call
+emergency action when the device locale identifies a supported region (India,
+US, Canada, UK, Australia, New Zealand, or the EU). Locale is only a hint and
+may not match the user's current location; the widget names the region and
+always offers the [Find A Helpline](https://findahelpline.com/) directory as
+an alternative. When the device locale identifies India, the widget offers call
+actions for Tele-MANAS at **14416** and **1-800 891 4416**, plus its
+[official website](https://telemanas.mohfw.gov.in/). For the US or Canada,
+the widget offers call and text actions for **988**: the
+[988 Lifeline](https://988lifeline.org/get-help/) in the US and the
+[988 Suicide Crisis Helpline](https://988.ca/) in Canada. Device locale is
+not proof of physical location; use the appropriate local service if you are
+elsewhere.
+
+Important-memory suggestions appear as an inline card attached to Teddy Bud's
+reply, rather than a popup. The user must choose **Add to memories** before
+anything is saved; **Not now** dismisses it. These cards are produced by a
+separate, constrained memory-suggestion request, not arbitrary model-triggered
+code or a tool call.
+
+These safeguards follow a human-support-first, transparent approach informed
+by the [WHO guidance on large multimodal models in health](https://www.who.int/publications/i/item/9789240084759);
+they do not make the app a medical device or substitute for professional care.
 
 ## Step 1: Start Metro
 

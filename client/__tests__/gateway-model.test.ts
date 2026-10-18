@@ -50,8 +50,11 @@ describe('GatewayService chat model selection', () => {
     expect(chatRequest.model).toBe('nvidia/nemotron-3-super-120b-a12b');
     expect(chatRequest.messages[0]).toEqual(expect.objectContaining({
       role: 'system',
-      content: expect.stringContaining('without labeling, diagnosing'),
+      content: expect.stringContaining('do not announce sentiment labels'),
     }));
+    expect(chatRequest.messages[0].content).toContain('treating any interpretation as uncertain');
+    expect(chatRequest.messages[0].content).toContain('mixed feelings');
+    expect(chatRequest.messages[0].content).not.toContain('The user opted in to sharing a few locally selected excerpts');
     expect(chatRequest.max_tokens).toBe(1024);
   });
 
@@ -97,6 +100,30 @@ describe('GatewayService chat model selection', () => {
     expect(sentHistory.length).toBeLessThan(history.length);
     expect(sentHistory[0].content).not.toBe(history[0].content);
     expect(sentHistory[sentHistory.length - 1].content).toBe(history[history.length - 1].content);
+  });
+
+  it('shares only explicitly opted-in bounded chat excerpts and adds crisis guidance when signalled', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({
+        data: [{ id: 'nvidia/nemotron-3-super-120b-a12b' }],
+      }))
+      .mockResolvedValueOnce(response({ choices: [{ message: { content: 'I am here with you.' } }] }));
+    globalThis.fetch = fetchMock;
+
+    const gateway = new GatewayService('https://gateway.test', auth);
+    await gateway.sendChatMessage('I want to die.', [], 'test-token', {
+      task: 'conversation',
+      crossChatContext: ['My long-term marathon goal. '.repeat(150)],
+      crisisConcern: true,
+    });
+
+    const chatRequest = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    const systemContent = chatRequest.messages[0].content as string;
+    expect(chatRequest.messages[chatRequest.messages.length - 1].content).toBe('I want to die.');
+    expect(systemContent).toContain('The user opted in to sharing a few locally selected excerpts');
+    expect(systemContent).toContain('SAFETY PRIORITY');
+    expect(systemContent).toContain('local emergency services');
+    expect(systemContent.length).toBeLessThan(5_000);
   });
 
   it('suggests only a model-returned important memory and returns null when none is suitable', async () => {
