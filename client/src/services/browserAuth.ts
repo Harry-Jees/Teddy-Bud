@@ -7,7 +7,8 @@ type LoginResponse = { accessToken: string; expiresIn?: number; userId?: string;
 
 const SESSION_KEY = 'teddy-bud:browser-session';
 const NATIVE_SESSION_SERVICE = 'com.teddybud.account-auth';
-const WEB_BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, '');
+const currentPath = typeof window !== 'undefined' ? window.location?.pathname ?? '/' : '/';
+const WEB_BASE_PATH = currentPath === '/Teddy-Bud' || currentPath.startsWith('/Teddy-Bud/') ? '/Teddy-Bud' : '';
 let inMemorySession: StoredSession | null = null;
 
 function sessionStore(): Storage | null {

@@ -30,10 +30,15 @@ export type LocalAppData = {
   rememberInSession: boolean;
   shareMemories: boolean;
   shareChatHistory: boolean;
+  shareAboutMe: boolean;
+  aboutMe: string;
+  assistantName: string;
 };
 
 const DATA_KEY_PREFIX = 'teddy-bud:local-data:';
 const MAX_MEMORY_LENGTH = 500;
+const MAX_ABOUT_ME_LENGTH = 2_000;
+const MAX_ASSISTANT_NAME_LENGTH = 32;
 const MAX_CROSS_CHAT_CONTEXT_CHARS = 1_800;
 const MAX_CROSS_CHAT_EXCERPTS = 3;
 const MAX_CROSS_CHAT_EXCERPT_LENGTH = 700;
@@ -95,9 +100,10 @@ function normalize(value: unknown): LocalAppData {
         || typeof conversation.updatedAt !== 'string'
         || !Array.isArray(conversation.messages)
       ) return [];
+      const { pinned, ...conversationData } = conversation;
       return [{
-        ...conversation,
-        pinned: conversation.pinned === true,
+        ...conversationData,
+        ...(pinned === true ? { pinned: true } : {}),
         messages: conversation.messages.filter(isLocalMessage),
       }];
     })
@@ -117,13 +123,22 @@ function normalize(value: unknown): LocalAppData {
   return {
     conversations,
     activeConversationId,
-    memories: rememberInSession && Array.isArray(data.memories)
+    memories: Array.isArray(data.memories)
       ? data.memories.filter(memory => memory && typeof memory.id === 'number' && typeof memory.text === 'string' && typeof memory.date === 'string').map(memory => ({ ...memory, text: memory.text.slice(0, MAX_MEMORY_LENGTH) }))
       : [],
     rememberInSession,
-    shareMemories: rememberInSession && data.shareMemories === true,
+    shareMemories: data.shareMemories === true,
     shareChatHistory: data.shareChatHistory === true,
+    shareAboutMe: data.shareAboutMe === true,
+    aboutMe: typeof data.aboutMe === 'string' ? data.aboutMe.slice(0, MAX_ABOUT_ME_LENGTH) : '',
+    assistantName: typeof data.assistantName === 'string' && data.assistantName.trim()
+      ? data.assistantName.trim().slice(0, MAX_ASSISTANT_NAME_LENGTH)
+      : 'Teddy Bud',
   };
+}
+
+export function normalizeLocalAppData(value: unknown): LocalAppData {
+  return normalize(value);
 }
 
 function searchTerms(text: string): Set<string> {
@@ -225,7 +240,7 @@ export class LocalDataService {
     if (!owner) throw new Error('A signed-in account is required to load local data.');
     await this.writeQueue;
     const saved = await (await getStorage()).getItem(key(owner));
-    if (!saved) return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false };
+    if (!saved) return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy Bud' };
     try {
       return normalize(JSON.parse(saved));
     } catch {

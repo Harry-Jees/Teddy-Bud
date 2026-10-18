@@ -30,7 +30,7 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 function emptyData(): LocalAppData {
-  return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false };
+  return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy Bud' };
 }
 
 describe('LocalDataService', () => {
@@ -55,6 +55,9 @@ describe('LocalDataService', () => {
       rememberInSession: true,
       shareMemories: true,
       shareChatHistory: true,
+      shareAboutMe: false,
+      aboutMe: '',
+      assistantName: 'Teddy Bud',
     };
     await service.save('account-a', accountData);
 
@@ -89,10 +92,10 @@ describe('LocalDataService', () => {
     }));
 
     await service.save('account-a', {
+      ...emptyData(),
       conversations,
       activeConversationId: 'chat-0',
       memories,
-      rememberInSession: true,
       shareMemories: true,
       shareChatHistory: true,
     });
@@ -125,7 +128,7 @@ describe('LocalDataService', () => {
     expect(migrated.shareChatHistory).toBe(true);
   });
 
-  test('does not keep or share memories when memory storage is disabled', async () => {
+  test('retains existing memories when suggestions are disabled and keeps sharing independent', async () => {
     await service.save('account-a', {
       ...emptyData(),
       memories: [{ id: 1, text: 'Private note', date: 'Today' }],
@@ -136,7 +139,9 @@ describe('LocalDataService', () => {
 
     expect(await service.load('account-a')).toEqual({
       ...emptyData(),
+      memories: [{ id: 1, text: 'Private note', date: 'Today' }],
       rememberInSession: false,
+      shareMemories: true,
       shareChatHistory: true,
     });
   });

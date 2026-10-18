@@ -59,7 +59,7 @@ test('chat composer sends on Enter and keeps the send button available after a f
     );
   });
 
-  const composer = renderer.root.findByProps({ accessibilityLabel: 'Write a message' });
+  const composer = renderer.root.findByProps({ accessibilityLabel: 'Write a message to Teddy Bud' });
   const nativeEvent = { nativeEvent: { text: 'A new message' } };
   expect(composer.props.onSubmitEditing).not.toBe(onSend);
   await ReactTestRenderer.act(async () => {
