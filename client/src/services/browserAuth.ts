@@ -3,7 +3,7 @@ import * as Keychain from 'react-native-keychain';
 import type { StoredSession } from './session';
 import { GATEWAY_BASE_URL } from '../config/gateway';
 
-type LoginResponse = { accessToken: string; expiresIn?: number; userId?: string };
+type LoginResponse = { accessToken: string; expiresIn?: number; userId?: string; profilePictureUrl?: string };
 
 const SESSION_KEY = 'teddy-bud:browser-session';
 const NATIVE_SESSION_SERVICE = 'com.teddybud.account-auth';
@@ -130,6 +130,7 @@ export class BrowserAuthService {
     if (!current) throw Object.assign(new Error('Your session has ended. Please log in again.'), { status: 401 });
     try {
       const response = await request<LoginResponse>('/auth/refresh', { method: 'POST', headers: { Authorization: `Bearer ${current.accessToken}` } });
+      response.profilePictureUrl = current.profilePictureUrl;
       return await this.save(response);
     } catch (error) {
       if ((error as { status?: number }).status === 401) await this.clear();
@@ -162,7 +163,7 @@ export class BrowserAuthService {
 
   private async save(response: LoginResponse): Promise<StoredSession> {
     if (!response.accessToken) throw new Error('The gateway did not return an access token.');
-    const session = { accessToken: response.accessToken, expiresAt: expiresAt(response.accessToken, response.expiresIn ?? 3600) };
+    const session = { accessToken: response.accessToken, expiresAt: expiresAt(response.accessToken, response.expiresIn ?? 3600), ...(response.profilePictureUrl ? { profilePictureUrl: response.profilePictureUrl } : {}) };
     if (Platform.OS === 'web') {
       sessionStore()?.setItem(SESSION_KEY, JSON.stringify(session));
     } else {

@@ -33,7 +33,7 @@ export type LocalAppData = {
 
 const DATA_KEY_PREFIX = 'teddy-bud:local-data:';
 const MAX_MEMORY_LENGTH = 500;
-const MAX_CROSS_CHAT_CONTEXT_CHARS = 2_400;
+const MAX_CROSS_CHAT_CONTEXT_CHARS = 1_800;
 const MAX_CROSS_CHAT_EXCERPTS = 3;
 const MAX_CROSS_CHAT_EXCERPT_LENGTH = 700;
 const SEARCH_STOPWORDS = new Set([
@@ -141,10 +141,25 @@ export function findRelevantChatHistory(
 
   const candidates = conversations
     .filter(conversation => conversation.id !== activeConversationId)
-    .flatMap(conversation => conversation.messages
-      .filter(item => item.author === 'you' && item.text.trim())
-      .map(item => ({ text: item.text.trim(), terms: searchTerms(item.text) })))
-    .filter(item => item.terms.size > 0);
+    .flatMap(conversation => conversation.messages.flatMap((chatMessage, index) => {
+      if (chatMessage.author !== 'you' || !chatMessage.text.trim()) return [];
+      const reply = conversation.messages[index + 1];
+      const exchange = [chatMessage, ...(reply?.author === 'teddy' ? [reply] : [])];
+      const exchangeText = exchange.map(item => item.text.trim()).join(' ');
+      const terms = searchTerms(exchangeText);
+      if (!terms.size) return [];
+
+      // Include the previous turn so short follow-up questions can recover facts
+      // introduced just before the matching message (for example, a name).
+      const contextStart = index >= 2 && conversation.messages[index - 1]?.author === 'teddy'
+        ? index - 2
+        : index;
+      const contextEnd = reply?.author === 'teddy' ? index + 1 : index;
+      const context = conversation.messages.slice(contextStart, contextEnd + 1)
+        .map(item => `${item.author === 'you' ? 'You' : 'Teddy'}: ${item.text.trim()}`)
+        .join('\n');
+      return [{ text: context, terms }];
+    }));
   if (!candidates.length) return [];
 
   const documentFrequency = new Map<string, number>();

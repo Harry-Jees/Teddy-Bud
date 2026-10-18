@@ -31,6 +31,43 @@ textarea {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid #9a765c;
+  outline: 2px solid #b49a83;
   outline-offset: 2px;
+  border-radius: 14px;
+}
+
+textarea[aria-label="Write a message"]:focus-visible {
+  outline: none;
+}
+
+[data-typing-dot] {
+  animation: teddy-bud-typing 900ms ease-in-out infinite;
+}
+
+[data-typing-dot]:nth-child(2) {
+  animation-delay: 150ms;
+}
+
+[data-typing-dot]:nth-child(3) {
+  animation-delay: 300ms;
+}
+
+@keyframes teddy-bud-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.55;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-typing-dot] {
+    animation: none;
+  }
 }

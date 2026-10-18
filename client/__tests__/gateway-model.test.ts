@@ -54,7 +54,7 @@ describe('GatewayService chat model selection', () => {
     }));
     expect(chatRequest.messages[0].content).toContain('treating any interpretation as uncertain');
     expect(chatRequest.messages[0].content).toContain('mixed feelings');
-    expect(chatRequest.messages[0].content).not.toContain('The user opted in to sharing a few locally selected excerpts');
+    expect(chatRequest.messages[0].content).not.toContain('A few locally selected excerpts from other chats are included in this request');
     expect(chatRequest.max_tokens).toBe(1024);
   });
 
@@ -102,7 +102,7 @@ describe('GatewayService chat model selection', () => {
     expect(sentHistory[sentHistory.length - 1].content).toBe(history[history.length - 1].content);
   });
 
-  it('shares only explicitly opted-in bounded chat excerpts and adds crisis guidance when signalled', async () => {
+  it('shares bounded chat excerpts and adds crisis guidance when signalled', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({
         data: [{ id: 'nvidia/nemotron-3-super-120b-a12b' }],
@@ -120,7 +120,7 @@ describe('GatewayService chat model selection', () => {
     const chatRequest = JSON.parse(fetchMock.mock.calls[1][1].body as string);
     const systemContent = chatRequest.messages[0].content as string;
     expect(chatRequest.messages[chatRequest.messages.length - 1].content).toBe('I want to die.');
-    expect(systemContent).toContain('The user opted in to sharing a few locally selected excerpts');
+    expect(systemContent).toContain('A few locally selected excerpts from other chats are included in this request');
     expect(systemContent).toContain('SAFETY PRIORITY');
     expect(systemContent).toContain('local emergency services');
     expect(systemContent.length).toBeLessThan(5_000);

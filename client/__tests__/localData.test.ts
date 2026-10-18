@@ -165,7 +165,7 @@ describe('cross-chat history retrieval', () => {
       ]),
     ], 'active', 'How is my marathon knee injury plan going?');
 
-    expect(excerpts).toEqual(['I am training for a half marathon and worried about my knee injury.']);
+    expect(excerpts).toEqual(['You: I am training for a half marathon and worried about my knee injury.\nTeddy: You mentioned a knee injury while training.']);
   });
 
   test('bounds the number and size of selected excerpts', () => {
@@ -177,6 +177,6 @@ describe('cross-chat history retrieval', () => {
 
     expect(excerpts).toHaveLength(3);
     expect(excerpts.every(excerpt => excerpt.length <= 700)).toBe(true);
-    expect(excerpts.join('').length).toBeLessThanOrEqual(2_400);
+    expect(excerpts.join('').length).toBeLessThanOrEqual(1_800);
   });
 });

@@ -94,6 +94,7 @@ test('chat composer sends on Enter and keeps the send button available after a f
 
 test('chat shows three dots and announces when Teddy Bud is responding', async () => {
   const noop = jest.fn();
+  const saveOccasion = jest.fn();
   const animationLoop = jest.spyOn(Animated, 'loop').mockImplementation(() => ({
     start: jest.fn(),
     stop: jest.fn(),
@@ -119,6 +120,7 @@ test('chat shows three dots and announces when Teddy Bud is responding', async (
           onSaveMemorySuggestion={noop}
           onDismissMemorySuggestion={noop}
           memorySuggestionError={null}
+          onSaveOccasion={saveOccasion}
           draft=""
           setDraft={noop}
           onSend={noop}
@@ -135,6 +137,21 @@ test('chat shows three dots and announces when Teddy Bud is responding', async (
     const typingIndicator = renderer.root.findByProps({ accessibilityLabel: 'Teddy Bud is responding' });
     expect(typingIndicator.props.accessibilityRole).toBe('progressbar');
     expect(typingIndicator.findAllByType(Animated.View)).toHaveLength(3);
+
+    await ReactTestRenderer.act(async () => {
+      renderer.root.findByProps({ accessibilityLabel: 'Open crisis support' }).props.onPress();
+    });
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Find a crisis helpline in your country' })).toBeTruthy();
+
+    await ReactTestRenderer.act(async () => {
+      renderer.root.findByProps({ accessibilityLabel: 'Save an occasion' }).props.onPress();
+    });
+    const occasionInput = renderer.root.findByProps({ accessibilityLabel: 'Memory to save' });
+    await ReactTestRenderer.act(async () => occasionInput.props.onChangeText('We had a lovely family picnic.'));
+    await ReactTestRenderer.act(async () => {
+      renderer.root.findByProps({ accessibilityLabel: 'Save memory' }).props.onPress();
+    });
+    expect(saveOccasion).toHaveBeenCalledWith('We had a lovely family picnic.');
   } finally {
     if (renderer) await ReactTestRenderer.act(async () => renderer.unmount());
     animationLoop.mockRestore();

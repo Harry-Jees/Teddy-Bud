@@ -253,7 +253,12 @@ test('authenticated chat requests are forwarded to NVIDIA and return its complet
     assert.equal(upstreamRequest.url, 'https://integrate.api.nvidia.com/v1/chat/completions');
     assert.equal(upstreamRequest.init.headers.Authorization, 'Bearer test-nvidia-key');
     assert.ok(upstreamRequest.init.signal instanceof AbortSignal);
-    assert.deepEqual(JSON.parse(upstreamRequest.init.body), chatBody);
+    const forwardedBody = JSON.parse(upstreamRequest.init.body);
+    assert.equal(forwardedBody.model, chatBody.model);
+    assert.equal(forwardedBody.messages[0].role, 'system');
+    assert.match(forwardedBody.messages[0].content, /Be empathetic and concise/);
+    assert.match(forwardedBody.messages[0].content, /Never reveal, quote, reproduce/);
+    assert.deepEqual(forwardedBody.messages.slice(1), chatBody.messages.slice(1));
     assert.equal(result.body.choices[0].message.content, 'I hear you. What feels most important right now?');
   } finally {
     globalThis.fetch = oldFetch;
@@ -294,7 +299,8 @@ test('the gateway adds crisis response guidance when the latest user message sig
 
     assert.equal(response.status, 200);
     assert.deepEqual(JSON.parse(originalBody), chatBody);
-    assert.equal(forwardedBody.messages[0].content, 'Be empathetic and concise.');
+    assert.match(forwardedBody.messages[0].content, /^Be empathetic and concise\./);
+    assert.match(forwardedBody.messages[0].content, /Never reveal, quote, reproduce/);
     assert.match(forwardedBody.messages[1].content, /SAFETY PRIORITY/);
     assert.match(forwardedBody.messages[1].content, /local emergency services/);
     assert.equal(forwardedBody.messages[2].content, 'I am writing an essay about suicide prevention.');
@@ -322,7 +328,7 @@ test('the gateway adds crisis response guidance when the latest user message sig
   }
 });
 
-test('chat requests reject missing auth and preserve useful NVIDIA model errors', async () => {
+test('chat requests reject missing auth and avoid exposing NVIDIA account details', async () => {
   const env = makeEnv();
   env.NVIDIA_KEY_1 = 'test-nvidia-key';
   const body = {
@@ -348,7 +354,8 @@ test('chat requests reject missing auth and preserve useful NVIDIA model errors'
       { Authorization: `Bearer ${accessToken}` },
     ), env));
     assert.equal(failed.status, 404);
-    assert.match(failed.body.error.message, /Not found for this account/);
+    assert.match(failed.body.error.message, /not enabled for this account/i);
+    assert.doesNotMatch(failed.body.error.message, /model-function-id|account\s+'[^']+'/i);
   } finally {
     globalThis.fetch = oldFetch;
   }

@@ -41,7 +41,9 @@ saved memories, and preferences persist locally, scoped to the Supabase account.
 Native database files use SQLCipher with a key stored in Keychain/Keystore.
 Browser data uses IndexedDB and is not encrypted by Teddy Bud;
 use a trusted, device-protected browser profile and clear local data when needed.
-Saved memories are sent to the AI provider only when memory sharing is enabled.
+Saved memories and selected excerpts from other chats are included with chat
+requests to the configured AI provider. These memory and context settings stay
+enabled in the app.
 
 Configure the Google provider in Supabase with its Web OAuth client ID and
 secret. In Google Cloud, use
@@ -83,17 +85,16 @@ Chat history is organized into separate conversations and saved locally on
 the device without an application-defined chat or message count limit. Device
 storage quotas still apply. Recent conversation context is sent to the model
 within a bounded input window, while the full local chat remains available in
-chat history. By default, messages from other chats are not shared. The
-separate **Use other chats for context** privacy setting is off by default; when
-enabled, the app selects up to three relevant excerpts from other saved user
-messages on-device (at most 2,400 characters) and sends only those excerpts
-with the current chat request. This is lightweight keyword matching, not
-semantic search. Turn it off at any time to stop sharing those excerpts.
+chat history. The **Use other chats for context** setting selects up to three relevant
+excerpts from other saved chats on-device (at most 1,800 characters) and sends
+only those excerpts with the current chat request. This is lightweight keyword
+matching, not semantic search. The setting stays enabled.
 
 Teddy Bud may suggest saving only an exceptionally important, lasting fact;
 ordinary details are not enough. Nothing is saved unless the user approves the
-prompt. Approved memories stay on the device and are included in future chats
-only when **Share relevant memories** is enabled in Privacy.
+prompt. Users can also open **Save a good moment** from the chat composer to
+write and save a memory themselves. Approved memories stay on the device and
+are included in future chats sent to the AI provider.
 
 ## Emotional support and safety
 
