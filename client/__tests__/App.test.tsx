@@ -25,7 +25,8 @@ test('chat composer sends on Enter and keeps the send button available after a f
   const onOpenHistory = jest.fn();
   const onOpenCrisisResources = jest.fn();
   const onCallEmergency = jest.fn();
-  const onNewConversation = jest.fn();
+  const onRenameChat = jest.fn();
+  const onTogglePin = jest.fn();
   const noop = jest.fn();
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
@@ -35,6 +36,9 @@ test('chat composer sends on Enter and keeps the send button available after a f
         messages={[]}
         conversationTitle="A little room to breathe"
         onOpenHistory={onOpenHistory}
+        onRenameChat={onRenameChat}
+        isPinned={false}
+        onTogglePin={onTogglePin}
         onOpenCrisisResources={onOpenCrisisResources}
         emergencyCallOption={null}
         crisisHelplineOption={null}
@@ -49,10 +53,8 @@ test('chat composer sends on Enter and keeps the send button available after a f
         draft="A new message"
         setDraft={noop}
         onSend={onSend}
-        onNewConversation={onNewConversation}
         onRetry={noop}
         retryPending
-        onClear={noop}
         isSending={false}
         chatError="The earlier message failed."
       />,
@@ -82,11 +84,14 @@ test('chat composer sends on Enter and keeps the send button available after a f
   });
   expect(onOpenHistory).toHaveBeenCalledTimes(1);
 
-  const newChatButton = renderer.root.findByProps({ accessibilityLabel: 'Start a new chat' });
+  const renameButton = renderer.root.findByProps({ accessibilityLabel: 'Rename chat' });
   await ReactTestRenderer.act(async () => {
-    newChatButton.props.onPress();
+    renameButton.props.onPress();
   });
-  expect(onNewConversation).toHaveBeenCalledTimes(1);
+  expect(onRenameChat).toHaveBeenCalledTimes(1);
+  const pinButton = renderer.root.findByProps({ accessibilityLabel: 'Pin chat' });
+  await ReactTestRenderer.act(async () => pinButton.props.onPress());
+  expect(onTogglePin).toHaveBeenCalledTimes(1);
   expect(renderer.root.findAllByProps({ accessibilityRole: 'switch' })).toHaveLength(0);
   expect(renderer.root.findAllByProps({ accessibilityLabel: 'Attach an image' })).toHaveLength(0);
   await ReactTestRenderer.act(async () => renderer.unmount());
@@ -109,6 +114,9 @@ test('chat shows three dots and announces when Teddy Bud is responding', async (
           messages={[{ id: 1, author: 'you', text: 'Hello', time: 'Now' }]}
           conversationTitle="A little room to breathe"
           onOpenHistory={noop}
+          onRenameChat={jest.fn()}
+          isPinned={false}
+          onTogglePin={jest.fn()}
           onOpenCrisisResources={noop}
           emergencyCallOption={null}
           crisisHelplineOption={null}
@@ -124,10 +132,8 @@ test('chat shows three dots and announces when Teddy Bud is responding', async (
           draft=""
           setDraft={noop}
           onSend={noop}
-          onNewConversation={noop}
           onRetry={noop}
           retryPending={false}
-          onClear={noop}
           isSending
           chatError={null}
         />,
@@ -171,6 +177,9 @@ test('chat presents crisis resources for a direct self-harm signal', async () =>
         messages={[{ id: 1, author: 'you', text: 'I want to die.', time: 'Now' }]}
         conversationTitle="A little room to breathe"
         onOpenHistory={jest.fn()}
+          onRenameChat={jest.fn()}
+          isPinned={false}
+          onTogglePin={jest.fn()}
         onOpenCrisisResources={onOpenCrisisResources}
         emergencyCallOption={{ number: '911', region: 'United States' }}
         crisisHelplineOption={{ number: '988', name: '988 Lifeline', region: 'United States', textNumber: '988', website: 'https://988lifeline.org/' }}
@@ -185,10 +194,8 @@ test('chat presents crisis resources for a direct self-harm signal', async () =>
         draft=""
         setDraft={jest.fn()}
         onSend={jest.fn()}
-        onNewConversation={jest.fn()}
         onRetry={jest.fn()}
         retryPending={false}
-        onClear={jest.fn()}
         isSending={false}
         chatError={null}
       />,
@@ -225,6 +232,9 @@ test('India crisis support presents both Tele-MANAS call numbers and its officia
         messages={[{ id: 1, author: 'you', text: 'I want to die.', time: 'Now' }]}
         conversationTitle="A little room to breathe"
         onOpenHistory={jest.fn()}
+          onRenameChat={jest.fn()}
+          isPinned={false}
+          onTogglePin={jest.fn()}
         onOpenCrisisResources={jest.fn()}
         emergencyCallOption={{ number: '112', region: 'India' }}
         crisisHelplineOption={{
@@ -245,10 +255,8 @@ test('India crisis support presents both Tele-MANAS call numbers and its officia
         draft=""
         setDraft={jest.fn()}
         onSend={jest.fn()}
-        onNewConversation={jest.fn()}
         onRetry={jest.fn()}
         retryPending={false}
-        onClear={jest.fn()}
         isSending={false}
         chatError={null}
       />,
@@ -282,6 +290,9 @@ test('memory suggestion appears beside its reply and requires explicit approval'
         ]}
         conversationTitle="A little room to breathe"
         onOpenHistory={jest.fn()}
+          onRenameChat={jest.fn()}
+          isPinned={false}
+          onTogglePin={jest.fn()}
         onOpenCrisisResources={jest.fn()}
         emergencyCallOption={null}
         crisisHelplineOption={null}
@@ -296,10 +307,8 @@ test('memory suggestion appears beside its reply and requires explicit approval'
         draft=""
         setDraft={jest.fn()}
         onSend={jest.fn()}
-        onNewConversation={jest.fn()}
         onRetry={jest.fn()}
         retryPending={false}
-        onClear={jest.fn()}
         isSending={false}
         chatError={null}
       />,

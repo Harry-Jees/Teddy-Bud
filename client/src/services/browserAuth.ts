@@ -15,6 +15,10 @@ function sessionStore(): Storage | null {
   return typeof window !== 'undefined' && window.sessionStorage ? window.sessionStorage : null;
 }
 
+function desktopBridge() {
+  return typeof window !== 'undefined' ? window.teddyBudDesktop : undefined;
+}
+
 function expiresAt(token: string, expiresIn: number) {
   try {
     const payload = token.split('.')[1];
@@ -64,7 +68,9 @@ export class BrowserAuthService {
   private async readStoredSession(): Promise<StoredSession | null> {
     let saved: string | null;
     if (Platform.OS === 'web') {
-      saved = sessionStore()?.getItem(SESSION_KEY) ?? null;
+      saved = desktopBridge()
+        ? await desktopBridge()!.loadSession()
+        : sessionStore()?.getItem(SESSION_KEY) ?? null;
     } else {
       const credentials = await Keychain.getGenericPassword({ service: NATIVE_SESSION_SERVICE });
       saved = credentials && typeof credentials !== 'boolean' ? credentials.password : null;
@@ -98,11 +104,15 @@ export class BrowserAuthService {
   }
 
   async signInWithGoogle(): Promise<void> {
-    const callback = Platform.OS === 'web'
+    const callback = Platform.OS === 'web' && !desktopBridge()
       ? `${window.location.origin}${WEB_BASE_PATH}/auth/callback`
       : 'teddybud://auth/callback';
     const startUrl = new URL(`${GATEWAY_BASE_URL}/auth/google/start`);
     startUrl.searchParams.set('redirect_uri', callback);
+    if (Platform.OS === 'web' && desktopBridge()) {
+      await desktopBridge()!.openExternal(startUrl.toString());
+      return;
+    }
     if (Platform.OS === 'web') {
       window.location.assign(startUrl.toString());
       return;
@@ -136,7 +146,7 @@ export class BrowserAuthService {
       body: JSON.stringify({ code, state: oauthState }),
     });
     const session = await this.save(result);
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && !desktopBridge()) {
       window.history.replaceState(null, '', `${callback.origin}${WEB_BASE_PATH || '/'}`);
     }
     return session;
@@ -172,7 +182,8 @@ export class BrowserAuthService {
   async clear() {
     inMemorySession = null;
     if (Platform.OS === 'web') {
-      sessionStore()?.removeItem(SESSION_KEY);
+      if (desktopBridge()) await desktopBridge()!.clearSession();
+      else sessionStore()?.removeItem(SESSION_KEY);
     } else {
       await Keychain.resetGenericPassword({ service: NATIVE_SESSION_SERVICE });
     }
@@ -182,7 +193,8 @@ export class BrowserAuthService {
     if (!response.accessToken) throw new Error('The gateway did not return an access token.');
     const session = { accessToken: response.accessToken, expiresAt: expiresAt(response.accessToken, response.expiresIn ?? 3600), ...(response.profilePictureUrl ? { profilePictureUrl: response.profilePictureUrl } : {}) };
     if (Platform.OS === 'web') {
-      sessionStore()?.setItem(SESSION_KEY, JSON.stringify(session));
+      if (desktopBridge()) await desktopBridge()!.saveSession(JSON.stringify(session));
+      else sessionStore()?.setItem(SESSION_KEY, JSON.stringify(session));
     } else {
       const saved = await Keychain.setGenericPassword('session', JSON.stringify(session), { service: NATIVE_SESSION_SERVICE });
       if (!saved) throw new Error('Could not save your secure sign-in session.');

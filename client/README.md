@@ -11,21 +11,50 @@ The web target uses Vite and React Native Web to render the same app UI in a des
 3. Start the hot-reloading preview with `npm run web`; it opens the browser automatically.
 4. If it does not open automatically, visit [http://localhost:5173](http://localhost:5173).
 
-## Platform coverage and GitHub Actions
+## Platform builds
 
-Teddy Bud has native project targets for Android, iOS, and macOS. The Vite web
-app is the cross-platform option for Windows and Linux, and also runs in
-browsers on macOS, Android, and iOS. A native Windows desktop project is not
-currently included.
+Teddy Bud uses React Native for Android, iOS, and macOS. Windows, macOS, and
+Debian/Ubuntu desktop installers wrap the same Vite/React Native Web UI with
+Electron. The desktop apps load packaged local assets, open Google sign-in and
+trusted support links in the system browser, and receive OAuth through the
+`teddybud://auth/callback` app link.
 
-The GitHub Actions workflow at `../.github/workflows/ci.yml` runs on every push,
-pull request, or manual dispatch. It runs client tests, TypeScript checks, and
-the web production build on Linux, Windows, and macOS runners; builds an
-arm64 Android debug APK and iOS Simulator/macOS apps; and runs the gateway
-Worker tests. Build outputs are attached to the workflow run as artifacts.
-This is validation and artifact creation, not automatic production deployment
-or publishing to app stores; those require hosting configuration, signing
-credentials, and release setup.
+Use Node.js 22.12 or newer, install dependencies from this directory with
+`npm ci`, then run the relevant build:
+
+```sh
+npm run android
+npm run ios
+npm run build:web
+npm run build:dist
+npm run desktop:windows
+npm run desktop:macos
+npm run desktop:linux
+```
+
+The desktop commands create a Windows NSIS installer, macOS DMGs for Intel and
+Apple Silicon, and an x64 Debian `.deb` package under `../dist/desktop/`.
+`npm run build:web` writes the browser bundle to `../dist/web/`; `npm run build:dist`
+creates that bundle and packages the desktop app for the current
+operating system in `../dist/desktop/`. The GitHub Actions workflow collects
+web, Android, iOS Simulator, macOS, Windows, and Linux packages into a single
+`teddy-bud-dist` artifact with the same `dist/` layout. Push and manual workflow
+runs also commit the generated files into the triggering branch's root `dist/`
+folder. Pull-request runs build and upload the artifact without committing
+files. Large Windows package payloads use Git LFS; unpacked Electron staging
+files are excluded. To run the desktop wrapper locally, build the relative-path web bundle first with
+`npm run build:web -- --base=./`, then use `npm run desktop:run`.
+
+The GitHub Actions workflow at `../.github/workflows/ci.yml` runs tests,
+TypeScript checks, web builds, Android debug builds, iOS Simulator/macOS native
+builds, Windows and macOS desktop packaging, Linux `.deb` packaging, and gateway
+Worker tests. Build outputs are attached to the workflow run and, for push and
+manual runs, committed to `dist/` in the triggering branch. These are
+unsigned development artifacts: Windows releases need a signing certificate,
+macOS distribution needs Developer ID signing and notarization, Android store
+builds need a private release keystore, and iOS device archives need an Apple
+Developer Team and provisioning profile. The workflows do not publish to stores
+or deploy the website.
 
 Google is the only sign-in and account-verification method. There are no
 email/password forms, email verification codes, or alternate sign-in routes.
@@ -35,15 +64,17 @@ confirms the account email during OAuth. A database trigger mirrors each
 Supabase Auth UUID into the RLS-protected `user_profiles` table. The Cloudflare
 gateway verifies that the Supabase identity came from Google and checks the
 profile before issuing a Teddy Bud session. Teddy Bud never stores Google
-passwords or Supabase access tokens. Browser tokens are kept in
-`sessionStorage`; native tokens use platform secure storage. Chat history,
-saved memories, and preferences persist locally, scoped to the Supabase account.
-Native database files use SQLCipher with a key stored in Keychain/Keystore.
-Browser data uses IndexedDB and is not encrypted by Teddy Bud;
-use a trusted, device-protected browser profile and clear local data when needed.
-Saved memories and selected excerpts from other chats are included with chat
-requests to the configured AI provider. These memory and context settings stay
-enabled in the app.
+passwords or Supabase access tokens. Browser tokens are kept in `sessionStorage`;
+native tokens use platform secure storage. Electron desktop tokens are encrypted
+through Windows DPAPI, macOS Keychain, or a Linux Secret Service keyring. On
+Linux, configure GNOME Keyring, KWallet, or another Secret Service provider
+before signing in. Chat history, saved memories, and preferences persist locally,
+scoped to the Supabase account. Native mobile database files use SQLCipher with a
+key stored in Keychain/Keystore. Browser and Electron chat data use IndexedDB and
+are not encrypted by Teddy Bud; protect the device account and clear local data
+when needed. Privacy toggles control whether saved memories, selected chat
+excerpts, and About me notes are included with messages sent to the configured AI
+provider.
 
 Configure the Google provider in Supabase with its Web OAuth client ID and
 secret. In Google Cloud, use

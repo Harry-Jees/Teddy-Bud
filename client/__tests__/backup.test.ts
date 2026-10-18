@@ -1,4 +1,4 @@
-import { createEncryptedBackup, readEncryptedBackup } from '../src/services/backup';
+import { createEncryptedBackup, MAX_BACKUP_BYTES, readEncryptedBackup } from '../src/services/backup';
 import type { LocalAppData } from '../src/services/localData';
 
 var mockBackupDatabase: Map<string, string>;
@@ -57,5 +57,15 @@ describe('encrypted Teddy Bud backups', () => {
     const backup = await createEncryptedBackup(sampleData, 'account-a', 'a long private passphrase');
     await expect(readEncryptedBackup(backup, 'account-a', 'a different passphrase')).rejects.toThrow('could not be unlocked');
     await expect(readEncryptedBackup(backup, 'account-b', 'a long private passphrase')).rejects.toThrow('different account');
+  });
+
+  test('rejects unsupported backup parameters and files over the size limit', async () => {
+    const backup = await createEncryptedBackup(sampleData, 'account-a', 'a long private passphrase');
+    const unsupported = JSON.parse(backup) as { iterations: number };
+    unsupported.iterations += 1;
+    await expect(readEncryptedBackup(JSON.stringify(unsupported), 'account-a', 'a long private passphrase'))
+      .rejects.toThrow('not a supported Teddy Bud backup');
+    await expect(readEncryptedBackup('x'.repeat(MAX_BACKUP_BYTES + 1), 'account-a', 'a long private passphrase'))
+      .rejects.toThrow('larger than the supported 25 MB limit');
   });
 });

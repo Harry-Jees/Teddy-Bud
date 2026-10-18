@@ -1,0 +1,57 @@
+﻿appId: com.teddybud.app
+productName: Teddy Bud
+electronVersion: 44.9.0
+asar: true
+directories:
+  output: ../../dist/desktop
+files:
+  - main.cjs
+  - preload.cjs
+  - dist/**/*
+  - icons/**/*
+  - package.json
+artifactName: Teddy-Bud-${version}-${os}-${arch}.${ext}
+win:
+  icon: icons/teddy-bud.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  protocols:
+    - name: Teddy Bud sign in
+      schemes:
+        - teddybud
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+mac:
+  icon: icons/teddy-bud.icns
+  category: public.app-category.social-networking
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  protocols:
+    - name: Teddy Bud sign in
+      schemes:
+        - teddybud
+linux:
+  icon: icons/teddy-bud.png
+  category: Network;InstantMessaging;
+  synopsis: A quiet place to be.
+  maintainer: Teddy Bud
+  target:
+    - target: deb
+      arch:
+        - x64
+  protocols:
+    - name: Teddy Bud sign in
+      schemes:
+        - teddybud
+  desktop:
+    entry:
+      MimeType: x-scheme-handler/teddybud;
+      Comment: A quiet place to be.

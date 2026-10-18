@@ -14,15 +14,8 @@ concurrency:
 
 jobs:
   client-checks:
-    name: Client checks (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
+    name: Web checks and build
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: client
@@ -37,11 +30,10 @@ jobs:
       - run: npm test -- --runInBand
       - run: npx tsc --noEmit
       - run: npm run build:web
-      - if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: teddy-bud-web
-          path: client/dist/
+          path: dist/**/*
           if-no-files-found: error
 
   worker-tests:
@@ -78,10 +70,14 @@ jobs:
           cache-dependency-path: client/android/**/*.gradle*
       - run: npm ci --prefix client
       - run: bash client/android/gradlew -p client/android assembleDebug -PreactNativeArchitectures=arm64-v8a
+      - name: Stage Android build in dist
+        run: |
+          mkdir -p dist/android
+          cp client/android/app/build/outputs/apk/debug/app-debug.apk dist/android/TeddyBud-android-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: teddy-bud-android-debug
-          path: client/android/app/build/outputs/apk/debug/app-debug.apk
+          path: dist/**/*
           if-no-files-found: error
 
   apple-builds:
@@ -121,8 +117,86 @@ jobs:
           -derivedDataPath "client/${{ matrix.project_dir }}/build"
           CODE_SIGNING_ALLOWED=NO
           build
+      - name: Stage Apple builds in dist
+        run: |
+          mkdir -p "dist/${{ matrix.project_dir }}"
+          ditto -c -k --sequesterRsrc --keepParent "${{ matrix.app_path }}" "dist/${{ matrix.project_dir }}/TeddyBud-${{ matrix.project_dir }}.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: teddy-bud-${{ matrix.project_dir }}
-          path: ${{ matrix.app_path }}
+          path: dist/**/*
           if-no-files-found: error
+
+  desktop-packages:
+    name: Desktop package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows installer
+            os: windows-latest
+            command: desktop:windows
+            artifact: teddy-bud-windows
+          - name: macOS disk image
+            os: macos-latest
+            command: desktop:macos
+            artifact: teddy-bud-macos-desktop
+          - name: Debian package
+            os: ubuntu-latest
+            command: desktop:linux
+            artifact: teddy-bud-linux-deb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci --prefix client
+      - run: npm run ${{ matrix.command }} --prefix client
+      - name: Remove unpacked Windows staging files
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Remove-Item -LiteralPath "dist/desktop/win-unpacked" -Recurse -Force -ErrorAction SilentlyContinue
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/**/*
+          if-no-files-found: error
+
+  collect-dist:
+    name: Collect all platform builds
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    needs:
+      - client-checks
+      - android-build
+      - apple-builds
+      - desktop-packages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: teddy-bud-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: teddy-bud-dist
+          path: dist/
+          if-no-files-found: error
+      - name: Commit distributions to the triggering branch
+        if: github.ref_type == 'branch' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git lfs install --local
+          git add dist/
+          if git diff --cached --quiet; then
+            echo "Distribution files are already up to date."
+          else
+            git commit -m "chore: update compiled distributions"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi

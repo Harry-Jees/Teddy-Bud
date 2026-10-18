@@ -11,6 +11,7 @@ export interface SendChatOptions { modelId?: string; task?: 'conversation' | 'co
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 350;
+const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_CONTEXT_CHARS = 80_000;
 const MAX_SHARED_MEMORY_CHARS = 4_000;
 const MAX_CROSS_CHAT_CONTEXT_CHARS = 1_800;
@@ -59,13 +60,23 @@ async function fetchJson<T>(url: string, init?: RequestInit, maxRetries = MAX_RE
   let lastError: HttpError = Object.assign(new Error('Request failed.'), { status: undefined });
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     let response: Response;
-    try { response = await fetch(url, init); } catch (fetchError) {
+    let text: string;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      response = await fetch(url, { ...init, signal: controller.signal });
+      text = await response.text();
+    } catch (fetchError) {
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        throw Object.assign(new Error('The conversation service took too long to respond. Check your connection and try again.'), { status: 408, timedOut: true });
+      }
       lastError = fetchError instanceof Error ? fetchError as HttpError : Object.assign(new Error('Request failed.'), { status: undefined });
       if (attempt === maxRetries) throw lastError;
       await sleep(RETRY_DELAY_MS * (attempt + 1));
       continue;
+    } finally {
+      clearTimeout(timeout);
     }
-    const text = await response.text();
     let payload: any = null;
     try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
     if (response.ok) return payload as T;
@@ -278,7 +289,7 @@ export class GatewayService {
       } catch (error) {
         lastError = error;
         const status = (error as HttpError).status;
-        const canTryNextModel = status === undefined || status === 404 || status === 410 || isRetryableStatus(status);
+        const canTryNextModel = !(error as { timedOut?: boolean }).timedOut && (status === undefined || status === 404 || status === 410 || isRetryableStatus(status));
         if (!canTryNextModel || options.modelId || requiredCapability || model === modelCandidates[modelCandidates.length - 1]) throw error;
       }
     }
@@ -319,7 +330,7 @@ export class GatewayService {
       } catch (error) {
         lastError = error;
         const status = (error as HttpError).status;
-        const canTryNextModel = status === undefined || status === 404 || status === 410 || isRetryableStatus(status);
+        const canTryNextModel = !(error as { timedOut?: boolean }).timedOut && (status === undefined || status === 404 || status === 410 || isRetryableStatus(status));
         if (!canTryNextModel || model === candidates[candidates.length - 1]) throw error;
       }
     }
