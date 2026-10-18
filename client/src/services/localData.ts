@@ -14,6 +14,7 @@ export type LocalConversation = {
   createdAt: string;
   updatedAt: string;
   messages: LocalMessage[];
+  pinned?: boolean;
 };
 
 export type LocalMemory = {
@@ -96,6 +97,7 @@ function normalize(value: unknown): LocalAppData {
       ) return [];
       return [{
         ...conversation,
+        pinned: conversation.pinned === true,
         messages: conversation.messages.filter(isLocalMessage),
       }];
     })

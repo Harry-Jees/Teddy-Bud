@@ -137,6 +137,8 @@ test('Google OAuth uses PKCE, validates the Supabase identity, and consumes its 
   assert.equal(authorization.origin, env.SUPABASE_URL);
   assert.equal(authorization.pathname, '/auth/v1/authorize');
   assert.equal(authorization.searchParams.get('provider'), 'google');
+  assert.equal(authorization.searchParams.get('scopes'), 'openid email profile');
+  assert.equal(authorization.searchParams.get('prompt'), 'select_account');
   assert.equal(authorization.searchParams.get('code_challenge_method'), 's256');
   const redirectTo = new URL(authorization.searchParams.get('redirect_to'));
   assert.equal(redirectTo.origin, 'http://localhost:5173');
@@ -166,6 +168,7 @@ test('Google OAuth uses PKCE, validates the Supabase identity, and consumes its 
           email: 'google-user@example.com',
           email_confirmed_at: '2026-10-17T12:00:00Z',
           app_metadata: { provider: 'google', providers: ['google'] },
+          user_metadata: { picture: 'https://lh3.googleusercontent.com/a/example-profile-photo' },
         },
       }), { status: 200 });
     }
@@ -183,7 +186,14 @@ test('Google OAuth uses PKCE, validates the Supabase identity, and consumes its 
     }), env));
     assert.equal(completed.status, 200);
     assert.equal(completed.body.userId, '22222222-2222-4222-8222-222222222222');
+    assert.equal(completed.body.profilePictureUrl, 'https://lh3.googleusercontent.com/a/example-profile-photo');
     assert.match(completed.body.accessToken, /^[\w-]+\.[\w-]+\.[\w-]+$/);
+
+    const refreshed = await jsonResponse(await worker.fetch(request('/auth/refresh', 'POST', undefined, {
+      Authorization: `Bearer ${completed.body.accessToken}`,
+    }), env));
+    assert.equal(refreshed.status, 200);
+    assert.equal(refreshed.body.profilePictureUrl, completed.body.profilePictureUrl);
 
     const replayed = await jsonResponse(await worker.fetch(request('/auth/google/complete', 'POST', {
       code: 'google-one-time-code',

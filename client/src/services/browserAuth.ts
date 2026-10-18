@@ -7,6 +7,7 @@ type LoginResponse = { accessToken: string; expiresIn?: number; userId?: string;
 
 const SESSION_KEY = 'teddy-bud:browser-session';
 const NATIVE_SESSION_SERVICE = 'com.teddybud.account-auth';
+const WEB_BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, '');
 let inMemorySession: StoredSession | null = null;
 
 function sessionStore(): Storage | null {
@@ -57,6 +58,8 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
 }
 
 export class BrowserAuthService {
+  private callbackInFlight = new Map<string, Promise<StoredSession | null>>();
+
   private async readStoredSession(): Promise<StoredSession | null> {
     let saved: string | null;
     if (Platform.OS === 'web') {
@@ -95,7 +98,7 @@ export class BrowserAuthService {
 
   async signInWithGoogle(): Promise<void> {
     const callback = Platform.OS === 'web'
-      ? `${window.location.origin}/auth/callback`
+      ? `${window.location.origin}${WEB_BASE_PATH}/auth/callback`
       : 'teddybud://auth/callback';
     const startUrl = new URL(`${GATEWAY_BASE_URL}/auth/google/start`);
     startUrl.searchParams.set('redirect_uri', callback);
@@ -107,6 +110,18 @@ export class BrowserAuthService {
   }
 
   async consumeCallback(callbackUrl: string): Promise<StoredSession | null> {
+    const inFlight = this.callbackInFlight.get(callbackUrl);
+    if (inFlight) return inFlight;
+    const attempt = this.consumeCallbackOnce(callbackUrl);
+    this.callbackInFlight.set(callbackUrl, attempt);
+    try {
+      return await attempt;
+    } finally {
+      if (this.callbackInFlight.get(callbackUrl) === attempt) this.callbackInFlight.delete(callbackUrl);
+    }
+  }
+
+  private async consumeCallbackOnce(callbackUrl: string): Promise<StoredSession | null> {
     const callback = new URL(callbackUrl);
     const callbackError = callback.searchParams.get('error_description');
     if (callbackError) throw new Error(callbackError);
@@ -119,10 +134,11 @@ export class BrowserAuthService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, state: oauthState }),
     });
+    const session = await this.save(result);
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.history.replaceState(null, '', `${window.location.origin}/`);
+      window.history.replaceState(null, '', `${callback.origin}${WEB_BASE_PATH || '/'}`);
     }
-    return this.save(result);
+    return session;
   }
 
   async refresh(): Promise<StoredSession> {
@@ -130,7 +146,7 @@ export class BrowserAuthService {
     if (!current) throw Object.assign(new Error('Your session has ended. Please log in again.'), { status: 401 });
     try {
       const response = await request<LoginResponse>('/auth/refresh', { method: 'POST', headers: { Authorization: `Bearer ${current.accessToken}` } });
-      response.profilePictureUrl = current.profilePictureUrl;
+      response.profilePictureUrl ??= current.profilePictureUrl;
       return await this.save(response);
     } catch (error) {
       if ((error as { status?: number }).status === 401) await this.clear();

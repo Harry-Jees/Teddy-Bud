@@ -2,6 +2,10 @@ name = "teddy-bud-browser-gateway"
 main = "src/index.mjs"
 compatibility_date = "2026-10-12"
 
+[[kv_namespaces]]
+binding = "DEVICE_KEYS"
+id = "b321b1407bec4816917e38b967abcced"
+
 [[durable_objects.bindings]]
 name = "SESSIONS"
 class_name = "GatewayStateStore"

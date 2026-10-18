@@ -143,7 +143,7 @@ function allowedEmailRedirect(value, env) {
       ? env.AUTH_REDIRECT_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
       : [];
     if (
-      redirect.pathname !== '/auth/callback'
+      !redirect.pathname.endsWith('/auth/callback')
       || redirect.search
       || redirect.hash
       || !allowedOrigins.includes(redirect.origin === 'null' ? `${redirect.protocol}//${redirect.host}` : redirect.origin)
@@ -201,7 +201,7 @@ async function issueSession(userId, kind, env, profilePictureUrl) {
   const now = Math.floor(Date.now() / 1000);
   const sessionId = crypto.randomUUID();
   const refreshUntil = now + ACCESS_TOKEN_SECONDS;
-  await writeSession(env, sessionId, { userId, kind, refreshUntil });
+  await writeSession(env, sessionId, { userId, kind, refreshUntil, ...(profilePictureUrl ? { profilePictureUrl } : {}) });
   return {
     accessToken: await signToken(tokenClaims(userId, kind, sessionId, now, refreshUntil), env.JWT_SIGNING_SECRET),
     expiresIn: ACCESS_TOKEN_SECONDS,
@@ -224,7 +224,7 @@ function allowedOAuthRedirect(value, env) {
       && callback.host === 'auth'
       && callback.pathname === '/callback'
     ) return callback;
-    if (callback.pathname !== '/auth/callback' || (callback.protocol !== 'https:' && callback.protocol !== 'http:')) return null;
+    if (!callback.pathname.endsWith('/auth/callback') || (callback.protocol !== 'https:' && callback.protocol !== 'http:')) return null;
 
     const allowedOrigins = typeof env.AUTH_REDIRECT_ORIGINS === 'string'
       ? env.AUTH_REDIRECT_ORIGINS.split(',').map(origin => origin.trim()).filter(Boolean)
@@ -261,6 +261,8 @@ async function startGoogleOAuth(request, env) {
   const { url } = supabaseConfig(env);
   const authorize = new URL(`${url}/auth/v1/authorize`);
   authorize.searchParams.set('provider', 'google');
+  authorize.searchParams.set('scopes', 'openid email profile');
+  authorize.searchParams.set('prompt', 'select_account');
   authorize.searchParams.set('redirect_to', callback.toString());
   authorize.searchParams.set('code_challenge', challenge);
   authorize.searchParams.set('code_challenge_method', 's256');
@@ -314,15 +316,29 @@ async function completeGoogleOAuth(request, env) {
   if (!await hasSupabaseProfile(env, payload.user.id, payload.access_token)) {
     return json(403, { error: 'This account is not registered in the Teddy Bud profile table.' });
   }
-  const candidatePhoto = payload.user.user_metadata?.avatar_url ?? payload.user.user_metadata?.picture;
-  let profilePictureUrl;
-  if (typeof candidatePhoto === 'string') {
-    try {
-      const photo = new URL(candidatePhoto);
-      if (photo.protocol === 'https:' && (photo.hostname === 'googleusercontent.com' || photo.hostname.endsWith('.googleusercontent.com'))) profilePictureUrl = photo.toString();
-    } catch { /* Ignore malformed provider profile photo URLs. */ }
-  }
+  const identities = Array.isArray(payload.user.identities) ? payload.user.identities : [];
+  const googleIdentity = identities.find(identity => identity?.provider === 'google');
+  const candidatePhotos = [
+    payload.user.user_metadata?.picture,
+    payload.user.user_metadata?.avatar_url,
+    googleIdentity?.identity_data?.picture,
+    googleIdentity?.identity_data?.avatar_url,
+  ];
+  const profilePictureUrl = candidatePhotos.map(googleProfilePhotoUrl).find(Boolean);
   return authResponse(payload.user.id, 'google-user', env, profilePictureUrl);
+}
+
+function googleProfilePhotoUrl(value) {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const photo = new URL(value);
+    return photo.protocol === 'https:'
+      && (photo.hostname === 'googleusercontent.com' || photo.hostname.endsWith('.googleusercontent.com'))
+      ? photo.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function refresh(request, env) {
@@ -332,11 +348,18 @@ async function refresh(request, env) {
     return json(401, { error: 'Token is invalid or refresh window has expired. Please log in again.' });
   }
   const refreshUntil = now + ACCESS_TOKEN_SECONDS;
-  await writeSession(env, claims.sid, { userId: claims.sub, kind: claims.kind, refreshUntil });
+  const currentSession = await readSession(env, claims.sid);
+  await writeSession(env, claims.sid, {
+    userId: claims.sub,
+    kind: claims.kind,
+    refreshUntil,
+    ...(currentSession?.profilePictureUrl ? { profilePictureUrl: currentSession.profilePictureUrl } : {}),
+  });
   const refreshed = tokenClaims(claims.sub, claims.kind, claims.sid, now, refreshUntil);
   return json(200, {
     accessToken: await signToken(refreshed, env.JWT_SIGNING_SECRET),
     expiresIn: ACCESS_TOKEN_SECONDS,
+    ...(currentSession?.profilePictureUrl ? { profilePictureUrl: currentSession.profilePictureUrl } : {}),
   });
 }
 

@@ -1,13 +1,14 @@
 {
   "name": "Teddy Bud",
   "short_name": "Teddy Bud",
-  "start_url": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#F8F8F6",
   "theme_color": "#F8F8F6",
   "icons": [
     {
-      "src": "/teddy-bud-icon.png",
+      "src": "teddy-bud-icon.png",
       "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "any"

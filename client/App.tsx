@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ImageSourcePropType } from 'react-native';
 import {
   Animated,
+  AccessibilityInfo,
   Alert,
+  Easing,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -56,7 +58,7 @@ function isAuthCallbackUrl(value: string): boolean {
   try {
     const callback = new URL(value);
     return (callback.protocol === 'https:' || callback.protocol === 'http:')
-      ? callback.pathname === '/auth/callback'
+      ? callback.pathname.endsWith('/auth/callback')
       : callback.protocol === 'teddybud:' && callback.hostname === 'auth' && callback.pathname === '/callback';
   } catch {
     return false;
@@ -112,7 +114,7 @@ function AccessGate() {
     const restore = async () => {
       try {
         const callbackUrl = Platform.OS === 'web'
-          ? typeof window !== 'undefined' && window.location.pathname === '/auth/callback' ? window.location.href : null
+          ? typeof window !== 'undefined' && window.location.pathname.endsWith('/auth/callback') ? window.location.href : null
           : await Linking.getInitialURL();
         const current = callbackUrl && isAuthCallbackUrl(callbackUrl)
           ? await browserAuthService.consumeCallback(callbackUrl)
@@ -195,6 +197,7 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
   const { width } = useWindowDimensions();
   const wide = width >= 800;
   const [page, setPage] = useState<Page>('chat');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -211,6 +214,7 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
   const [shareMemories, setShareMemories] = useState(false);
   const [shareChatHistory, setShareChatHistory] = useState(false);
   const [localDataReady, setLocalDataReady] = useState(false);
+  const [localDataOwner, setLocalDataOwner] = useState<string | null>(null);
   const [localDataError, setLocalDataError] = useState<string | null>(null);
   const [localDataSaveError, setLocalDataSaveError] = useState<string | null>(null);
   const [localDataRetry, setLocalDataRetry] = useState(0);
@@ -246,6 +250,7 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
       rememberPreferenceRef.current = true;
       setShareMemories(true);
       setShareChatHistory(true);
+      setLocalDataOwner(owner);
       setLocalDataReady(true);
     }).catch(error => {
       if (active) setLocalDataError(error instanceof Error ? error.message : 'Could not load private data saved on this device.');
@@ -254,7 +259,7 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
   }, [owner, localDataRetry]);
 
   useEffect(() => {
-    if (!localDataReady) return;
+    if (!localDataReady || localDataOwner !== owner) return;
     localDataService.save(owner, {
       conversations,
       activeConversationId,
@@ -267,7 +272,7 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
     }).catch(error => {
       setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
     });
-  }, [localDataReady, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory]);
+  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory]);
 
   const appendConversationMessage = (conversationId: string, message: Message) => {
     const updatedAt = new Date().toISOString();
@@ -312,6 +317,25 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
     'Forget this memory?',
     'It will be removed from saved memories on this device.',
     () => setMemories(current => current.filter(item => item.id !== memory.id)),
+  );
+
+  const setConversationPinned = (conversationId: string, pinned: boolean) => {
+    setConversations(current => current.map(conversation => conversation.id === conversationId ? { ...conversation, pinned } : conversation));
+  };
+
+  const deleteConversation = (conversation: Conversation) => confirmAction(
+    'Delete this chat?',
+    `“${conversation.title}” and its messages will be removed from this device for this account.`,
+    () => {
+      const remaining = conversations.filter(item => item.id !== conversation.id);
+      setConversations(remaining);
+      if (activeConversationId === conversation.id) {
+        setActiveConversationId(remaining[0]?.id ?? null);
+        setDraft('');
+        setChatError(null);
+        setRetryMessage(null);
+      }
+    },
   );
 
   const startNewConversation = () => {
@@ -499,6 +523,8 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
   return (
     <View style={[styles.root, rootInsetsStyle]}>
       {wide && <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed(value => !value)}
         page={page}
         profilePictureUrl={profilePictureUrl}
         onNavigate={setPage}
@@ -506,6 +532,8 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
         newConversationDisabled={isSending}
         conversations={conversations}
         activeConversationId={activeConversationId}
+        onPinConversation={setConversationPinned}
+        onDeleteConversation={deleteConversation}
         onSelectConversation={id => {
           if (isSending) return;
           setActiveConversationId(id);
@@ -517,19 +545,21 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
       />}
       <View style={styles.main}>
         <View style={[styles.topbar, !wide && styles.mobileTopbar]}>
-          <View style={styles.brandMark}><Image source={teddyBudLogo} style={styles.brandLogo} accessibilityLabel="Teddy Bud" /></View>
-          <View style={styles.brandCopy}>
-            <Text style={styles.brandName}>Teddy Bud</Text>
-            {!wide && <Text style={styles.brandSub}>{title}</Text>}
-          </View>
+          {!wide && <>
+            <View style={styles.brandMark}><Image source={teddyBudLogo} style={styles.brandLogo} accessibilityLabel="Teddy Bud" /></View>
+            <View style={styles.brandCopy}>
+              <Text style={styles.brandName}>Teddy Bud</Text>
+              <Text style={styles.brandSub}>{title}</Text>
+            </View>
+          </>}
           {wide && <Text style={styles.topbarContext}>{title}</Text>}
-          <Pressable accessibilityRole="button" accessibilityLabel="Open privacy settings" onPress={() => setPage('privacy')} style={[styles.profileButton, styles.profileTextButton]}>
-            <Text style={styles.profileInitial}>Privacy</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open privacy settings" onPress={() => setPage('privacy')} style={[styles.profileButton, profilePictureUrl ? styles.profilePhotoButton : styles.profileTextButton]}>
+            {profilePictureUrl ? <ProfileAvatar uri={profilePictureUrl} /> : <Text style={styles.profileInitial}>Privacy</Text>}
           </Pressable>
         </View>
 
         <View style={styles.contentArea}>
-          {localDataError ? <LocalDataError error={localDataError} onRetry={retryLocalData} onClear={clearUnavailableLocalData} /> : !localDataReady ? <LocalDataLoading /> : <>
+          {localDataError ? <LocalDataError error={localDataError} onRetry={retryLocalData} onClear={clearUnavailableLocalData} /> : !localDataReady || localDataOwner !== owner ? <LocalDataLoading /> : <>
           {localDataSaveError && <LocalDataSaveWarning error={localDataSaveError} onRetry={retryLocalData} />}
           {page === 'chat' && <ChatPage wide={wide} messages={messages} conversationTitle={activeConversation?.title ?? 'A little room to breathe'} onOpenHistory={() => setPage('history')} onOpenCrisisResources={openCrisisResources} emergencyCallOption={emergencyCallOption} crisisHelplineOption={crisisHelplineOption} onCallEmergency={callEmergencyServices} onCallHelpline={callCrisisHelpline} onTextHelpline={textCrisisHelpline} onOpenHelplineWebsite={openHelplineWebsite} onSaveOccasion={fact => {
             const normalized = fact.trim().slice(0, 500);
@@ -596,32 +626,45 @@ function chatErrorMessage(error: unknown): string {
   return detail || 'The conversation service is unavailable right now.';
 }
 
-function ConversationHistoryList({ conversations, activeConversationId, disabled, onSelect }: {
+function ConversationHistoryList({ conversations, activeConversationId, disabled, onSelect, onPin, onDelete, collapsed = false }: {
   conversations: Conversation[];
   activeConversationId: string | null;
   disabled: boolean;
   onSelect: (id: string) => void;
+  onPin?: (id: string, pinned: boolean) => void;
+  onDelete?: (conversation: Conversation) => void;
+  collapsed?: boolean;
 }) {
-  return conversations.length ? conversations.map(conversation => {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const ordered = [...conversations].sort((a, b) => Number(b.pinned === true) - Number(a.pinned === true) || b.updatedAt.localeCompare(a.updatedAt));
+  return conversations.length ? ordered.map(conversation => {
     const latestMessage = conversation.messages[conversation.messages.length - 1];
-    return <Pressable
-      key={conversation.id}
+    return <View key={conversation.id} style={[styles.historyItemWrap, collapsed && styles.historyItemWrapCollapsed]}>
+    <View style={[styles.historyItem, conversation.id === activeConversationId && styles.historyItemSelected]}>
+    <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Open chat: ${conversation.title}`}
       accessibilityState={{ selected: conversation.id === activeConversationId }}
       disabled={disabled}
       onPress={() => onSelect(conversation.id)}
       style={({ pressed }) => [
-        styles.historyItem,
-        conversation.id === activeConversationId && styles.historyItemSelected,
+        styles.historyItemOpen,
+        collapsed && styles.historyItemOpenCollapsed,
         pressed && styles.pressed,
       ]}
     >
-      <View style={styles.historyItemCopy}>
-        <Text numberOfLines={1} style={styles.historyItemTitle}>{conversation.title}</Text>
-        <Text numberOfLines={1} style={styles.historyItemPreview}>{latestMessage?.text ?? 'No messages yet'}</Text>
+      <View style={[styles.historyItemCopy, collapsed && styles.historyItemCopyCollapsed]}>
+        <Text numberOfLines={1} style={[styles.historyItemTitle, collapsed && styles.historyItemTitleCollapsed]}>{collapsed ? conversation.title.slice(0, 1).toUpperCase() : `${conversation.pinned ? 'Pinned: ' : ''}${conversation.title}`}</Text>
+        {!collapsed && <Text numberOfLines={1} style={styles.historyItemPreview}>{latestMessage?.text ?? 'No messages yet'}</Text>}
       </View>
-    </Pressable>;
+    </Pressable>
+    {onPin && onDelete && !collapsed && <Pressable accessibilityRole="button" accessibilityLabel={`Chat options for ${conversation.title}`} accessibilityState={{ expanded: openMenuId === conversation.id }} onPress={() => setOpenMenuId(value => value === conversation.id ? null : conversation.id)} style={({ pressed }) => [styles.chatMenuTrigger, pressed && styles.pressed]}><Text style={styles.chatMenuDots}>•••</Text></Pressable>}
+    </View>
+    {openMenuId === conversation.id && onPin && onDelete && <View style={styles.chatActionMenu} accessibilityRole="menu">
+      <Pressable accessibilityRole="menuitem" onPress={() => { onPin(conversation.id, !conversation.pinned); setOpenMenuId(null); }} style={({ pressed }) => [styles.chatActionItem, pressed && styles.pressed]}><Text style={styles.chatActionText}>{conversation.pinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
+      <Pressable accessibilityRole="menuitem" onPress={() => { setOpenMenuId(null); onDelete(conversation); }} style={({ pressed }) => [styles.chatActionItem, styles.chatActionDelete, pressed && styles.pressed]}><Text style={[styles.chatActionText, styles.chatActionDeleteText]}>Delete chat</Text></Pressable>
+    </View>}
+    </View>;
   }) : <Text style={styles.historyEmpty}>Your chats will appear here as you talk with Teddy Bud.</Text>;
 }
 
@@ -649,7 +692,17 @@ function ChatHistoryPage({ conversations, activeConversationId, isSending, onBac
 }
 
 function LocalDataLoading() {
-  return <View style={styles.authScreen}><Text style={styles.authTitle}>Opening your saved space…</Text><Text style={styles.authBody}>Loading data stored on this device.</Text></View>;
+  return <View style={styles.localLoadingScreen} accessibilityRole="progressbar" accessibilityLabel="Loading your saved chats">
+    <Text style={styles.localLoadingTitle}>Opening your saved space…</Text>
+    <Text style={styles.localLoadingBody}>Loading data stored on this device.</Text>
+    <View style={styles.localLoadingColumn}>
+      <View style={styles.skeletonHeading} />
+      <View style={[styles.skeletonBubble, styles.skeletonBubbleWide]} />
+      <View style={[styles.skeletonBubble, styles.skeletonBubbleShort]} />
+      <View style={[styles.skeletonBubble, styles.skeletonBubbleRight]} />
+      <View style={styles.skeletonComposer} />
+    </View>
+  </View>;
 }
 
 function LocalDataSaveWarning({ error, onRetry }: { error: string; onRetry: () => void }) {
@@ -677,7 +730,9 @@ function confirmAction(title: string, message: string, onConfirm: () => void) {
   ]);
 }
 
-function Sidebar({ page, profilePictureUrl, onNavigate, onNewConversation, newConversationDisabled, conversations, activeConversationId, onSelectConversation }: {
+function Sidebar({ collapsed, onToggleCollapsed, page, profilePictureUrl, onNavigate, onNewConversation, newConversationDisabled, conversations, activeConversationId, onSelectConversation, onPinConversation, onDeleteConversation }: {
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
   page: Page;
   profilePictureUrl?: string;
   onNavigate: (page: Page) => void;
@@ -686,41 +741,100 @@ function Sidebar({ page, profilePictureUrl, onNavigate, onNewConversation, newCo
   conversations: Conversation[];
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
+  onPinConversation: (id: string, pinned: boolean) => void;
+  onDeleteConversation: (conversation: Conversation) => void;
 }) {
+  const sidebarWidth = useRef(new Animated.Value(collapsed ? 78 : 258)).current;
+  const sidebarPadding = sidebarWidth.interpolate({ inputRange: [78, 258], outputRange: [10, 18] });
+  const chevronProgress = useRef(new Animated.Value(collapsed ? 1 : 0)).current;
+  const chevronRotation = chevronProgress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+  const reduceMotion = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+      const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+      reduceMotion.current = preference.matches;
+      const updatePreference = (event: MediaQueryListEvent) => { reduceMotion.current = event.matches; };
+      preference.addEventListener('change', updatePreference);
+      return () => preference.removeEventListener('change', updatePreference);
+    }
+
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
+      if (mounted) reduceMotion.current = enabled;
+    }).catch(() => undefined);
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', enabled => {
+      reduceMotion.current = enabled;
+    });
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const width = collapsed ? 78 : 258;
+    if (reduceMotion.current) {
+      sidebarWidth.setValue(width);
+      chevronProgress.setValue(collapsed ? 1 : 0);
+      return;
+    }
+    Animated.timing(sidebarWidth, {
+      toValue: width,
+      duration: 360,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+    Animated.timing(chevronProgress, {
+      toValue: collapsed ? 1 : 0,
+      duration: 180,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [collapsed, sidebarWidth, chevronProgress]);
+
   return (
-    <View style={styles.sidebar}>
-      <View style={styles.sidebarBrand}>
-        <View style={styles.brandMark}><Image source={teddyBudLogo} style={styles.brandLogo} accessibilityLabel="Teddy Bud" /></View>
-        <View><Text style={styles.brandName}>Teddy Bud</Text><Text style={styles.sidebarCaption}>A little room to breathe</Text></View>
+    <Animated.View style={[styles.sidebar, { width: sidebarWidth, paddingHorizontal: sidebarPadding }]}>
+      <View style={[styles.sidebarBrand, collapsed && styles.sidebarBrandCollapsed]}>
+        <View style={[styles.sidebarIdentity, collapsed && styles.sidebarIdentityCollapsed]}>
+          <View style={styles.brandMark}><Image source={teddyBudLogo} style={styles.brandLogo} accessibilityLabel="Teddy Bud" /></View>
+          {!collapsed && <View><Text style={styles.brandName}>Teddy Bud</Text><Text style={styles.sidebarCaption}>A little room to breathe</Text></View>}
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} accessibilityHint={collapsed ? 'Show chat names and navigation labels' : 'Hide labels and keep the icon rail visible'} onPress={onToggleCollapsed} style={({ pressed }) => [styles.sidebarCollapseButton, collapsed && styles.sidebarCollapseButtonCollapsed, pressed && styles.pressed]}><Animated.Text style={[styles.sidebarCollapseGlyph, { transform: [{ rotate: chevronRotation }] }]}>‹</Animated.Text></Pressable>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Start a new chat" disabled={newConversationDisabled} onPress={onNewConversation} style={({ pressed }) => [styles.newChatButton, newConversationDisabled && styles.buttonDisabled, pressed && styles.pressed]}>
-        <Text style={styles.newChatLabel}>New chat</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Start a new chat" accessibilityHint={collapsed ? 'Start a new conversation' : undefined} disabled={newConversationDisabled} onPress={onNewConversation} style={({ pressed }) => [styles.newChatButton, collapsed && styles.newChatButtonCollapsed, newConversationDisabled && styles.buttonDisabled, pressed && styles.pressed]}>
+        <Text style={styles.newChatGlyph}>＋</Text>{!collapsed && <Text style={styles.newChatLabel}>New chat</Text>}
       </Pressable>
-      <Text style={styles.sidebarLabel}>YOUR SPACE</Text>
-      {navItems.map(item => <NavButton key={item.id} item={item} selected={item.id === page} onPress={() => onNavigate(item.id)} />)}
-      <Text style={styles.sidebarLabel}>CHATS</Text>
-      <ScrollView style={styles.sidebarChatList} keyboardShouldPersistTaps="handled">
+      {!collapsed && <Text style={styles.sidebarLabel}>YOUR SPACE</Text>}
+      {navItems.map(item => <NavButton key={item.id} item={item} selected={item.id === page} collapsed={collapsed} onPress={() => onNavigate(item.id)} />)}
+      {!collapsed && <Text style={styles.sidebarLabel}>CHATS</Text>}
+      <ScrollView style={[styles.sidebarChatList, collapsed && styles.sidebarChatListCollapsed]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={!collapsed} showsHorizontalScrollIndicator={false}>
         <ConversationHistoryList
           conversations={conversations}
           activeConversationId={activeConversationId}
           disabled={newConversationDisabled}
           onSelect={onSelectConversation}
+          onPin={onPinConversation}
+          onDelete={onDeleteConversation}
+          collapsed={collapsed}
         />
       </ScrollView>
       <View style={styles.sidebarBottom}>
         <View style={styles.sidebarRule} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Open privacy and settings" onPress={() => onNavigate('privacy')} style={({ pressed }) => [styles.accountCard, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open privacy and settings" accessibilityHint={collapsed ? 'Open privacy and settings' : undefined} onPress={() => onNavigate('privacy')} style={({ pressed }) => [styles.accountCard, collapsed && styles.accountCardCollapsed, pressed && styles.pressed]}>
           <ProfileAvatar uri={profilePictureUrl} />
-          <View style={styles.accountCopy}><Text style={styles.accountTitle}>Your private space</Text><Text style={styles.accountSubtitle}>Privacy & settings</Text></View>
-          <Text style={styles.accountArrow}>›</Text>
+          {!collapsed && <View style={styles.accountCopy}><Text style={styles.accountTitle}>Your private space</Text><Text style={styles.accountSubtitle}>Privacy & settings</Text></View>}
+          {!collapsed && <Text style={styles.accountArrow}>›</Text>}
         </Pressable>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 function ProfileAvatar({ uri }: { uri?: string }) {
   const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [uri]);
   return <View style={styles.accountAvatar}>
     {uri && !failed
       ? <Image source={{ uri }} style={styles.accountAvatarImage} accessibilityLabel="Google profile photo" onError={() => setFailed(true)} />
@@ -728,10 +842,10 @@ function ProfileAvatar({ uri }: { uri?: string }) {
   </View>;
 }
 
-function NavButton({ item, selected, onPress }: { item: (typeof navItems)[number]; selected: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.navButton, selected && styles.navButtonSelected, pressed && styles.pressed]}>
-    <Text style={[styles.navIcon, selected && styles.navIconSelected]}>{item.icon}</Text><Text style={[styles.navLabel, selected && styles.navLabelSelected]}>{item.label}</Text>
-    {selected && <View style={styles.navDot} />}
+function NavButton({ item, selected, onPress, collapsed = false }: { item: (typeof navItems)[number]; selected: boolean; onPress: () => void; collapsed?: boolean }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityHint={collapsed ? `Open ${item.label}` : undefined} accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.navButton, collapsed && styles.navButtonCollapsed, selected && styles.navButtonSelected, pressed && styles.pressed]}>
+    <Text style={[styles.navIcon, selected && styles.navIconSelected]}>{item.icon}</Text>{!collapsed && <Text style={[styles.navLabel, selected && styles.navLabelSelected]}>{item.label}</Text>}
+    {selected && !collapsed && <View style={styles.navDot} />}
   </Pressable>;
 }
 
@@ -878,8 +992,23 @@ function PaperPlaneIcon() {
 
 function TypingIndicator() {
   const dots = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
+  const [reduceMotion, setReduceMotion] = useState(true);
   useEffect(() => {
     if (Platform.OS === 'web') return;
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
+      if (mounted) setReduceMotion(enabled);
+    }).catch(() => {
+      if (mounted) setReduceMotion(false);
+    });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+  useEffect(() => {
+    if (Platform.OS === 'web' || reduceMotion) return;
     const animations = dots.map((dot, index) => Animated.loop(Animated.sequence([
       Animated.delay(index * 150),
       Animated.timing(dot, { toValue: 1, duration: 240, useNativeDriver: false }),
@@ -888,12 +1017,12 @@ function TypingIndicator() {
     ])));
     animations.forEach(animation => animation.start());
     return () => animations.forEach(animation => animation.stop());
-  }, [dots]);
+  }, [dots, reduceMotion]);
 
   return <View accessibilityRole="progressbar" accessibilityLabel="Teddy Bud is responding" accessibilityLiveRegion="polite" style={styles.typingIndicator}>
     {dots.map((dot, index) => Platform.OS === 'web'
       ? <View key={index} {...({ dataSet: { typingDot: 'true' } } as Record<string, unknown>)} style={styles.typingDot} />
-      : <Animated.View
+      : reduceMotion ? <View key={index} style={styles.typingDot} /> : <Animated.View
         key={index}
         style={[styles.typingDot, { transform: [{ translateY: dot.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) }] }]}
       />)}
@@ -968,40 +1097,51 @@ const styles = StyleSheet.create({
   authDivider: { color: C.muted, fontSize: 9, letterSpacing: 1.2, textAlign: 'center', marginVertical: 16 },
   authToggle: { alignSelf: 'center', minHeight: 38, justifyContent: 'center', marginTop: 8 },
   authToggleText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
-  authScreen: { flex: 1, backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center', padding: 24 }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 20 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#9A8E82', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 11, lineHeight: 16, textAlign: 'center' },
+  authScreen: { flex: 1, backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center', padding: 24 }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 20 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#9A8E82', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
   root: { flex: 1, flexDirection: 'row', backgroundColor: C.canvas }, main: { flex: 1, minWidth: 0 },
-  newChatButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
+  newChatButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatButtonCollapsed: { paddingHorizontal: 0, justifyContent: 'center' }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
   headerNewChat: { minHeight: 38, paddingHorizontal: 11, borderRadius: 13, backgroundColor: '#F1F1EE', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }, headerNewChatGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, headerNewChatLabel: { color: C.ink, fontSize: 11, fontWeight: '600' },
-  accountCard: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, borderRadius: 14 }, accountAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#E4DDD4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, accountAvatarImage: { width: 34, height: 34 }, accountAvatarText: { color: C.cocoaDark, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 }, accountCopy: { flex: 1 }, accountTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, accountSubtitle: { color: C.muted, fontSize: 10, marginTop: 3 }, accountArrow: { color: '#938A80', fontSize: 22 },
-  sidebar: { width: 258, backgroundColor: '#F3F2EF', borderRightWidth: 1, borderRightColor: '#E9E8E4', paddingHorizontal: 18, paddingTop: 24, paddingBottom: 16 },
-  sidebarBrand: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 24 }, brandMark: { width: 42, height: 42, borderRadius: 15, backgroundColor: C.cocoa, justifyContent: 'center', alignItems: 'center' }, brandLogo: { width: 42, height: 42, borderRadius: 15 }, brandMarkText: { color: '#FFF9F3', fontSize: 18, fontWeight: '700', letterSpacing: -1 }, brandCopy: { justifyContent: 'center' }, brandName: { color: C.ink, fontSize: 16, letterSpacing: -0.4, fontWeight: '700' }, sidebarCaption: { color: C.muted, fontSize: 11, marginTop: 2 }, sidebarLabel: { color: '#96948D', fontSize: 9, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginLeft: 12 },
-  navButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 11 }, navButtonSelected: { backgroundColor: '#E7E5E0' }, navIcon: { width: 22, textAlign: 'center', fontSize: 19, color: '#887C71' }, navIconSelected: { color: C.cocoa }, navLabel: { color: '#756A60', fontSize: 13, fontWeight: '500', flex: 1 }, navLabelSelected: { color: C.cocoaDark, fontWeight: '700' }, navDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.cocoa },
+  accountCard: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, borderRadius: 14 }, accountCardCollapsed: { justifyContent: 'center', paddingHorizontal: 0 }, accountAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#E4DDD4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, accountAvatarImage: { width: 34, height: 34 }, accountAvatarText: { color: C.cocoaDark, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 }, accountCopy: { flex: 1 }, accountTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, accountSubtitle: { color: C.muted, fontSize: 11, marginTop: 3 }, accountArrow: { color: '#938A80', fontSize: 22 },
+  sidebar: { width: 258, minWidth: 0, flexShrink: 0, overflow: 'hidden', backgroundColor: '#F3F2EF', borderRightWidth: 1, borderRightColor: '#E9E8E4', paddingHorizontal: 18, paddingTop: 24, paddingBottom: 16 }, sidebarCollapseButton: { width: 34, height: 34, borderRadius: 11, marginLeft: 'auto', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAE8E3' }, sidebarCollapseButtonCollapsed: { marginLeft: 0 }, sidebarCollapseGlyph: { color: C.cocoa, fontSize: 23, lineHeight: 25, fontWeight: '500' },
+  sidebarBrand: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 24, minWidth: 0 }, sidebarBrandCollapsed: { flexDirection: 'column', gap: 10, marginBottom: 20, width: '100%' }, sidebarIdentity: { flexDirection: 'row', alignItems: 'center', gap: 11, flex: 1, minWidth: 0 }, sidebarIdentityCollapsed: { flex: 0 }, brandMark: { width: 42, height: 42, borderRadius: 15, backgroundColor: C.cocoa, justifyContent: 'center', alignItems: 'center' }, brandLogo: { width: 42, height: 42, borderRadius: 15 }, brandMarkText: { color: '#FFF9F3', fontSize: 18, fontWeight: '700', letterSpacing: -1 }, brandCopy: { justifyContent: 'center' }, brandName: { color: C.ink, fontSize: 16, letterSpacing: -0.4, fontWeight: '700' }, sidebarCaption: { color: C.muted, fontSize: 12, marginTop: 2 }, sidebarLabel: { color: '#96948D', fontSize: 10, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginLeft: 12 },
+  navButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 11, minWidth: 0 }, navButtonCollapsed: { justifyContent: 'center', paddingHorizontal: 0 }, navButtonSelected: { backgroundColor: '#E7E5E0' }, navIcon: { width: 22, textAlign: 'center', fontSize: 19, color: '#887C71' }, navIconSelected: { color: C.cocoa }, navLabel: { color: '#756A60', fontSize: 13, fontWeight: '500', flex: 1 }, navLabelSelected: { color: C.cocoaDark, fontWeight: '700' }, navDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.cocoa },
   sidebarBottom: { marginTop: 'auto' }, sidebarRule: { height: 1, backgroundColor: '#E2D9CD', marginBottom: 20 }, localNoteIcon: { width: 32, height: 32, backgroundColor: '#E7E5E0', borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }, localNoteGlyph: { color: C.cocoa, fontSize: 17 }, localNoteTitle: { color: C.ink, fontSize: 12, fontWeight: '700', marginBottom: 5 }, localNoteBody: { color: C.muted, fontSize: 11, lineHeight: 17 },
   topbar: { height: 66, borderBottomWidth: 1, borderBottomColor: '#ECEBE7', paddingHorizontal: 28, flexDirection: 'row', alignItems: 'center', backgroundColor: C.paper }, mobileTopbar: { height: 64, paddingHorizontal: 18 }, topbarContext: { marginLeft: 28, paddingLeft: 28, borderLeftWidth: 1, borderLeftColor: C.line, color: C.muted, fontSize: 13, flex: 1 }, profileButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' }, profileInitial: { color: C.cocoaDark, fontSize: 13, fontWeight: '700' }, brandSub: { color: C.muted, fontSize: 11, marginTop: 2 },
   contentArea: { flex: 1, minHeight: 0 }, chatPage: { flex: 1 }, chatHeader: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, chatHeaderWide: { paddingHorizontal: 48, paddingTop: 20, paddingBottom: 14 }, chatHeaderCopy: { flex: 1 }, chatSubtitle: { color: C.muted, fontSize: 12, marginTop: 6 }, privatePill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#E6E5E1', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: C.paper }, privateDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#7A9875' }, privateLabel: { color: C.green, fontSize: 10, fontWeight: '600' }, eyebrow: { color: C.cocoa, fontSize: 9, letterSpacing: 1.7, fontWeight: '700', marginBottom: 7 }, pageTitle: { color: C.ink, fontSize: 22, fontWeight: '600', letterSpacing: -0.55 }, headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },   servicePill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, serviceDot: { width: 6, height: 6, backgroundColor: '#BC9E79', borderRadius: 4 }, serviceText: { color: C.muted, fontSize: 10, fontWeight: '600' }, moreButton: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line }, moreGlyph: { color: C.muted, fontSize: 20, lineHeight: 23, marginTop: -10 }, historyGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 },
   chatScroll: { flex: 1 }, chatContent: { paddingHorizontal: 20, paddingBottom: 26, flexGrow: 1 }, chatContentWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64 }, emptyContent: { justifyContent: 'center' }, emptyState: { width: '100%', maxWidth: 720, alignSelf: 'center', alignItems: 'center', paddingTop: 14, paddingBottom: 20 }, emptyHeroMark: { width: 58, height: 58, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: C.cocoa, shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 }, emptyHeroLogo: { width: 58, height: 58, borderRadius: 20 }, emptyGreeting: { color: C.ink, fontSize: 30, lineHeight: 38, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, emptyDescription: { maxWidth: 440, color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 9, marginBottom: 28 }, starterGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }, starterCard: { width: '31.8%', minWidth: 175, minHeight: 92, borderRadius: 18, borderWidth: 1, borderColor: '#E7E4DE', backgroundColor: '#FFFFFF', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#302821', shadowOpacity: 0.025, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, starterCardMobile: { width: '48%', minWidth: 120, minHeight: 78, padding: 10, gap: 7 }, starterCardPressed: { backgroundColor: '#F8F6F2', borderColor: '#D4C8BA' }, starterIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F3F0EB', alignItems: 'center', justifyContent: 'center' }, starterIconText: { color: C.cocoa, fontSize: 17 }, starterCopy: { flex: 1 }, starterTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, starterDescription: { color: C.muted, fontSize: 10, lineHeight: 14, marginTop: 4 }, starterArrow: { color: '#A69A8E', fontSize: 13, alignSelf: 'flex-start' }, conversationColumn: { width: '100%', maxWidth: 760, alignSelf: 'center' }, dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 10, marginBottom: 24 }, dividerLine: { height: 1, backgroundColor: C.line, flex: 1 }, dayText: { color: '#A2968A', fontSize: 9, letterSpacing: 1.5, fontWeight: '700' }, welcomeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }, teddyAvatar: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center' }, teddyAvatarText: { color: '#FFF9F3', fontSize: 12, fontWeight: '700', letterSpacing: -0.4 }, welcomeBubble: { backgroundColor: C.paper, borderWidth: 1, borderColor: '#E9E0D5', borderRadius: 5, borderTopRightRadius: 22, borderBottomRightRadius: 22, borderBottomLeftRadius: 22, paddingHorizontal: 20, paddingVertical: 18, maxWidth: 640, flex: 1, shadowColor: '#60432F', shadowOpacity: 0.035, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 1 }, messageMeta: { color: '#A2968A', fontSize: 8, letterSpacing: 1.25, fontWeight: '700', marginBottom: 9 }, welcomeText: { color: C.ink, fontSize: 16, lineHeight: 25, letterSpacing: -0.1 }, welcomeHint: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 6 },
   connectCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2ECE3', borderRadius: 16, padding: 14, marginTop: 22, marginLeft: 44, gap: 12, maxWidth: 555 }, connectIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center' }, connectIconText: { color: C.cocoa, fontSize: 17 }, connectCopy: { flex: 1 }, connectTitle: { fontSize: 12, fontWeight: '700', color: C.ink, marginBottom: 4 }, connectBody: { fontSize: 11, color: C.muted, lineHeight: 16 }, connectArrow: { color: C.cocoa, fontSize: 24 }, promptWrap: { marginTop: 22, marginLeft: 44 }, promptHeading: { color: '#796D62', fontSize: 11, fontWeight: '600', marginBottom: 10, marginLeft: 2 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, promptChip: { borderWidth: 1, borderColor: '#E3D9CD', backgroundColor: '#FBF8F3', borderRadius: 18, paddingHorizontal: 14, minHeight: 38, justifyContent: 'center' }, promptChipText: { color: C.cocoaDark, fontSize: 11, fontWeight: '500' },
   messageRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end', marginTop: 14 }, messageRowYou: { justifyContent: 'flex-end' }, teddyAvatarSmall: { width: 27, height: 27, borderRadius: 10, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center' }, messageBubble: { maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 }, teddyBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: C.cocoa, borderBottomRightRadius: 4 }, messageText: { color: C.ink, fontSize: 14, lineHeight: 21 }, userMessageText: { color: C.white }, messageTime: { color: C.muted, fontSize: 9, textAlign: 'right', marginTop: 5 }, userMessageTime: { color: '#E8D9CC' }, sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, marginBottom: 8 }, typingBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }, typingText: { color: C.muted, fontSize: 12, fontWeight: '600' }, errorBanner: { backgroundColor: '#FCE9E3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 }, errorText: { color: '#8D473F', fontSize: 11, lineHeight: 16 }, retryButton: { alignSelf: 'flex-start', marginTop: 8, minHeight: 30, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#FFFFFF' }, retryButtonText: { color: '#8D473F', fontSize: 11, fontWeight: '700' },
-  composerWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 68, maxWidth: 760, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 9, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDDCD6', borderRadius: 24, paddingHorizontal: 11, paddingVertical: 8, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerCardFocused: { borderColor: '#B49A83', shadowColor: C.cocoa, shadowOpacity: 0.14, shadowRadius: 17, shadowOffset: { width: 0, height: 0 }, elevation: 3 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, maxWidth: 760, alignSelf: 'center', width: '100%', marginBottom: 7 }, chatToolButton: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', paddingHorizontal: 10 }, chatToolIcon: { color: C.cocoa, fontSize: 13 }, chatToolLabel: { color: C.cocoaDark, fontSize: 10, fontWeight: '600' }, toolIconButton: { width: 31, height: 31, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { flex: 1, minWidth: 0, color: C.ink, fontSize: 14, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 7, maxHeight: 110, minHeight: 46 }, sendButton: { flexShrink: 0, width: 46, height: 46, borderRadius: 17, backgroundColor: '#B9A797', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: C.cocoa }, sendButtonDisabled: { opacity: 0.72 }, sendArrow: { color: C.white, fontSize: 24, lineHeight: 28, fontWeight: '700', includeFontPadding: false }, composerFootnote: { color: '#9A8E82', fontSize: 9, textAlign: 'center', marginTop: 8, lineHeight: 14 },
-  bottomNav: { height: 62, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }, bottomNavItem: { flex: 1, height: 54, alignItems: 'center', justifyContent: 'center', gap: 2 }, bottomIcon: { fontSize: 19, color: '#9B9085', lineHeight: 22 }, bottomIconActive: { color: C.cocoa }, bottomLabel: { fontSize: 9, color: '#93877C', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' },
-  pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#8E8175', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#9B9085', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#8A7D70', fontSize: 17 }, deleteGlyph: { color: '#A17C70', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 10, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
-  privacyBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: C.greenLight, borderRadius: 16, marginBottom: 27 }, privacyShield: { width: 35, height: 35, backgroundColor: '#D7E3D4', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, shieldGlyph: { color: C.green, fontSize: 19 }, privacyCopy: { flex: 1 }, privacyTitle: { color: '#435943', fontSize: 13, fontWeight: '700', marginBottom: 5 }, privacyBody: { color: '#65745F', fontSize: 11, lineHeight: 17 }, settingsSectionLabel: { color: '#8E8175', fontSize: 10, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginTop: 3 }, settingsCard: { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, paddingHorizontal: 15, marginBottom: 23 }, settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 }, settingIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' }, settingGlyph: { color: C.cocoa, fontSize: 15 }, settingText: { flex: 1 }, settingTitle: { color: C.ink, fontSize: 12, fontWeight: '700', lineHeight: 17 }, settingDescription: { color: C.muted, fontSize: 10, lineHeight: 15, marginTop: 3 }, switchTrack: { width: 42, height: 25, borderRadius: 14, backgroundColor: '#DED8D0', padding: 3, justifyContent: 'center' }, switchOn: { backgroundColor: C.cocoa }, switchThumb: { width: 19, height: 19, borderRadius: 10, backgroundColor: C.white }, switchThumbOn: { alignSelf: 'flex-end' }, settingSeparator: { height: 1, backgroundColor: C.line, marginLeft: 44 }, gatewaySection: { borderRadius: 18 }, gatewaySectionFocused: { borderWidth: 1, borderColor: '#D6BAA5', padding: 10, marginHorizontal: -10, marginBottom: 14, backgroundColor: '#F8F0E8' }, gatewayIntro: { flexDirection: 'row', gap: 11, paddingTop: 16, paddingBottom: 14 }, gatewayIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, gatewayGlyph: { color: C.cocoa, fontSize: 16 }, inputLabel: { color: '#93877C', fontSize: 9, letterSpacing: 1.1, fontWeight: '700', marginBottom: 7 }, gatewayInput: { height: 45, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 12 }, gatewayActions: { paddingTop: 11, paddingBottom: 15, gap: 9 }, connectionStatus: { color: C.muted, fontSize: 10, lineHeight: 15 }, connectionReady: { color: C.green }, connectionError: { color: C.rose }, clearRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15 }, clearIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#F8EAE5', alignItems: 'center', justifyContent: 'center' }, clearGlyph: { color: C.rose, fontSize: 16 }, clearButton: { minHeight: 36, minWidth: 54, borderRadius: 11, borderWidth: 1, borderColor: '#E7D8D2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 }, clearButtonText: { color: C.rose, fontSize: 11, fontWeight: '700' }, versionText: { textAlign: 'center', color: '#A79B8F', fontSize: 8, letterSpacing: 1.4, marginTop: 2, marginBottom: 16 },
+  composerWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 68, maxWidth: 760, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 9, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDDCD6', borderRadius: 24, paddingHorizontal: 11, paddingVertical: 8, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerCardFocused: { borderColor: '#B49A83', shadowColor: C.cocoa, shadowOpacity: 0.14, shadowRadius: 17, shadowOffset: { width: 0, height: 0 }, elevation: 3 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, maxWidth: 760, alignSelf: 'center', width: '100%', marginBottom: 7 }, chatToolButton: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', paddingHorizontal: 10 }, chatToolIcon: { color: C.cocoa, fontSize: 13 }, chatToolLabel: { color: C.cocoaDark, fontSize: 10, fontWeight: '600' }, toolIconButton: { width: 31, height: 31, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { flex: 1, minWidth: 0, color: C.ink, fontSize: 14, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 7, maxHeight: 110, minHeight: 46 }, sendButton: { flexShrink: 0, width: 46, height: 46, borderRadius: 17, backgroundColor: '#B9A797', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: C.cocoa }, sendButtonDisabled: { opacity: 0.72 }, sendArrow: { color: C.white, fontSize: 24, lineHeight: 28, fontWeight: '700', includeFontPadding: false }, composerFootnote: { color: '#9A8E82', fontSize: 11, textAlign: 'center', marginTop: 8, lineHeight: 14 },
+  bottomNav: { height: 62, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }, bottomNavItem: { flex: 1, height: 54, alignItems: 'center', justifyContent: 'center', gap: 2 }, bottomIcon: { fontSize: 19, color: '#9B9085', lineHeight: 22 }, bottomIconActive: { color: C.cocoa }, bottomLabel: { fontSize: 11, color: '#93877C', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' },
+  pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#8E8175', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#9B9085', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#8A7D70', fontSize: 17 }, deleteGlyph: { color: '#A17C70', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
+  privacyBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: C.greenLight, borderRadius: 16, marginBottom: 27 }, privacyShield: { width: 35, height: 35, backgroundColor: '#D7E3D4', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, shieldGlyph: { color: C.green, fontSize: 19 }, privacyCopy: { flex: 1 }, privacyTitle: { color: '#435943', fontSize: 13, fontWeight: '700', marginBottom: 5 }, privacyBody: { color: '#65745F', fontSize: 12, lineHeight: 17 }, settingsSectionLabel: { color: '#8E8175', fontSize: 11, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginTop: 3 }, settingsCard: { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, paddingHorizontal: 15, marginBottom: 23 }, settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 }, settingIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' }, settingGlyph: { color: C.cocoa, fontSize: 15 }, settingText: { flex: 1 }, settingTitle: { color: C.ink, fontSize: 12, fontWeight: '700', lineHeight: 17 }, settingDescription: { color: C.muted, fontSize: 12, lineHeight: 15, marginTop: 3 }, switchTrack: { width: 42, height: 25, borderRadius: 14, backgroundColor: '#DED8D0', padding: 3, justifyContent: 'center' }, switchOn: { backgroundColor: C.cocoa }, switchThumb: { width: 19, height: 19, borderRadius: 10, backgroundColor: C.white }, switchThumbOn: { alignSelf: 'flex-end' }, settingSeparator: { height: 1, backgroundColor: C.line, marginLeft: 44 }, gatewaySection: { borderRadius: 18 }, gatewaySectionFocused: { borderWidth: 1, borderColor: '#D6BAA5', padding: 10, marginHorizontal: -10, marginBottom: 14, backgroundColor: '#F8F0E8' }, gatewayIntro: { flexDirection: 'row', gap: 11, paddingTop: 16, paddingBottom: 14 }, gatewayIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, gatewayGlyph: { color: C.cocoa, fontSize: 16 }, inputLabel: { color: '#93877C', fontSize: 11, letterSpacing: 1.1, fontWeight: '700', marginBottom: 7 }, gatewayInput: { height: 45, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 12 }, gatewayActions: { paddingTop: 11, paddingBottom: 15, gap: 9 }, connectionStatus: { color: C.muted, fontSize: 11, lineHeight: 15 }, connectionReady: { color: C.green }, connectionError: { color: C.rose }, clearRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15 }, clearIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#F8EAE5', alignItems: 'center', justifyContent: 'center' }, clearGlyph: { color: C.rose, fontSize: 16 }, clearButton: { minHeight: 36, minWidth: 54, borderRadius: 11, borderWidth: 1, borderColor: '#E7D8D2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 }, clearButtonText: { color: C.rose, fontSize: 11, fontWeight: '700' }, versionText: { textAlign: 'center', color: '#A79B8F', fontSize: 10, letterSpacing: 1.4, marginTop: 2, marginBottom: 16 },
   button: { minHeight: 42, backgroundColor: C.cocoa, borderRadius: 13, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 17 }, buttonQuiet: { backgroundColor: '#F2ECE4' }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: C.white, fontSize: 11, fontWeight: '700' }, buttonTextQuiet: { color: C.cocoaDark }, pressed: { opacity: 0.75 }, disabledText: { color: '#A79B8F' },
-  sidebarChatList: { flex: 1, minHeight: 80, marginHorizontal: -5 },
+  localLoadingScreen: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: C.canvas },
+  localLoadingTitle: { color: C.ink, fontSize: 21, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
+  localLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: 8 },
+  localLoadingColumn: { width: '100%', maxWidth: 560, marginTop: 28, gap: 12 },
+  skeletonHeading: { width: 110, height: 11, borderRadius: 6, backgroundColor: '#EAE8E3', marginBottom: 4 },
+  skeletonBubble: { height: 42, borderRadius: 15, backgroundColor: '#EEECE7' },
+  skeletonBubbleWide: { width: '72%' },
+  skeletonBubbleShort: { width: '54%' },
+  skeletonBubbleRight: { width: '60%', alignSelf: 'flex-end', backgroundColor: '#E9E3DC' },
+  skeletonComposer: { height: 54, borderRadius: 18, borderWidth: 1, borderColor: '#E8E5DF', backgroundColor: C.paper, marginTop: 16 },
+  profilePhotoButton: { backgroundColor: 'transparent', borderRadius: 20, overflow: 'hidden' },
+  sidebarChatList: { flex: 1, flexShrink: 1, minWidth: 0, width: '100%', minHeight: 80, marginHorizontal: -5 }, sidebarChatListCollapsed: { marginHorizontal: 0 },
   crisisSupport: { backgroundColor: '#F8EAE5', borderColor: '#E6C6B9', borderWidth: 1, borderRadius: 15, padding: 15, marginTop: 14 }, widgetDismiss: { alignSelf: 'flex-end', minHeight: 30, justifyContent: 'center', paddingHorizontal: 8 }, widgetDismissText: { color: '#70483F', fontSize: 10, fontWeight: '700' },
   crisisSupportTitle: { color: '#70483F', fontSize: 13, fontWeight: '700', marginBottom: 7 },
-  crisisSupportBody: { color: '#704F46', fontSize: 11, lineHeight: 17 },
+  crisisSupportBody: { color: '#704F46', fontSize: 12, lineHeight: 17 },
   crisisCallLink: { alignSelf: 'flex-start', minHeight: 42, justifyContent: 'center', marginTop: 7, paddingHorizontal: 13, borderRadius: 12, backgroundColor: '#70483F' },
   crisisCallLinkText: { color: C.white, fontSize: 12, fontWeight: '700' },
   crisisHelplineTitle: { color: '#70483F', fontSize: 11, fontWeight: '700', marginTop: 11 },
   crisisHelplineActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   crisisSupportLink: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', marginTop: 6, paddingVertical: 4 },
   crisisSupportLinkText: { color: '#70483F', fontSize: 11, fontWeight: '700', textDecorationLine: 'underline' },
-  crisisSupportFootnote: { color: '#846D65', fontSize: 9, lineHeight: 14, marginTop: 2 },
-  memorySuggestionCard: { alignSelf: 'flex-start', maxWidth: '82%', backgroundColor: '#F1E9DE', borderColor: '#E5D8C6', borderWidth: 1, borderRadius: 15, padding: 13, marginTop: 9, marginLeft: 35 }, occasionWidget: { alignSelf: 'center', width: '100%', maxWidth: 650, backgroundColor: '#F1E9DE', borderColor: '#E5D8C6', borderWidth: 1, borderRadius: 16, padding: 14, marginTop: 12 }, occasionTitle: { color: C.cocoaDark, fontSize: 13, fontWeight: '700' }, occasionDescription: { color: C.muted, fontSize: 10, lineHeight: 15, marginTop: 5 }, occasionInput: { minHeight: 76, maxHeight: 140, borderWidth: 1, borderColor: '#E4D8C9', borderRadius: 12, backgroundColor: C.paper, color: C.ink, fontSize: 12, lineHeight: 17, padding: 10, marginTop: 10 }, occasionPrivacy: { color: C.muted, fontSize: 9, lineHeight: 14, marginTop: 6 },
+  crisisSupportFootnote: { color: '#846D65', fontSize: 10, lineHeight: 14, marginTop: 2 },
+  memorySuggestionCard: { alignSelf: 'flex-start', maxWidth: '82%', backgroundColor: '#F1E9DE', borderColor: '#E5D8C6', borderWidth: 1, borderRadius: 15, padding: 13, marginTop: 9, marginLeft: 35 }, occasionWidget: { alignSelf: 'center', width: '100%', maxWidth: 650, backgroundColor: '#F1E9DE', borderColor: '#E5D8C6', borderWidth: 1, borderRadius: 16, padding: 14, marginTop: 12 }, occasionTitle: { color: C.cocoaDark, fontSize: 13, fontWeight: '700' }, occasionDescription: { color: C.muted, fontSize: 11, lineHeight: 15, marginTop: 5 }, occasionInput: { minHeight: 76, maxHeight: 140, borderWidth: 1, borderColor: '#E4D8C9', borderRadius: 12, backgroundColor: C.paper, color: C.ink, fontSize: 12, lineHeight: 17, padding: 10, marginTop: 10 }, occasionPrivacy: { color: C.muted, fontSize: 11, lineHeight: 14, marginTop: 6 },
   memorySuggestionTitle: { color: C.cocoaDark, fontSize: 12, lineHeight: 17, fontWeight: '700' },
   memorySuggestionFact: { color: C.ink, fontSize: 13, lineHeight: 19, fontWeight: '600', marginTop: 7 },
-  memorySuggestionBody: { color: C.muted, fontSize: 10, lineHeight: 15, marginTop: 7 },
+  memorySuggestionBody: { color: C.muted, fontSize: 11, lineHeight: 15, marginTop: 7 },
   memorySuggestionActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 11 },
   mobileHistoryPage: { flex: 1, paddingHorizontal: 20, paddingTop: 26, paddingBottom: 20 },
   historyPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20 },
@@ -1013,7 +1153,7 @@ const styles = StyleSheet.create({
   memoryActionText: { color: '#76695E', fontSize: 10, fontWeight: '600' },
   typingIndicator: { minWidth: 48, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 12 },
   typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.muted },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(45, 36, 29, 0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 }, modalCard: { width: '100%', maxWidth: 460, backgroundColor: C.paper, borderRadius: 22, padding: 22 }, modalTopline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }, modalIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, modalIconText: { color: C.cocoa, fontSize: 18 }, closeButton: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.paperAlt }, closeText: { color: C.muted, fontSize: 22, lineHeight: 24 }, modalTitle: { color: C.ink, fontWeight: '700', fontSize: 20, letterSpacing: -0.4 }, modalBody: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 7, marginBottom: 16 }, memoryInput: { minHeight: 100, maxHeight: 180, backgroundColor: '#F9F6F1', borderColor: C.line, borderWidth: 1, borderRadius: 14, padding: 13, color: C.ink, fontSize: 13, lineHeight: 19 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 17 }, suggestedFact: { color: C.ink, fontSize: 15, lineHeight: 22, fontWeight: '600', backgroundColor: '#F9F6F1', borderRadius: 14, padding: 13, marginTop: 12 }, historyCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: C.paper, borderRadius: 22, padding: 22 }, historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 }, historyList: { maxHeight: 430, marginTop: 14 }, historyItem: { minHeight: 65, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 13, borderWidth: 1, borderColor: C.line, marginBottom: 8 }, historyItemSelected: { backgroundColor: C.peachLight, borderColor: C.peach }, historyItemCopy: { flex: 1, minWidth: 0 }, historyItemTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, historyItemPreview: { color: C.muted, fontSize: 11, marginTop: 5 }, historyItemDate: { color: C.muted, fontSize: 10 }, historyEmpty: { textAlign: 'center', color: C.muted, fontSize: 12, lineHeight: 19, padding: 20 }, memorySuggestionError: { color: C.rose, fontSize: 11, lineHeight: 16, paddingHorizontal: 8, paddingVertical: 8 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(45, 36, 29, 0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 }, modalCard: { width: '100%', maxWidth: 460, backgroundColor: C.paper, borderRadius: 22, padding: 22 }, modalTopline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }, modalIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, modalIconText: { color: C.cocoa, fontSize: 18 }, closeButton: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.paperAlt }, closeText: { color: C.muted, fontSize: 22, lineHeight: 24 }, modalTitle: { color: C.ink, fontWeight: '700', fontSize: 20, letterSpacing: -0.4 }, modalBody: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 7, marginBottom: 16 }, memoryInput: { minHeight: 100, maxHeight: 180, backgroundColor: '#F9F6F1', borderColor: C.line, borderWidth: 1, borderRadius: 14, padding: 13, color: C.ink, fontSize: 13, lineHeight: 19 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 17 }, suggestedFact: { color: C.ink, fontSize: 15, lineHeight: 22, fontWeight: '600', backgroundColor: '#F9F6F1', borderRadius: 14, padding: 13, marginTop: 12 }, historyCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: C.paper, borderRadius: 22, padding: 22 }, historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 }, historyList: { maxHeight: 430, marginTop: 14 }, historyItemWrap: { position: 'relative', width: '100%', minWidth: 0, marginBottom: 6 }, historyItemWrapCollapsed: { alignItems: 'center' }, historyItem: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 3, paddingHorizontal: 4, paddingVertical: 4, borderRadius: 13, borderWidth: 1, borderColor: 'transparent' }, historyItemOpen: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, borderRadius: 10 }, historyItemOpenCollapsed: { flex: 0, width: 42, justifyContent: 'center', paddingHorizontal: 0 }, historyItemSelected: { backgroundColor: C.peachLight, borderColor: C.peach }, chatMenuTrigger: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, chatMenuTriggerOpen: { backgroundColor: '#E9E3DC' }, chatMenuDots: { color: C.muted, fontSize: 16, fontWeight: '700', letterSpacing: 1 }, chatActionMenu: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 12, padding: 5, marginHorizontal: 5, marginTop: -1, shadowColor: '#302821', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, chatActionItem: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8 }, chatActionText: { color: C.ink, fontSize: 12, fontWeight: '500' }, chatActionDelete: { backgroundColor: '#FCF5F2' }, chatActionDeleteText: { color: C.rose }, historyItemCopy: { flex: 1, minWidth: 0 }, historyItemCopyCollapsed: { flex: 0, alignItems: 'center' }, historyItemTitleCollapsed: { minWidth: 22, textAlign: 'center', fontSize: 12 }, historyItemTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, historyItemPreview: { color: C.muted, fontSize: 11, marginTop: 5 }, historyItemDate: { color: C.muted, fontSize: 11 }, historyEmpty: { textAlign: 'center', color: C.muted, fontSize: 12, lineHeight: 19, padding: 20 }, memorySuggestionError: { color: C.rose, fontSize: 11, lineHeight: 16, paddingHorizontal: 8, paddingVertical: 8 },
 });
 
 export default App;
