@@ -21,6 +21,8 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 
 test('chat composer sends on Enter and keeps the send button available after a failed message', async () => {
   const onSend = jest.fn();
+  const onOpenHistory = jest.fn();
+  const onNewConversation = jest.fn();
   const noop = jest.fn();
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
@@ -28,22 +30,21 @@ test('chat composer sends on Enter and keeps the send button available after a f
       <ChatPage
         wide={false}
         messages={[]}
+        conversationTitle="A little room to breathe"
+        onOpenHistory={onOpenHistory}
+        memorySuggestionError={null}
         draft="A new message"
         setDraft={noop}
         onSend={onSend}
+        onNewConversation={onNewConversation}
         onRetry={noop}
         retryPending
         onClear={noop}
-        onNewConversation={noop}
         isSending={false}
         chatError="The earlier message failed."
         imageAttached={false}
         onAttachImage={noop}
         onRemoveImage={noop}
-        enableWebBrowsing={false}
-        setEnableWebBrowsing={noop}
-        codingMode={false}
-        setCodingMode={noop}
       />,
     );
   });
@@ -64,4 +65,18 @@ test('chat composer sends on Enter and keeps the send button available after a f
   });
   expect(onSend).toHaveBeenCalledTimes(2);
   expect(onSend).toHaveBeenLastCalledWith();
+
+  const historyButton = renderer.root.findByProps({ accessibilityLabel: 'View chats' });
+  await ReactTestRenderer.act(async () => {
+    historyButton.props.onPress();
+  });
+  expect(onOpenHistory).toHaveBeenCalledTimes(1);
+
+  const newChatButton = renderer.root.findByProps({ accessibilityLabel: 'Start a new chat' });
+  await ReactTestRenderer.act(async () => {
+    newChatButton.props.onPress();
+  });
+  expect(onNewConversation).toHaveBeenCalledTimes(1);
+  expect(renderer.root.findAllByProps({ accessibilityRole: 'switch' })).toHaveLength(0);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Attach an image' })).toBeDefined();
 });

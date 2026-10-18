@@ -8,6 +8,14 @@ export type LocalMessage = {
   time: string;
 };
 
+export type LocalConversation = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: LocalMessage[];
+};
+
 export type LocalMemory = {
   id: number;
   text: string;
@@ -15,15 +23,14 @@ export type LocalMemory = {
 };
 
 export type LocalAppData = {
-  messages: LocalMessage[];
+  conversations: LocalConversation[];
+  activeConversationId: string | null;
   memories: LocalMemory[];
   rememberInSession: boolean;
   shareMemories: boolean;
 };
 
 const DATA_KEY_PREFIX = 'teddy-bud:local-data:';
-const MAX_MESSAGES = 200;
-const MAX_MEMORIES = 50;
 const MAX_MEMORY_LENGTH = 500;
 
 let storagePromise: Promise<LocalStore> | null = null;
@@ -60,16 +67,55 @@ function normalize(value: unknown): LocalAppData {
   if (!value || typeof value !== 'object') throw new Error('Saved app data is invalid.');
   const data = value as Partial<LocalAppData>;
   const rememberInSession = data.rememberInSession !== false;
+  const legacyMessages = Array.isArray((value as { messages?: unknown }).messages)
+    ? (value as { messages: unknown[] }).messages.filter(isLocalMessage)
+    : [];
+  const conversations = Array.isArray(data.conversations)
+    ? data.conversations.flatMap(conversation => {
+      if (
+        !conversation
+        || typeof conversation.id !== 'string'
+        || typeof conversation.title !== 'string'
+        || typeof conversation.createdAt !== 'string'
+        || typeof conversation.updatedAt !== 'string'
+        || !Array.isArray(conversation.messages)
+      ) return [];
+      return [{
+        ...conversation,
+        messages: conversation.messages.filter(isLocalMessage),
+      }];
+    })
+    : legacyMessages.length
+      ? [{
+        id: 'legacy-conversation',
+        title: legacyMessages.find(message => message.author === 'you')?.text.trim().slice(0, 48) || 'Previous conversation',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: legacyMessages,
+      }]
+      : [];
+  const activeConversationId = typeof data.activeConversationId === 'string'
+    && conversations.some(conversation => conversation.id === data.activeConversationId)
+    ? data.activeConversationId
+    : conversations[0]?.id ?? null;
   return {
-    messages: Array.isArray(data.messages)
-      ? data.messages.filter(message => message && typeof message.id === 'number' && typeof message.text === 'string' && (message.author === 'you' || message.author === 'teddy') && typeof message.time === 'string').slice(-MAX_MESSAGES)
-      : [],
+    conversations,
+    activeConversationId,
     memories: rememberInSession && Array.isArray(data.memories)
-      ? data.memories.filter(memory => memory && typeof memory.id === 'number' && typeof memory.text === 'string' && typeof memory.date === 'string').slice(0, MAX_MEMORIES).map(memory => ({ ...memory, text: memory.text.slice(0, MAX_MEMORY_LENGTH) }))
+      ? data.memories.filter(memory => memory && typeof memory.id === 'number' && typeof memory.text === 'string' && typeof memory.date === 'string').map(memory => ({ ...memory, text: memory.text.slice(0, MAX_MEMORY_LENGTH) }))
       : [],
     rememberInSession,
     shareMemories: rememberInSession && data.shareMemories === true,
   };
+}
+
+function isLocalMessage(message: unknown): message is LocalMessage {
+  return Boolean(message)
+    && typeof message === 'object'
+    && typeof (message as LocalMessage).id === 'number'
+    && typeof (message as LocalMessage).text === 'string'
+    && ((message as LocalMessage).author === 'you' || (message as LocalMessage).author === 'teddy')
+    && typeof (message as LocalMessage).time === 'string';
 }
 
 export class LocalDataService {
@@ -85,7 +131,7 @@ export class LocalDataService {
     if (!owner) throw new Error('A signed-in account is required to load local data.');
     await this.writeQueue;
     const saved = await (await getStorage()).getItem(key(owner));
-    if (!saved) return { messages: [], memories: [], rememberInSession: true, shareMemories: false };
+    if (!saved) return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false };
     try {
       return normalize(JSON.parse(saved));
     } catch {

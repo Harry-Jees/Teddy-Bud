@@ -62,12 +62,23 @@ Existing plain-SQLite development data is not migrated automatically.
 
 The gateway prefers NVIDIA's `nvidia/nemotron-3-super-120b-a12b` for
 conversation and allows up to 1024 output tokens so model reasoning does not
-consume the entire reply budget. Coding and vision requests remain limited to
-220 output tokens. The client supplies instructions to respond briefly and
+consume the entire reply budget. Image-understanding requests remain limited
+to 220 output tokens. The client supplies instructions to respond briefly and
 empathetically, noticing emotional tone without diagnosing or labeling the
 person. If the preferred model returns no text or is unavailable, the client
 tries other chat-capable models from NVIDIA's catalog; model availability may
 vary by account.
+
+Chat history is organized into separate conversations and saved locally on
+the device without an application-defined chat or message count limit. Device
+storage quotas still apply. Recent conversation context is sent to the model
+within a bounded input window, while the full local chat remains available in
+chat history.
+
+Teddy Bud may suggest saving only an exceptionally important, lasting fact;
+ordinary details are not enough. Nothing is saved unless the user approves the
+prompt. Approved memories stay on the device and are included in future chats
+only when memory sharing is enabled in Privacy.
 
 ## Step 1: Start Metro
 

@@ -27,7 +27,7 @@ describe('GatewayService chat model selection', () => {
     auth.clear.mockClear();
   });
 
-  it('uses the fast preferred available model and empathetic concise chat guidance', async () => {
+  it('uses the preferred available model and empathetic concise chat guidance', async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(response({
         data: [
@@ -53,6 +53,78 @@ describe('GatewayService chat model selection', () => {
       content: expect.stringContaining('without labeling, diagnosing'),
     }));
     expect(chatRequest.max_tokens).toBe(1024);
+  });
+
+  it('passes the whole active conversation while it fits in the model context budget', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({
+        data: [{ id: 'nvidia/nemotron-3-super-120b-a12b' }],
+      }))
+      .mockResolvedValueOnce(response({ choices: [{ message: { content: 'I remember that.' } }] }));
+    globalThis.fetch = fetchMock;
+    const history = Array.from({ length: 30 }, (_, index) => ({
+      role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
+      content: `Earlier context ${index}`,
+    }));
+
+    const gateway = new GatewayService('https://gateway.test', auth);
+    await gateway.sendChatMessage('And that is still true.', history, 'test-token');
+
+    const chatRequest = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(chatRequest.messages).toHaveLength(32);
+    expect(chatRequest.messages[1].content).toBe('Earlier context 0');
+    expect(chatRequest.messages[30].content).toBe('Earlier context 29');
+  });
+
+  it('drops only older context when a conversation exceeds the provider input budget', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({
+        data: [{ id: 'nvidia/nemotron-3-super-120b-a12b' }],
+      }))
+      .mockResolvedValueOnce(response({ choices: [{ message: { content: 'I am following.' } }] }));
+    globalThis.fetch = fetchMock;
+    const history = Array.from({ length: 200 }, (_, index) => ({
+      role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
+      content: `Turn ${index} ${'x'.repeat(500)}`,
+    }));
+
+    const gateway = new GatewayService('https://gateway.test', auth);
+    await gateway.sendChatMessage('Continue.', history, 'test-token');
+
+    const chatRequest = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    const sentHistory = chatRequest.messages.slice(1, -1);
+    expect(sentHistory.length).toBeGreaterThan(100);
+    expect(sentHistory.length).toBeLessThan(history.length);
+    expect(sentHistory[0].content).not.toBe(history[0].content);
+    expect(sentHistory[sentHistory.length - 1].content).toBe(history[history.length - 1].content);
+  });
+
+  it('suggests only a model-returned important memory and returns null when none is suitable', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({
+        data: [{ id: 'nvidia/nemotron-3-super-120b-a12b' }],
+      }))
+      .mockResolvedValueOnce(response({
+        choices: [{ message: { content: '{"fact":"I am working toward becoming a teacher."}' } }],
+      }))
+      .mockResolvedValueOnce(response({
+        data: [{ id: 'nvidia/nemotron-3-super-120b-a12b' }],
+      }))
+      .mockResolvedValueOnce(response({
+        choices: [{ message: { content: '{"fact":null}' } }],
+      }));
+    globalThis.fetch = fetchMock;
+
+    const gateway = new GatewayService('https://gateway.test', auth);
+    await expect(gateway.suggestMemory('My long-term goal is to become a teacher.', 'test-token'))
+      .resolves.toBe('I am working toward becoming a teacher.');
+    await expect(gateway.suggestMemory('I had tea this morning.', 'test-token'))
+      .resolves.toBeNull();
+
+    const request = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(request.max_tokens).toBe(256);
+    expect(request.messages[0].content).toContain('exceptionally important');
+    expect(request.messages[0].content).toContain('ordinary preferences');
   });
 
   it('falls back when a model uses its output budget without returning a text reply', async () => {

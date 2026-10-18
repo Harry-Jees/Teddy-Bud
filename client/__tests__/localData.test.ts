@@ -30,7 +30,7 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 function emptyData(): LocalAppData {
-  return { messages: [], memories: [], rememberInSession: true, shareMemories: false };
+  return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false };
 }
 
 describe('LocalDataService', () => {
@@ -43,7 +43,14 @@ describe('LocalDataService', () => {
 
   test('persists data per account and clears only the selected account', async () => {
     const accountData: LocalAppData = {
-      messages: [{ id: 1, text: 'Hello', author: 'you', time: '9:00 AM' }],
+      conversations: [{
+        id: 'chat-a',
+        title: 'Hello',
+        createdAt: '2026-01-01T09:00:00.000Z',
+        updatedAt: '2026-01-01T09:00:00.000Z',
+        messages: [{ id: 1, text: 'Hello', author: 'you', time: '9:00 AM' }],
+      }],
+      activeConversationId: 'chat-a',
       memories: [{ id: 2, text: 'A saved note', date: 'Today' }],
       rememberInSession: true,
       shareMemories: true,
@@ -60,7 +67,7 @@ describe('LocalDataService', () => {
     expect(await service.load('account-b')).toEqual({ ...emptyData(), shareMemories: true });
   });
 
-  test('bounds persisted chat and memory data', async () => {
+  test('persists all chats, messages, and memories without application count limits', async () => {
     const messages = Array.from({ length: 205 }, (_, id) => ({
       id,
       text: `Message ${id}`,
@@ -69,22 +76,48 @@ describe('LocalDataService', () => {
     }));
     const memories = Array.from({ length: 52 }, (_, id) => ({
       id,
-      text: 'x'.repeat(520),
+      text: 'x'.repeat(500),
       date: 'Today',
+    }));
+    const conversations = Array.from({ length: 3 }, (_, id) => ({
+      id: `chat-${id}`,
+      title: `Chat ${id}`,
+      createdAt: '2026-01-01T09:00:00.000Z',
+      updatedAt: '2026-01-01T09:00:00.000Z',
+      messages: id === 0 ? messages : [{ id, text: `Message ${id}`, author: 'you' as const, time: '9:00 AM' }],
     }));
 
     await service.save('account-a', {
-      messages,
+      conversations,
+      activeConversationId: 'chat-0',
       memories,
       rememberInSession: true,
       shareMemories: true,
     });
     const saved = await service.load('account-a');
 
-    expect(saved.messages).toHaveLength(200);
-    expect(saved.messages[0].id).toBe(5);
-    expect(saved.memories).toHaveLength(50);
-    expect(saved.memories[0].text).toHaveLength(500);
+    expect(saved.conversations).toHaveLength(3);
+    expect(saved.conversations.find(conversation => conversation.id === 'chat-0')?.messages).toHaveLength(205);
+    expect(saved.memories).toHaveLength(52);
+  });
+
+  test('migrates a previous single-chat data record without dropping messages', async () => {
+    mockDatabase.set('teddy-bud:local-data:account-a', JSON.stringify({
+      messages: [
+        { id: 100, text: 'First message', author: 'you', time: '9:00 AM' },
+        { id: 101, text: 'Reply', author: 'teddy', time: '9:01 AM' },
+      ],
+      memories: [],
+      rememberInSession: true,
+      shareMemories: false,
+    }));
+
+    const migrated = await service.load('account-a');
+
+    expect(migrated.conversations).toHaveLength(1);
+    expect(migrated.conversations[0].title).toBe('First message');
+    expect(migrated.conversations[0].messages).toHaveLength(2);
+    expect(migrated.activeConversationId).toBe(migrated.conversations[0].id);
   });
 
   test('does not keep or share memories when memory storage is disabled', async () => {
