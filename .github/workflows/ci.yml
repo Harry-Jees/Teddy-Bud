@@ -227,7 +227,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Clear committed distribution snapshot
-        run: git rm -r --ignore-unmatch dist/
+        run: git rm -rf --ignore-unmatch dist/
       - name: Download build artifacts without merging
         uses: actions/download-artifact@v4
         with:
