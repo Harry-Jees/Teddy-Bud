@@ -88,6 +88,16 @@ The app already has many accessibility roles and labels, but modal focus behavio
 - Added regression tests for the health endpoint, request budgets, and account rate limits.
 - Removed the committed Android debug keystore and local Playwright artifacts; updated ignore rules.
 
+## Deployment runbook
+
+1. Confirm every required CI job passes on the latest pull-request commit; an older successful run does not validate newer changes.
+2. Merge only after reviewing the final diff and checks.
+3. Deploy `gateway-worker` separately to a staging Cloudflare Worker with the required Durable Object/SESSION binding, KV binding, JWT signing secret, and NVIDIA API key secrets.
+4. Smoke-test health, OAuth sign-in/sign-out, model listing, a short non-sensitive chat, token caps, oversized-request rejection, and per-account throttling. Never expose live credentials in logs.
+5. Promote only after staging checks pass; roll back if sign-in, model listing, or streaming fails.
+6. Keep browser privacy claims accurate: web/Electron chat history in IndexedDB is not app-encrypted.
+7. Before production release, validate signing, install/upgrade/uninstall, backup restore, data deletion, accessibility, and supported platform builds.
+
 ## Required validation before merge/deployment
 
 1. Run gateway Worker tests and the complete client test suite.
