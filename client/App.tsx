@@ -483,7 +483,7 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
     const imported = await readEncryptedBackup(fileContents, owner, passphrase);
     const confirmed = Platform.OS === 'web'
       // eslint-disable-next-line no-alert -- confirm before replacing the current account's local data.
-      ? typeof window !== 'undefined' && window.confirm('Replace this account's saved chats, memories, and settings with the backup?')
+      ? typeof window !== 'undefined' && window.confirm("Replace this account's saved chats, memories, and settings with the backup?")
       : await new Promise<boolean>(resolve => Alert.alert('Replace saved data?', 'This replaces chats, memories, and settings for the currently signed-in account on this device.', [
         { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
         { text: 'Replace', style: 'destructive', onPress: () => resolve(true) },
