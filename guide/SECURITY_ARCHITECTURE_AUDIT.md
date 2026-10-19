@@ -42,6 +42,12 @@ Crisis signals are regex-based and can miss indirect, multilingual, slang, or co
 ### Medium — build/release supply-chain hardening
 The CI workflow uses major-version action tags, produces unsigned development artifacts, and commits generated distributions to the triggering branch. For production, pin third-party Actions to reviewed commit SHAs, enable dependency/security scanning, keep signing keys in protected CI secrets, and publish immutable versioned release assets. Do not use debug builds as production releases.
 
+### Medium — multiple configured NVIDIA keys are not rotated
+The key lookup returns the first non-empty NVIDIA_KEY_1 through NVIDIA_KEY_10 value. It does not rotate to another key after a quota/rate-limit/provider failure. This is not a safe key pool/failover design; if multiple keys are introduced, add server-side rotation with cooldown and carefully classify retryable errors. Keep all keys exclusively in Worker secrets.
+
+### Low — health is now readiness, not upstream reachability
+The new public health response confirms that a provider key is configured but intentionally does not make a live NVIDIA request. A ready response therefore does not prove that the provider endpoint or configured model is currently available. If operational health checks are needed, use a scheduled or authenticated diagnostic with caching and strict budgets rather than exposing a billable upstream check to anonymous traffic.
+
 ### Medium — Android release hardening
 Release minification is disabled and versionCode/versionName are static. Before Play Store delivery, review R8/ProGuard compatibility, increment versions automatically, validate release signing inputs, and test a signed release build. Do not commit release keystores.
 
