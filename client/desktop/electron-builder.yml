@@ -42,7 +42,7 @@ linux:
   icon: icons/teddy-bud.png
   category: Network;InstantMessaging;
   synopsis: A quiet place to be.
-  maintainer: Teddy Bud
+  maintainer: "Harry-Jees <270143563+Harry-Jees@users.noreply.github.com>"
   target:
     - target: deb
       arch:
