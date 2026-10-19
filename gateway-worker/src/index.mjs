@@ -169,8 +169,8 @@ async function readJson(request) {
   }
 }
 
-async function rateLimit(request, env, action, limit) {
-  const address = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+async function rateLimit(request, env, action, limit, subject) {
+  const address = subject ? `subject:${subject}` : (request.headers.get('CF-Connecting-IP') ?? 'unknown');
   const id = env.SESSIONS.idFromName(`rate:${action}:${await hash(address)}`);
   const response = await env.SESSIONS.get(id).fetch('https://state/rate', {
     method: 'POST',
@@ -444,6 +444,9 @@ async function upstreamModels(env) {
 async function models(request, env) {
   const claims = await bearerClaims(request, env);
   if (!claims) return json(401, { error: { message: 'Unauthorized.' } });
+  if (!await rateLimit(request, env, 'models-user', 120, claims.sub)) {
+    return json(429, { error: { message: 'Too many model-catalog requests. Try again shortly.' } });
+  }
   const response = await upstreamModels(env);
   return new Response(response.body, { status: response.status, headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' } });
 }
@@ -477,6 +480,9 @@ function hasCrisisSignal(message) {
 async function completions(request, env) {
   const claims = await bearerClaims(request, env);
   if (!claims) return json(401, { error: { message: 'Unauthorized.' } });
+  if (!await rateLimit(request, env, 'chat-user', 60, claims.sub)) {
+    return json(429, { error: { message: 'You have sent too many messages recently. Please wait a little and try again.' } });
+  }
   const key = apiKey(env);
   if (!key) return json(503, { error: { message: 'The AI provider is not configured.' } });
   const parsed = await readJson(request);
@@ -491,7 +497,22 @@ async function completions(request, env) {
   ) {
     return json(400, { error: { message: 'Messages must contain 1–200 entries with supported roles.' } });
   }
+  const textChars = parsed.value.messages.reduce((total, message) => {
+    if (typeof message?.content === 'string') return total + message.content.length;
+    if (Array.isArray(message?.content)) {
+      return total + message.content.reduce((partTotal, part) =>
+        partTotal + (typeof part?.text === 'string' ? part.text.length : 0), 0);
+    }
+    return total;
+  }, 0);
+  if (textChars > 80_000) {
+    return json(413, { error: { message: 'Conversation context is too large. Shorten the message history and try again.' } });
+  }
   const upstreamBody = { ...parsed.value, messages: [...parsed.value.messages] };
+  const requestedMaxTokens = parsed.value.max_tokens;
+  upstreamBody.max_tokens = Number.isInteger(requestedMaxTokens) && requestedMaxTokens > 0
+    ? Math.min(requestedMaxTokens, 2048)
+    : 1024;
   const systemMessages = upstreamBody.messages.filter(message => message.role === 'system');
   const systemContent = systemMessages
     .map(message => typeof message.content === 'string' ? message.content : '')
@@ -548,14 +569,13 @@ async function completions(request, env) {
 }
 
 async function health(env) {
-  try {
-    const response = await upstreamModels(env);
-    if (!response.ok) return json(503, { status: 'degraded', models_available: 0 });
-    const payload = await response.json();
-    return json(200, { status: 'ok', models_available: Array.isArray(payload.data) ? payload.data.length : 0 });
-  } catch {
-    return json(503, { status: 'degraded', models_available: 0 });
-  }
+  // This unauthenticated liveness endpoint must not make billable upstream calls.
+  // Provider reachability is exercised by authenticated model/chat requests and CI.
+  const providerConfigured = Boolean(apiKey(env));
+  return json(providerConfigured ? 200 : 503, {
+    status: providerConfigured ? 'ready' : 'degraded',
+    provider_configured: providerConfigured,
+  });
 }
 
 async function route(request, env) {
