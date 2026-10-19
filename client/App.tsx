@@ -718,7 +718,7 @@ function chatErrorMessage(error: unknown): string {
   }
   const status = (error as { status?: unknown } | null)?.status;
   if (error instanceof DOMException && error.name === 'AbortError') return 'The conversation service took too long to respond. Check your connection and try again.';
-  if (/failed to fetch|network request failed|fetch failed|load failed/i.test(detail)) return 'Teddy Bud couldn't reach the conversation service. Check your internet connection and try again.';
+  if (/failed to fetch|network request failed|fetch failed|load failed/i.test(detail)) return "Teddy Bud couldn't reach the conversation service. Check your internet connection and try again.";
   if (status === 429) return 'The conversation service is busy right now. Please wait a moment and try again.';
   if (typeof status === 'number' && status >= 500) return 'The conversation service is temporarily unavailable. Your message is saved; try again shortly.';
   return detail || 'The conversation service is unavailable right now.';
