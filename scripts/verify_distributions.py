@@ -141,9 +141,8 @@ def verify_apple_zip(relative_path: str, expected_platform: str, info_path: str)
 
 def verify_windows() -> None:
     installer = DIST / "desktop" / "Teddy-Bud-1.0.0-win-x64.exe"
-    payload = DIST / "desktop" / "teddy-bud-desktop-1.0.0-x64.nsis.7z"
     blockmap = DIST / "desktop" / "Teddy-Bud-1.0.0-win-x64.exe.blockmap"
-    for path in (installer, payload, blockmap):
+    for path in (installer, blockmap):
         require(path.is_file(), f"Missing Windows package file: {path.relative_to(ROOT)}")
     if installer.is_file():
         with installer.open("rb") as stream:
@@ -156,9 +155,6 @@ def verify_windows() -> None:
             else:
                 valid_pe_header = False
             require(valid_pe_header, "Windows installer does not have a valid PE signature")
-    if payload.is_file():
-        with payload.open("rb") as stream:
-            require(stream.read(6) == b"7z\xbc\xaf\x27\x1c", "Windows package payload does not have a 7z signature")
     if blockmap.is_file():
         with blockmap.open("rb") as stream:
             require(stream.read(2) == b"\x1f\x8b", "Windows blockmap is not gzip-compressed")

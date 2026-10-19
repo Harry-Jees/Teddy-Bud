@@ -90,7 +90,6 @@ def main() -> int:
         windows_files = (
             "Teddy-Bud-1.0.0-win-x64.exe",
             "Teddy-Bud-1.0.0-win-x64.exe.blockmap",
-            "teddy-bud-desktop-1.0.0-x64.nsis.7z",
         )
         for filename in windows_files:
             copy_required(
