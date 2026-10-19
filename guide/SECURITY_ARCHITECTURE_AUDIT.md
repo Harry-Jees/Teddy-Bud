@@ -45,6 +45,26 @@ The CI workflow uses major-version action tags, produces unsigned development ar
 ### Medium — Android release hardening
 Release minification is disabled and versionCode/versionName are static. Before Play Store delivery, review R8/ProGuard compatibility, increment versions automatically, validate release signing inputs, and test a signed release build. Do not commit release keystores.
 
+## UI/UX and accessibility findings
+
+### Medium — contrast failures in supporting labels
+Source color calculations show several small-text colors below WCAG AA's 4.5:1 normal-text target on their backgrounds: #9B9085 on white is about 3.12:1, #A79B8F on white about 2.72:1, #8E8175 on white about 3.79:1, #A2968A on white about 2.89:1, and #A65F50 on #FCE9E3 about 4.09:1. The main muted text color #73736E on white is about 4.77:1. Increase contrast for small labels, timestamps, disabled text, and error text; verify the complete palette with an automated contrast checker.
+
+### Medium — many labels are extremely small
+The UI uses numerous 9–12 px labels and helper texts. Increase minimum body/supporting sizes where practical, preserve platform font scaling, and test Android/iOS dynamic type and browser zoom without clipped controls.
+
+### Medium — Unicode symbols are used for navigation icons
+Navigation uses text glyphs such as ◌, ✳, and ⌑ rather than a consistent icon family. Glyph appearance and alignment vary across operating systems and fonts. Use a consistent vector icon set, standard icon sizes, and accessible labels; avoid relying on the glyph alone to communicate meaning.
+
+### Medium — chat history renders in a ScrollView
+The conversation view renders all messages inside a ScrollView. Long-running conversations can increase render work and memory use. Consider a virtualized list with stable message keys, preserved scroll position, and correct behavior when new messages arrive.
+
+### Medium — large UI surface in one file
+The main UI is concentrated in a roughly 1,500-line App.tsx file, including multiple screens, chat rendering, dialogs, and styling. Split by feature (chat, history, memories, privacy, settings, shared controls) with explicit props and testable components before adding more functionality.
+
+### Medium — accessibility needs device-level validation
+The app already has many accessibility roles and labels, but modal focus behavior, screen-reader announcements for new replies/errors, dynamic font scaling, keyboard-only web use, contrast, touch targets, and reduced-motion behavior still need manual validation. Add stable test IDs and cross-platform interaction tests for critical flows.
+
 ## Positive findings
 
 - Supabase Google OAuth uses PKCE and validates the provider identity/profile before issuing app sessions.
