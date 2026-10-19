@@ -428,3 +428,80 @@ test('Google OAuth completion rate limits are enforced and expose CORS', async (
   const preflight = await worker.fetch(request('/auth/google/complete', 'OPTIONS'), env);
   assert.equal(preflight.status, 204);
 });
+
+test('public health is cheap and never calls the upstream provider', async () => {
+  const env = makeEnv();
+  env.NVIDIA_KEY_1 = 'test-nvidia-key';
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('health must not call upstream'); };
+  try {
+    const ready = await jsonResponse(await worker.fetch(request('/health'), env));
+    assert.equal(ready.status, 200);
+    assert.deepEqual(ready.body, { status: 'ready', provider_configured: true });
+    delete env.NVIDIA_KEY_1;
+    const degraded = await jsonResponse(await worker.fetch(request('/health'), env));
+    assert.equal(degraded.status, 503);
+    assert.deepEqual(degraded.body, { status: 'degraded', provider_configured: false });
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('chat proxy caps output tokens and rejects oversized text context', async () => {
+  const env = makeEnv();
+  env.NVIDIA_KEY_1 = 'test-nvidia-key';
+  const accessToken = await createSession(env, 'budget-test-user');
+  const oldFetch = globalThis.fetch;
+  let forwardedBody;
+  globalThis.fetch = async (_input, init) => {
+    forwardedBody = JSON.parse(init.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  try {
+    const response = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+      model: 'nvidia/test-model',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 50_000,
+    }, { Authorization: 'Bearer ' + accessToken }), env));
+    assert.equal(response.status, 200);
+    assert.equal(forwardedBody.max_tokens, 2048);
+
+    const oversized = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+      model: 'nvidia/test-model',
+      messages: [{ role: 'user', content: 'x'.repeat(80_001) }],
+      max_tokens: 1024,
+    }, { Authorization: 'Bearer ' + accessToken }), env));
+    assert.equal(oversized.status, 413);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('chat requests are rate-limited per authenticated account', async () => {
+  const env = makeEnv();
+  env.NVIDIA_KEY_1 = 'test-nvidia-key';
+  const accessToken = await createSession(env, 'rate-limit-test-user');
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+  try {
+    const body = { model: 'nvidia/test-model', messages: [{ role: 'user', content: 'hello' }], max_tokens: 10 };
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const response = await worker.fetch(request('/v1/chat/completions', 'POST', body, {
+        Authorization: 'Bearer ' + accessToken,
+      }), env);
+      assert.equal(response.status, 200);
+    }
+    const limited = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', body, {
+      Authorization: 'Bearer ' + accessToken,
+    }), env));
+    assert.equal(limited.status, 429);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});

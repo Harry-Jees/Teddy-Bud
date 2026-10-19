@@ -85,14 +85,6 @@ android {
         versionCode 1
         versionName "1.0"
     }
-    signingConfigs {
-        debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
-        }
-    }
     def releaseKeystore = System.getenv("ANDROID_KEYSTORE_FILE")
     if (releaseKeystore) {
         signingConfigs {
@@ -105,9 +97,6 @@ android {
         }
     }
     buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-        }
         release {
             if (releaseKeystore) {
                 signingConfig signingConfigs.release
