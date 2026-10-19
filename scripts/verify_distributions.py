@@ -82,7 +82,8 @@ def verify_web() -> None:
         parsed = urlparse(raw_path)
         if parsed.scheme or parsed.netloc or raw_path.startswith("#"):
             continue
-        asset = (index.parent / parsed.path).resolve()
+        local_path = parsed.path.lstrip("/") if parsed.path.startswith("/") else parsed.path
+        asset = (index.parent / local_path).resolve()
         require(asset.is_relative_to(index.parent.resolve()) and asset.is_file(), f"Missing or invalid web asset: {raw_path}")
 
     referenced_text = source
@@ -105,7 +106,8 @@ def verify_web() -> None:
         parsed = urlparse(icon_path)
         if parsed.scheme or parsed.netloc:
             continue
-        asset = (manifest_path.parent / parsed.path).resolve()
+        local_path = parsed.path.lstrip("/") if parsed.path.startswith("/") else parsed.path
+        asset = (manifest_path.parent / local_path).resolve()
         require(asset.is_relative_to(manifest_path.parent.resolve()) and asset.is_file(), f"Missing or invalid web manifest icon: {icon_path}")
         if asset.is_file():
             with asset.open("rb") as stream:

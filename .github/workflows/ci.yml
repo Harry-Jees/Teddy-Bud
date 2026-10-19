@@ -6,6 +6,7 @@ on:
       - 'dist/**'
       - '.github/workflows/ci.yml'
       - 'scripts/collect_distributions.py'
+      - 'scripts/verify_distributions.py'
   pull_request:
   workflow_dispatch:
     inputs:
