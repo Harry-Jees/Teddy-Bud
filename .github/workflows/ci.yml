@@ -15,7 +15,7 @@ concurrency:
 jobs:
   client-checks:
     name: Web checks and build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: client
@@ -38,7 +38,7 @@ jobs:
 
   worker-tests:
     name: Gateway Worker tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: gateway-worker
@@ -54,7 +54,7 @@ jobs:
 
   android-build:
     name: Android debug build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -108,7 +108,17 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: npm ci --prefix client
       - name: Install Apple native dependencies
-        run: pod install --project-directory=client/${{ matrix.project_dir }} --repo-update --verbose
+        shell: bash
+        run: |
+          set -o pipefail
+          pod install --project-directory=client/${{ matrix.project_dir }} --verbose 2>&1 | tee "$RUNNER_TEMP/pod-install.log"
+      - name: Preserve CocoaPods diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cocoapods-diagnostics-${{ matrix.project_dir }}
+          path: ${{ runner.temp }}/pod-install.log
+          if-no-files-found: ignore
       - name: Build Apple app
         run: >-
           xcodebuild
@@ -144,7 +154,7 @@ jobs:
             command: desktop:macos
             artifact: teddy-bud-macos-desktop
           - name: Debian package
-            os: ubuntu-latest
+            os: ubuntu-24.04
             command: desktop:linux
             artifact: teddy-bud-linux-deb
     steps:
@@ -172,7 +182,7 @@ jobs:
 
   collect-dist:
     name: Collect all platform builds
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     needs:
