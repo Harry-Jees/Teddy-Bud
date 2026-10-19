@@ -54,7 +54,7 @@ Release minification is disabled and versionCode/versionName are static. Before 
 ## UI/UX and accessibility findings
 
 ### Medium — contrast failures in supporting labels
-Source color calculations show several small-text colors below WCAG AA's 4.5:1 normal-text target on their backgrounds: #9B9085 on white is about 3.12:1, #A79B8F on white about 2.72:1, #8E8175 on white about 3.79:1, #A2968A on white about 2.89:1, and #A65F50 on #FCE9E3 about 4.09:1. The main muted text color #73736E on white is about 4.77:1. Increase contrast for small labels, timestamps, disabled text, and error text; verify the complete palette with an automated contrast checker.
+Source color calculations show several small-text colors below WCAG AA's 4.5:1 normal-text target on their backgrounds: #9B9085 on white is about 3.12:1, #A79B8F on white about 2.72:1, #8E8175 on white about 3.79:1, #A2968A on white about 2.89:1, and #A65F50 on #FCE9E3 about 4.09:1. The main muted text color #73736E on white is about 4.77:1. Fixed in the current audit branch: darkened the muted/disabled/section-label and error colors, including the crisis-support body copy, to improve contrast. Re-run automated contrast checks and visually review the warm palette before merging.
 
 ### Medium — many labels are extremely small
 The UI uses numerous 9–12 px labels and helper texts. Increase minimum body/supporting sizes where practical, preserve platform font scaling, and test Android/iOS dynamic type and browser zoom without clipped controls.
