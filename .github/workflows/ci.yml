@@ -108,10 +108,11 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: npm ci --prefix client
       - name: Install Apple native dependencies
+        working-directory: client/${{ matrix.project_dir }}
         shell: bash
         run: |
           set -o pipefail
-          pod install --project-directory=client/${{ matrix.project_dir }} --verbose 2>&1 | tee "$RUNNER_TEMP/pod-install.log"
+          pod install --verbose 2>&1 | tee "$RUNNER_TEMP/pod-install.log"
       - name: Preserve CocoaPods diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
