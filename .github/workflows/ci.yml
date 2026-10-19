@@ -107,7 +107,8 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci --prefix client
-      - run: pod install --project-directory=client/${{ matrix.project_dir }}
+      - name: Install Apple native dependencies
+        run: pod install --project-directory=client/${{ matrix.project_dir }} --repo-update --verbose
       - name: Build Apple app
         run: >-
           xcodebuild
@@ -154,11 +155,15 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci --prefix client
-      - run: npm run ${{ matrix.command }} --prefix client
-      - name: Remove unpacked Windows staging files
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Remove-Item -LiteralPath "dist/desktop/win-unpacked" -Recurse -Force -ErrorAction SilentlyContinue
+      - name: Package desktop application
+        run: npm run ${{ matrix.command }} --prefix client
+        env:
+          DEBUG: electron-builder
+      - name: Remove unpacked Electron staging files
+        run: >-
+          node -e "const fs=require('node:fs');
+          for (const name of ['win-unpacked','linux-unpacked','mac','mac-arm64'])
+          fs.rmSync('dist/desktop/'+name,{recursive:true,force:true})"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

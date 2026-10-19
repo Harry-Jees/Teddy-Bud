@@ -1,11 +1,6 @@
 name: Deploy web app to GitHub Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'client/**'
-      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -34,11 +29,11 @@ jobs:
         env:
           GITHUB_PAGES: 'true'
       - name: Preserve SPA callback routes
-        run: cp client/dist/index.html client/dist/404.html
+        run: cp dist/web/index.html dist/web/404.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: client/dist
+          path: dist/web
 
   deploy:
     environment:

@@ -1073,7 +1073,7 @@ function CrisisSupport({ emergencyCallOption, crisisHelplineOption, onCallEmerge
         <Text style={styles.crisisSupportLinkText}>Official {crisisHelplineOption.name} information</Text>
       </Pressable>
     </>}
-    <Pressable accessibilityRole="link" accessibilityLabel="Find verified crisis support in your country" onPress={onOpenResources} style={({ pressed }) => [styles.crisisSupportLink, pressed && styles.pressed]}>
+    <Pressable accessibilityRole="link" accessibilityLabel="Find a crisis helpline in your country" onPress={onOpenResources} style={({ pressed }) => [styles.crisisSupportLink, pressed && styles.pressed]}>
       <Text style={styles.crisisSupportLinkText}>Find verified support in India or your country</Text>
     </Pressable>
     <Text style={styles.crisisSupportFootnote}>{emergencyCallOption || crisisHelplineOption ? `These options use your device region (${crisisHelplineOption?.region ?? emergencyCallOption?.region}); if you are elsewhere, use the local emergency number and support services.` : 'No call number is configured for this device region. Use your local emergency number or the helpline directory.'} Teddy Bud is not emergency care.</Text>
@@ -1139,14 +1139,16 @@ function renderInlineMarkdown(value: string): React.ReactNode[] {
   let cursor = 0;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(value))) {
-    if (match.index > cursor) result.push(value.slice(cursor, match.index));
-    if (match[1] && match[2]) {
-      result.push(<Text key={`link-${match.index}`} accessibilityRole="link" style={styles.markdownLink} onPress={() => openExternalUrl(match[2]).catch(() => undefined)}>{match[1]}</Text>);
-    } else if (match[4] !== undefined) result.push(<Text key={`strong-${match.index}`} style={styles.markdownStrong}>{match[4]}</Text>);
-    else if (match[5] !== undefined) result.push(<Text key={`strike-${match.index}`} style={styles.markdownStrike}>{match[5]}</Text>);
-    else if (match[6] !== undefined) result.push(<Text key={`italic-${match.index}`} style={styles.markdownItalic}>{match[6]}</Text>);
-    else if (match[7] !== undefined) result.push(<Text key={`italic-${match.index}`} style={styles.markdownItalic}>{match[7]}</Text>);
-    else if (match[8] !== undefined) result.push(<Text key={`inline-code-${match.index}`} style={styles.markdownInlineCode}>{match[8]}</Text>);
+    const current = match;
+    if (current.index > cursor) result.push(value.slice(cursor, current.index));
+    if (current[1] && current[2]) {
+      const url = current[2];
+      result.push(<Text key={`link-${current.index}`} accessibilityRole="link" style={styles.markdownLink} onPress={() => openExternalUrl(url).catch(() => undefined)}>{current[1]}</Text>);
+    } else if (current[4] !== undefined) result.push(<Text key={`strong-${current.index}`} style={styles.markdownStrong}>{current[4]}</Text>);
+    else if (current[5] !== undefined) result.push(<Text key={`strike-${current.index}`} style={styles.markdownStrike}>{current[5]}</Text>);
+    else if (current[6] !== undefined) result.push(<Text key={`italic-${current.index}`} style={styles.markdownItalic}>{current[6]}</Text>);
+    else if (current[7] !== undefined) result.push(<Text key={`italic-${current.index}`} style={styles.markdownItalic}>{current[7]}</Text>);
+    else if (current[8] !== undefined) result.push(<Text key={`inline-code-${current.index}`} style={styles.markdownInlineCode}>{current[8]}</Text>);
     cursor = pattern.lastIndex;
   }
   if (cursor < value.length) result.push(value.slice(cursor));
