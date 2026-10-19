@@ -123,14 +123,23 @@ jobs:
           path: ${{ runner.temp }}/pod-install.log
           if-no-files-found: ignore
       - name: Build Apple app
-        run: >-
-          xcodebuild
-          -workspace "${{ matrix.workspace }}"
-          -scheme "${{ matrix.scheme }}"
-          -destination "${{ matrix.destination }}"
-          -derivedDataPath "client/${{ matrix.project_dir }}/build"
-          CODE_SIGNING_ALLOWED=NO
-          build
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace "${{ matrix.workspace }}" \
+            -scheme "${{ matrix.scheme }}" \
+            -destination "${{ matrix.destination }}" \
+            -derivedDataPath "client/${{ matrix.project_dir }}/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee "$RUNNER_TEMP/xcodebuild-${{ matrix.project_dir }}.log"
+      - name: Preserve Xcode diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-diagnostics-${{ matrix.project_dir }}
+          path: ${{ runner.temp }}/xcodebuild-${{ matrix.project_dir }}.log
+          if-no-files-found: ignore
       - name: Stage Apple builds in dist
         run: |
           mkdir -p "dist/${{ matrix.project_dir }}"
