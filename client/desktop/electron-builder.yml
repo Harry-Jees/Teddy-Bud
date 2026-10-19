@@ -11,16 +11,16 @@ files:
   - icons/**/*
   - package.json
 artifactName: Teddy-Bud-${version}-${os}-${arch}.${ext}
+protocols:
+  - name: Teddy Bud sign in
+    schemes:
+      - teddybud
 win:
   icon: icons/teddy-bud.ico
   target:
     - target: nsis
       arch:
         - x64
-  protocols:
-    - name: Teddy Bud sign in
-      schemes:
-        - teddybud
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
@@ -34,24 +34,14 @@ mac:
       arch:
         - x64
         - arm64
-  protocols:
-    - name: Teddy Bud sign in
-      schemes:
-        - teddybud
 linux:
   icon: icons/teddy-bud.png
   category: Network;InstantMessaging;
   synopsis: A quiet place to be.
   maintainer: "Harry-Jees <270143563+Harry-Jees@users.noreply.github.com>"
+  mimeTypes:
+    - x-scheme-handler/teddybud
   target:
     - target: deb
       arch:
         - x64
-  protocols:
-    - name: Teddy Bud sign in
-      schemes:
-        - teddybud
-  desktop:
-    entry:
-      MimeType: x-scheme-handler/teddybud;
-      Comment: A quiet place to be.

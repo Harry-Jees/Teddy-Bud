@@ -2,6 +2,8 @@ name: CI and platform builds
 
 on:
   push:
+    paths-ignore:
+      - 'dist/**'
   pull_request:
   workflow_dispatch:
 

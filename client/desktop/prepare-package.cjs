@@ -25,6 +25,7 @@ const desktopPackage = {
   productName: 'Teddy Bud',
   version: sourcePackage.version,
   description: 'A quiet place to be.',
+  homepage: 'https://teddybud.vercel.app',
   author: 'Teddy Bud',
   license: 'UNLICENSED',
   main: 'main.cjs',
