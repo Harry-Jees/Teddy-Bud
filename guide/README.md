@@ -7,6 +7,7 @@ This folder contains the product and engineering references for Teddy Bud.
 | [Product requirements](PRD.md) | Product goals, audience, and requirements |
 | [Technical architecture](TECHNICAL_ARCHITECTURE.md) | Application components and data flows |
 | [Security architecture audit](SECURITY_ARCHITECTURE_AUDIT.md) | Authentication, storage, and security design review |
+| [Security and privacy](SECURITY_AND_PRIVACY.md) | Data storage, local encryption, keys, backups, and security references |
 | [UI/UX guidelines](UI_UX_GUIDELINES.md) | Interaction and visual design principles |
 | [Release plan](RELEASE_PLAN.md) | Release planning and distribution workflow |
 | [Distribution verification](DISTRIBUTION_VERIFICATION.md) | Artifact formats, current platform build scope, and verification results |

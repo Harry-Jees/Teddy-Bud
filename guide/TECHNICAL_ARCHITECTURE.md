@@ -4,9 +4,9 @@
 The client app is built in React Native. It operates as a thin, secure client connecting to a remote Gateway (Cloudflare Worker) which proxies to NVIDIA-hosted AI APIs.
 
 ## 2. Tech Stack
-- **Frontend**: React Native (with `react-native-windows` for desktop support)
-- **Local Storage**: Account-scoped SQLCipher database on supported native builds; IndexedDB on web
-- **Key Management**: Native secure storage for native database keys (Android Keystore / iOS Keychain)
+- **Frontend**: React Native with React Native Web and an Electron desktop wrapper
+- **Local Storage**: Account-scoped SQLCipher on native builds; encrypted IndexedDB records on web and Electron
+- **Key Management**: Native Keychain/Keystore, Electron `safeStorage`, or a browser-profile-local non-exportable Web Crypto key
 
 ## 3. Gateway Boundary (API Contract)
 The client relies entirely on an external Cloudflare Worker gateway via HTTPS. Fake transports/mocks should only be used in unit tests, not for live capabilities.
@@ -54,14 +54,24 @@ All `/v1/*` requests require a valid bearer JWT and are proxied by Cloudflare;
 the NVIDIA API key remains a Worker secret and is never sent to the client.
 
 Chat history, manually saved memories, and their preferences persist locally per
-JWT subject. On native builds, SQLCipher encrypts the database and the database
-key is stored in platform secure storage. Browser storage is not encrypted by
-the app; users should protect their browser profile and clear local data when
-needed. Saved memories are sent with a chat request only when the user enables
-memory sharing.
+JWT subject. Native builds use SQLCipher with the database key in platform
+secure storage. Electron encrypts records through OS-backed Electron
+`safeStorage`. The web client uses AES-256-GCM with a non-exportable CryptoKey
+stored in IndexedDB; this is device/profile-local protection and does not prevent
+same-origin code from accessing data while the app runs. Existing plaintext
+web/Electron records are encrypted on first read after the storage upgrade. The web client
+fails closed if encryption is unavailable. Saved memories are sent with a chat
+request only when the user enables memory sharing.
 
-The web client uses the browser's IndexedDB API for local persistence; it does
-not require OPFS or cross-origin-isolation headers.
+Local encryption keys are not derived from a Google email or OAuth token and
+are not synchronized through Supabase. Supabase Auth manages the account email;
+the application profile table associates data with the Supabase user ID. The
+encrypted backup feature is the supported cross-device transfer path and uses
+its own passphrase-derived key. See [Security and Privacy](SECURITY_AND_PRIVACY.md)
+for the design and references.
+
+The web client uses IndexedDB for local persistence; it does not require OPFS
+or cross-origin-isolation headers.
 
 The browser gateway Worker is deployed as
 `https://teddy-bud-browser-gateway.harryjees.workers.dev`. Its Access login

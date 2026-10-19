@@ -71,12 +71,26 @@ native tokens use platform secure storage. Electron desktop tokens are encrypted
 through Windows DPAPI, macOS Keychain, or a Linux Secret Service keyring. On
 Linux, configure GNOME Keyring, KWallet, or another Secret Service provider
 before signing in. Chat history, saved memories, and preferences persist locally,
-scoped to the Supabase account. Native mobile database files use SQLCipher with a
-key stored in Keychain/Keystore. Browser and Electron chat data use IndexedDB and
-are not encrypted by Teddy Bud; protect the device account and clear local data
-when needed. Privacy toggles control whether saved memories, selected chat
-excerpts, and About me notes are included with messages sent to the configured AI
-provider.
+scoped to the Supabase account. Native database files use SQLCipher with a
+random key stored in Keychain/Keystore. Electron encrypts local records through
+the operating-system secure storage used by Electron `safeStorage`. Web records
+use AES-256-GCM with a non-exportable Web Crypto key stored in IndexedDB. Older
+web and Electron records are encrypted when first read after the upgrade. Browser encryption
+protects stored files and database contents; code running in the same browser
+origin can still access data while the app is unlocked. Clearing the browser
+site's data also removes the device key and local records.
+
+Encryption keys are generated independently for each device or browser profile.
+Google email and Supabase salts are not used as encryption key material. The
+Supabase user ID scopes local records to the signed-in account; the email is
+managed by Supabase Auth. Portable recovery uses the encrypted `.teddybud`
+backup, protected by its own user-chosen passphrase and random salt. A backup
+requires both that passphrase and the account that created it. See
+[`guide/SECURITY_AND_PRIVACY.md`](../guide/SECURITY_AND_PRIVACY.md) for the
+storage model, migration behavior, and security references.
+
+Privacy toggles control whether saved memories, selected chat excerpts, and
+About me notes are included with messages sent to the configured AI provider.
 
 Configure the Google provider in Supabase with its Web OAuth client ID and
 secret. In Google Cloud, use

@@ -1,2 +1,7 @@
 dist/desktop/win-unpacked/
 .playwright-mcp/
+
+# Local operating-system files and generated tool caches
+.DS_Store
+Thumbs.db
+**/.cache/

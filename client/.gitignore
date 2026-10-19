@@ -38,6 +38,8 @@ local.properties
 #
 node_modules/
 /.tools/
+/.bundle/
+/.wrangler/
 dist/
 .desktop-package/
 release/

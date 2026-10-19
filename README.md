@@ -36,6 +36,12 @@ Committed build outputs are under `dist/`:
 
 These are development builds. Android and Apple native outputs are not store submissions; Windows and macOS desktop builds need signing for trusted public distribution. See the [distribution verification record](guide/DISTRIBUTION_VERIFICATION.md) for artifact checks and platform-specific use requirements.
 
+`dist/` is a committed snapshot of packaged outputs, not files embedded in the
+source app. GitHub Actions rebuilds packages from the triggering source commit,
+checks their formats, then refreshes this snapshot. Check the latest successful
+workflow run to confirm the snapshot matches current source. The iOS ZIP is a
+Simulator build, not an iPhone store package.
+
 ## Repository map
 
 | Path | Contents |
@@ -69,4 +75,4 @@ Run Worker tests from `gateway-worker/` with `npm test`. The collected artifact 
 
 The app uses Google sign-in through Supabase and the Cloudflare gateway. Gateway setup, approved redirect origins, and secret configuration are documented in [gateway-worker/README.md](gateway-worker/README.md). Do not place credentials in the app bundle or commit them to the repository.
 
-The client README documents local data storage, privacy settings, conversation behavior, and support resources. The [guide index](guide/README.md) links to the full product and engineering documentation.
+The [client README](client/README.md) documents setup, account configuration, local data, and privacy settings. The [guide index](guide/README.md) links to product and engineering documentation, including the [security and privacy model](guide/SECURITY_AND_PRIVACY.md).

@@ -95,7 +95,7 @@ The app already has many accessibility roles and labels, but modal focus behavio
 3. Deploy `gateway-worker` separately to a staging Cloudflare Worker with the required Durable Object/SESSION binding, KV binding, JWT signing secret, and NVIDIA API key secrets.
 4. Smoke-test health, OAuth sign-in/sign-out, model listing, a short non-sensitive chat, token caps, oversized-request rejection, and per-account throttling. Never expose live credentials in logs.
 5. Promote only after staging checks pass; roll back if sign-in, model listing, or streaming fails.
-6. Keep browser privacy claims accurate: web/Electron chat history in IndexedDB is not app-encrypted.
+6. Keep browser privacy claims accurate: web uses AES-256-GCM with a browser-profile-local Web Crypto key; Electron uses OS-backed `safeStorage`. Same-origin code can access active web data while the app is unlocked.
 7. Before production release, validate signing, install/upgrade/uninstall, backup restore, data deletion, accessibility, and supported platform builds.
 
 ## Required validation before merge/deployment
@@ -107,3 +107,12 @@ The app already has many accessibility roles and labels, but modal focus behavio
 5. Deploy the Worker separately only after review; client repository changes do not deploy Cloudflare automatically.
 6. Verify that chat history deletion, memory deletion, logout, and encrypted backup restore work on web, Android, iOS, macOS, Windows, and Linux.
 7. Perform a dependency audit, secret scan, and platform-specific release-signing checks.
+
+## Local data encryption update — 20 October 2026
+
+The browser/Electron local-data storage review item described above has been
+addressed: Electron records use OS-backed `safeStorage`; browser records use
+AES-256-GCM with a non-exportable Web Crypto key. Existing plaintext browser and
+Electron records are encrypted as they are first read after the storage upgrade. Native
+SQLCipher and Keychain/Keystore storage remains in place. See [Security and
+Privacy](SECURITY_AND_PRIVACY.md) for the current design and platform references.

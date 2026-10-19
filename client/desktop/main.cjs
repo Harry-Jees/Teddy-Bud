@@ -141,6 +141,26 @@ function registerIpcHandlers() {
     if (!isTrustedRenderer(event.senderFrame)) throw new Error('Untrusted desktop renderer.');
     await fs.rm(encryptedSessionPath(), { force: true });
   });
+
+  ipcMain.handle('desktop:encrypt-local-data', async (event, value) => {
+    if (!isTrustedRenderer(event.senderFrame)) throw new Error('Untrusted desktop renderer.');
+    if (typeof value !== 'string') throw new Error('Invalid local data.');
+    await requireSecureDesktopStorage();
+    const encrypted = await safeStorage.encryptStringAsync(value);
+    return Buffer.from(encrypted).toString('base64');
+  });
+
+  ipcMain.handle('desktop:decrypt-local-data', async (event, value) => {
+    if (!isTrustedRenderer(event.senderFrame)) throw new Error('Untrusted desktop renderer.');
+    if (typeof value !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+      throw new Error('Invalid encrypted local data.');
+    }
+    const encrypted = Buffer.from(value, 'base64');
+    if (encrypted.toString('base64') !== value) throw new Error('Invalid encrypted local data.');
+    await requireSecureDesktopStorage();
+    const { result } = await safeStorage.decryptStringAsync(encrypted);
+    return result;
+  });
 }
 
 async function registerAppProtocol() {
