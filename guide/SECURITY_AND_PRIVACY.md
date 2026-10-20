@@ -10,9 +10,9 @@ was checked against the platform documentation linked below on 20 October 2026.
 | --- | --- |
 | Sign-in | Email/password through the Cloudflare gateway and Supabase Auth; user-chosen recovery passphrase for password resets |
 | Local account scope | Each local data record is keyed by the authenticated Supabase user ID (`sub`) |
-| Android, iOS, macOS | SQLCipher database; random 256-bit key in platform secure storage |
+| Android and macOS native builds | SQLCipher database; random 256-bit key in platform secure storage |
 | Electron desktop | Local records are encrypted using Electron `safeStorage`, backed by the operating-system credential store |
-| Web | Local records use AES-256-GCM; a non-exportable Web Crypto key is stored in the browser's IndexedDB |
+| Standalone web app | Not supported or distributed; no hosted browser deployment is intended |
 | Portable backup | PBKDF2-SHA-256 derives a key from the user's backup passphrase; AES-256-GCM encrypts the export |
 | Cloud data | Conversations and memories are stored locally. The gateway receives only the context selected by privacy settings when a chat is sent |
 
@@ -111,7 +111,7 @@ privacy controls before sending sensitive information.
 - Use the in-app clear-data control before handing a device or browser profile to someone else.
 - Keep encrypted backups and their passphrases in separate protected locations.
 - Do not put OAuth, Supabase service-role, or model-provider secrets in client code.
-- Treat browser same-origin script execution as able to read active local data; deploy the web app over HTTPS and keep dependencies and content security controls current.
+- Treat the Electron renderer and its dependencies as security-sensitive; keep the packaged app and dependencies current and avoid loading untrusted remote content.
 
 ## References
 
