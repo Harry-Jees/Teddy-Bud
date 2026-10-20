@@ -38,7 +38,7 @@ def verify_windows() -> None:
             valid = header[:2] == b"MZ" and len(header) >= 64
             if valid:
                 stream.seek(struct.unpack("<I", header[60:64])[0])
-                valid = stream.read(4) == b"PE\\0\\0"
+                valid = stream.read(4) == b"PE\0\0"
             require(valid, "Windows installer has invalid PE signature")
     blockmap = DIST / "desktop" / "TeddyBud.v.1.0-win-x64.exe.blockmap"
     require(blockmap.is_file(), f"Missing Windows blockmap: {blockmap}")
@@ -64,14 +64,14 @@ def verify_deb() -> None:
     require(path.is_file(), f"Missing Debian package: {path}")
     if path.is_file():
         with path.open("rb") as stream:
-            require(stream.read(8) == b"!<arch>\\n", "Linux DEB has an invalid ar header")
+            require(stream.read(8) == b"!<arch>\n", "Linux DEB has an invalid ar header")
 
 def verify_appimage() -> None:
     path = DIST / "desktop" / "TeddyBud.v.1.0-linux-x64.AppImage"
     require(path.is_file(), f"Missing Linux AppImage: {path}")
     if path.is_file():
         with path.open("rb") as stream:
-            require(stream.read(4) == b"\\x7fELF", "Linux AppImage has no ELF executable header")
+            require(stream.read(4) == b"\x7fELF", "Linux AppImage has no ELF executable header")
         require(os.access(path, os.X_OK), "Linux AppImage is not executable")
 
 def main() -> int:
