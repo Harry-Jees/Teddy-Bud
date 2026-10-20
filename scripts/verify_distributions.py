@@ -60,14 +60,14 @@ def verify_dmg(filename: str, required: bool) -> None:
         require(footer[:4] == b"koly", f"{filename} has no UDIF footer")
 
 def verify_deb() -> None:
-    path = DIST / "desktop" / "TeddyBud.v.1.0-linux-x64.deb"
+    path = DIST / "desktop" / "TeddyBud.v.1.0-linux-amd64.deb"
     require(path.is_file(), f"Missing Debian package: {path}")
     if path.is_file():
         with path.open("rb") as stream:
             require(stream.read(8) == b"!<arch>\n", "Linux DEB has an invalid ar header")
 
 def verify_appimage() -> None:
-    path = DIST / "desktop" / "TeddyBud.v.1.0-linux-x64.AppImage"
+    path = DIST / "desktop" / "TeddyBud.v.1.0-linux-amd64.AppImage"
     require(path.is_file(), f"Missing Linux AppImage: {path}")
     if path.is_file():
         with path.open("rb") as stream:
