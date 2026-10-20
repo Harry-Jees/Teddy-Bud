@@ -32,8 +32,8 @@ def main() -> int:
         copy_file(artifacts, "teddy-bud-android", "TeddyBud.v.1.0-Android-arm64.apk", dist / "android" / "TeddyBud.v.1.0-Android-arm64.apk")
         for name in ("TeddyBud.v.1.0-win-x64.exe", "TeddyBud.v.1.0-win-x64.exe.blockmap"):
             copy_file(artifacts, "teddy-bud-windows", name, dist / "desktop" / name)
-        copy_file(artifacts, "teddy-bud-macos-dmg", "TeddyBud.v.1.0-mac-arm64.dmg", dist / "desktop" / "TeddyBud.v.1.0-mac-arm64.dmg")
-        copy_file(artifacts, "teddy-bud-macos-dmg", "TeddyBud.v.1.0-mac-x64.dmg", dist / "desktop" / "TeddyBud.v.1.0-mac-x64.dmg", required=True)
+        copy_file(artifacts, "teddy-bud-macos-arm64", "TeddyBud.v.1.0-mac-arm64.dmg", dist / "desktop" / "TeddyBud.v.1.0-mac-arm64.dmg")
+        copy_file(artifacts, "teddy-bud-macos-x64", "TeddyBud.v.1.0-mac-x64.dmg", dist / "desktop" / "TeddyBud.v.1.0-mac-x64.dmg")
         copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-amd64.deb", dist / "desktop" / "TeddyBud.v.1.0-linux-amd64.deb")
         copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-amd64.AppImage", dist / "desktop" / "TeddyBud.v.1.0-linux-amd64.AppImage")
     except FileNotFoundError as exc:
