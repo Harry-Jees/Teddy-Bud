@@ -1,6 +1,6 @@
 # Teddy Bud Client
 
-The client package contains Teddy Bud's React Native app, browser build, and Electron desktop wrapper.
+The client package contains Teddy Bud's React Native app, browser build, and Electron desktop wrapper for currently supported targets.
 
 ## Getting started
 
@@ -15,17 +15,13 @@ The web target uses Vite and React Native Web to render the same app UI in a des
 
 ## Platform builds
 
-Teddy Bud uses React Native for Android, iOS, and macOS. Windows, macOS, and
-Debian/Ubuntu desktop installers wrap the same Vite/React Native Web UI with
-Electron. The desktop apps load packaged local assets and open trusted support
-links in the system browser.
+Teddy Bud currently provides a web app, an Android ARM64 package, and desktop packages for Windows x64, Apple Silicon macOS, and x64 Debian/Ubuntu Linux. Windows, macOS, and Linux desktop installers wrap the Vite/React Native Web UI with Electron. The desktop apps load packaged local assets and open trusted support links in the system browser. **There is no installable iOS/iPhone app at this time.**
 
 Use Node.js 22.12 or newer, install dependencies from this directory with
 `npm ci`, then run the relevant build:
 
 ```sh
 npm run android
-npm run ios
 npm run build:web
 npm run build:dist
 npm run desktop:windows
@@ -50,9 +46,8 @@ TypeScript checks, Android release APK packaging, Windows and Apple Silicon macO
 desktop packaging, Linux DEB/AppImage packaging, and gateway Worker tests. Build outputs are attached to the workflow run and, for push and
 manual runs, committed to `dist/` in the triggering branch. These are
 unsigned development artifacts: Windows releases need a signing certificate,
-macOS distribution needs Developer ID signing and notarization, Android store
-builds need a private release keystore, and iOS device archives need an Apple
-Developer Team and provisioning profile. The workflows do not publish to stores
+macOS distribution needs Developer ID signing and notarization, and Android store
+builds need a private release keystore. There is no supported iOS build or iPhone installer in this repository. The workflows do not publish to stores
 or deploy the website.
 
 The first launch opens account creation; later launches open sign-in. Accounts
@@ -107,9 +102,7 @@ the user to sign in again. Supabase currently includes 50,000 monthly active
 users for Auth on its Free plan; other resource limits and AI model costs remain
 separate.
 
-After enabling SQLCipher in the native SQLite build configuration, reinstall
-native dependencies and rebuild the app (`bundle exec pod install` for iOS).
-Existing plain-SQLite development data is not migrated automatically.
+After enabling SQLCipher in the native SQLite build configuration, reinstall native dependencies and rebuild the applicable native target. Existing plain-SQLite development data is not migrated automatically.
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 
