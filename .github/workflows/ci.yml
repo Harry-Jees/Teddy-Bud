@@ -51,7 +51,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
       - name: Install pinned Ruff
         run: python -m pip install ruff==0.14.2
       - name: Lint Python distribution tools
