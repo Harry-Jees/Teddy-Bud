@@ -83,72 +83,16 @@ jobs:
           cache: gradle
           cache-dependency-path: client/android/**/*.gradle*
       - run: npm ci --prefix client
-      - run: bash client/android/gradlew -p client/android assembleRelease -PreactNativeArchitectures=arm64-v8a
-      - name: Stage Android build in dist
+      - name: Build installable Android release APK
+        run: bash client/android/gradlew -p client/android assembleRelease -PreactNativeArchitectures=arm64-v8a
+      - name: Stage Android release
         run: |
           mkdir -p dist/android
-          cp client/android/app/build/outputs/apk/debug/app-debug.apk dist/android/Teddybird-V-1.0-Android-arm64.apk
+          cp client/android/app/build/outputs/apk/release/app-release.apk dist/android/Teddybird-V-1.0-Android-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
           name: teddy-bud-android
-          path: dist/android/TeddyBud-android-debug.apk
-          if-no-files-found: error
-
-  apple-builds:
-    if: ${{ inputs.source_run_id == '' }}
-    name: ${{ matrix.name }} build
-    runs-on: macos-15-intel
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-      - run: npm ci --prefix client
-      - name: Install Apple native dependencies
-        working-directory: client/${{ matrix.project_dir }}
-        shell: bash
-        run: |
-          set -o pipefail
-          pod install --verbose 2>&1 | tee "$RUNNER_TEMP/pod-install.log"
-      - name: Preserve CocoaPods diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cocoapods-diagnostics-${{ matrix.project_dir }}
-          path: ${{ runner.temp }}/pod-install.log
-          if-no-files-found: ignore
-      - name: Build Apple app
-        shell: bash
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -workspace "${{ matrix.workspace }}" \
-            -scheme "${{ matrix.scheme }}" \
-            -destination "${{ matrix.destination }}" \
-            -derivedDataPath "client/${{ matrix.project_dir }}/build" \
-            CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee "$RUNNER_TEMP/xcodebuild-${{ matrix.project_dir }}.log"
-      - name: Preserve Xcode diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcodebuild-diagnostics-${{ matrix.project_dir }}
-          path: ${{ runner.temp }}/xcodebuild-${{ matrix.project_dir }}.log
-          if-no-files-found: ignore
-      - name: Stage Apple builds in dist
-        run: |
-          mkdir -p "dist/${{ matrix.project_dir }}"
-          ditto -c -k --sequesterRsrc --keepParent "${{ matrix.app_path }}" "dist/${{ matrix.project_dir }}/TeddyBud-${{ matrix.project_dir }}.zip"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: teddy-bud-${{ matrix.project_dir }}
-          path: dist/${{ matrix.project_dir }}/TeddyBud-${{ matrix.project_dir }}.zip
+          path: dist/android/Teddybird-V-1.0-Android-arm64.apk
           if-no-files-found: error
 
   desktop-packages:
@@ -167,7 +111,7 @@ jobs:
             os: macos-latest
             command: desktop:macos
             artifact: teddy-bud-macos-dmg
-          - name: Debian package
+          - name: Linux Debian package
             os: ubuntu-24.04
             command: desktop:linux
             artifact: teddy-bud-linux-deb
@@ -201,7 +145,7 @@ jobs:
 
   collect-dist:
     if: ${{ always() && (inputs.source_run_id != '' || (needs.client-checks.result == 'success' && needs.worker-tests.result == 'success' && needs.android-build.result == 'success' && needs.desktop-packages.result == 'success')) }}
-    name: Collect all platform builds
+    name: Collect supported platform builds
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -236,7 +180,7 @@ jobs:
         if: github.ref_type == 'branch' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+Harry-Jees@users.noreply.github.com"
           git lfs install --local
           git add dist/
           if git diff --cached --quiet; then
