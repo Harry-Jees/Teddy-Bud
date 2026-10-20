@@ -76,3 +76,15 @@ Run Worker tests from `gateway-worker/` with `npm test`. The collected artifact 
 The app uses email/password accounts with user-chosen recovery passphrases and one-hour sessions. Email is an account identifier; no email verification or auth email delivery is required. Each account has separate locally encrypted chat data on a device. Gateway setup, Supabase configuration, allowed browser origins, and secret configuration are documented in [gateway-worker/README.md](gateway-worker/README.md). Do not place credentials in the app bundle or commit them to the repository.
 
 The [client README](client/README.md) documents setup, account configuration, local data, and privacy settings. The [guide index](guide/README.md) links to product and engineering documentation, including the [security and privacy model](guide/SECURITY_AND_PRIVACY.md).
+
+
+## Community and project policies
+
+- [Contributing guide](CONTRIBUTING.md): development setup, contribution expectations, and pull request checklist.
+- [Code of Conduct](CODE_OF_CONDUCT.md): respectful participation and reporting concerns.
+- [Security Policy](SECURITY.md): responsible vulnerability disclosure.
+- [Support and troubleshooting](SUPPORT.md): where to ask for help and what information to include.
+- [Issue templates](.github/ISSUE_TEMPLATE/): structured bug reports and feature requests.
+- [Pull request template](.github/PULL_REQUEST_TEMPLATE.md): review and verification checklist.
+
+**License status:** no repository license is currently declared. Do not assume that public availability grants permission to reuse, redistribute, or modify the code. The project owner should choose and add an appropriate license before inviting reuse under open-source terms.
