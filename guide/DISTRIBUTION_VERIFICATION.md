@@ -17,11 +17,12 @@ The verifier rejects Git LFS pointer text, implausibly small files, invalid pack
 | `android/TeddyBud.v.1.0-Android-arm64.apk` | ARM64 Android | ZIP CRC, manifest, DEX, native ABI |
 | `desktop/TeddyBud.v.1.0-win-x64.exe` | Windows x64 | PE executable signature |
 | `desktop/TeddyBud.v.1.0-win-x64.exe.blockmap` | Windows updater metadata | Non-empty companion file |
-| `desktop/TeddyBud.v.1.0-mac-arm64.dmg` | Apple Silicon macOS | DMG UDIF footer |
+| `desktop/TeddyBud.v.1.0-mac-arm64.dmg` | Apple Silicon macOS installer | DMG UDIF footer |
+| `desktop/TeddyBud.v.1.0-mac-arm64.zip` | Apple Silicon macOS ZIP | ZIP CRC and `.app` bundle |
 | `desktop/TeddyBud.v.1.0-linux-amd64.deb` | Debian/Ubuntu x64 | Debian archive header |
 | `desktop/TeddyBud.v.1.0-linux-amd64.AppImage` | Linux x64 | ELF header and executable bit |
 
-Only one macOS disk image is published to keep the download experience simple. Intel macOS, iOS Simulator, and native iPhone/iPad packages are not advertised as available downloads.
+Windows intentionally has one installer choice. macOS offers a DMG installer and a ZIP archive for Apple Silicon; Linux offers DEB and AppImage. Intel macOS, iOS Simulator, and native iPhone/iPad packages are not advertised as available downloads.
 
 ## iPhone/iPad status
 
