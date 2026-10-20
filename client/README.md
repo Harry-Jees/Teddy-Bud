@@ -34,23 +34,21 @@ npm run desktop:macos
 npm run desktop:linux
 ```
 
-The desktop commands create a Windows NSIS installer, macOS DMGs for Intel and
-Apple Silicon, and an x64 Debian `.deb` package under `../dist/desktop/`.
+The desktop commands create a Windows NSIS installer, an Apple Silicon macOS DMG,
+and x64 Debian `.deb` and AppImage packages under `../dist/desktop/`.
 `npm run build:web` writes the browser bundle to `../dist/web/`; `npm run build:dist`
 creates that bundle and packages the desktop app for the current
-operating system in `../dist/desktop/`. The GitHub Actions workflow collects
-web, Android, iOS Simulator, macOS, Windows, and Linux packages into a single
-`teddy-bud-dist` artifact with the same `dist/` layout. Push and manual workflow
+operating system in `../dist/desktop/`. The GitHub Actions workflow collects Android, Windows, Apple Silicon macOS, and Linux
+packages into a single `teddy-bud-dist` artifact with the same `dist/` layout. Push and manual workflow
 runs also commit the generated files into the triggering branch's root `dist/`
 folder. Pull-request runs build and upload the artifact without committing
 files. Large Windows package payloads use Git LFS; unpacked Electron staging
 files are excluded. To run the desktop wrapper locally, build the relative-path web bundle first with
 `npm run build:web -- --base=./`, then use `npm run desktop:run`.
 
-The GitHub Actions workflow at `../.github/workflows/ci.yml` runs tests,
-TypeScript checks, web builds, Android debug builds, iOS Simulator/macOS native
-builds, Windows and macOS desktop packaging, Linux `.deb` packaging, and gateway
-Worker tests. Build outputs are attached to the workflow run and, for push and
+The GitHub Actions workflow at `../.github/workflows/ci.yml` runs client tests,
+TypeScript checks, Android release APK packaging, Windows and Apple Silicon macOS
+desktop packaging, Linux DEB/AppImage packaging, and gateway Worker tests. Build outputs are attached to the workflow run and, for push and
 manual runs, committed to `dist/` in the triggering branch. These are
 unsigned development artifacts: Windows releases need a signing certificate,
 macOS distribution needs Developer ID signing and notarization, Android store
@@ -178,7 +176,7 @@ they do not make the app a medical device or substitute for professional care.
 
 ## Native development
 
-Run `npm run android` with an Android emulator or device attached. Run `npm run ios` on macOS with Xcode and CocoaPods configured. The checked-in iOS distribution is an iOS Simulator app bundle; the Android distribution is a debug APK built for ARM64. These are development outputs and do not replace signed store builds.
+Run `npm run android` with an Android emulator or device attached. Run `npm run ios` on macOS with Xcode and CocoaPods configured. The Android distribution is an ARM64 APK. No iOS Simulator archive or installable iPhone IPA is published; a physical-device release requires Apple signing credentials and provisioning. The available packages are development outputs and do not replace signed store builds.
 
 For macOS desktop development, use `npm run desktop:run` after building the relative-path web bundle with `npm run build:web -- --base=./`. Desktop packaging commands and the current output locations are listed in the [repository README](../README.md) and the [distribution verification record](../guide/DISTRIBUTION_VERIFICATION.md).
 
