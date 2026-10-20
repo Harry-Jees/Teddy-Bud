@@ -31,9 +31,7 @@ npm run desktop:linux
 
 The desktop commands create a Windows NSIS installer, an Apple Silicon macOS DMG,
 and x64 Debian `.deb` and AppImage packages under `../dist/desktop/`.
-`npm run build:web` writes the browser bundle to `../dist/web/`; `npm run build:dist`
-creates that bundle and packages the desktop app for the current
-operating system in `../dist/desktop/`. The GitHub Actions workflow collects Android, Windows, Apple Silicon macOS, and Linux
+`npm run build:web` creates an internal renderer bundle for Electron desktop packaging; it is not a standalone web distribution. `npm run build:dist` packages the desktop app for the current operating system in `../dist/desktop/`. The GitHub Actions workflow collects Android, Windows, Apple Silicon macOS, and Linux
 packages into a single `teddy-bud-dist` artifact with the same `dist/` layout. Push and manual workflow
 runs also commit the generated files into the triggering branch's root `dist/`
 folder. Pull-request runs build and upload the artifact without committing
@@ -47,8 +45,7 @@ desktop packaging, Linux DEB/AppImage packaging, and gateway Worker tests. Build
 manual runs, committed to `dist/` in the triggering branch. These are
 unsigned development artifacts: Windows releases need a signing certificate,
 macOS distribution needs Developer ID signing and notarization, and Android store
-builds need a private release keystore. There is no supported iOS build or iPhone installer in this repository. The workflows do not publish to stores
-or deploy the website.
+builds need a private release keystore. There is no supported iOS build or iPhone installer in this repository. The workflows do not publish to stores or deploy a web app or website.
 
 The first launch opens account creation; later launches open sign-in. Accounts
 use email and password through Supabase Auth. At signup, choose a recovery
@@ -69,18 +66,11 @@ provider before signing in. Passwords are not saved by the app. Chats, memories,
 and preferences persist locally, scoped to the Supabase user ID. Native database
 files use SQLCipher with a random key stored in Keychain/Keystore. Electron
 encrypts local records through the operating-system secure storage used by
-Electron `safeStorage`. Web records use AES-256-GCM with a non-exportable Web
-Crypto key stored in IndexedDB. Older web and Electron records are encrypted
-when first read after the upgrade. Browser encryption protects stored files and
-database contents; code running in the same browser origin can still access data
-while the app is unlocked. Clearing the browser site's data also removes the
-device key and local records.
+Electron `safeStorage`. The optional local browser preview (development only) stores records with AES-256-GCM and a non-exportable Web Crypto key in IndexedDB. It is not a supported hosted product. Same-origin script can access data while the preview is unlocked. Clearing the preview site's data removes the device key and local records.
 
-Encryption keys are generated independently for each account and device or
-browser profile. Native builds use a separate SQLCipher database and keychain
+Encryption keys are generated independently for each account and device. The development-only browser preview has a separate browser-profile key. Native builds use a separate SQLCipher database and keychain
 key for each Supabase user ID. Electron generates one AES-256-GCM key per
-account and wraps it with operating-system secure storage. Web stores a
-separate non-exportable CryptoKey per account in IndexedDB. Password and
+account and wraps it with operating-system secure storage. The development-only browser preview stores a separate non-exportable CryptoKey per account in IndexedDB. Password and
 recovery passphrase material are not used as local encryption keys. The
 Supabase user ID scopes local records and encryption keys to the signed-in account;
 Supabase Auth manages the email. Portable recovery uses the encrypted
