@@ -12,7 +12,7 @@ Please avoid posting account identifiers, private conversations, passwords, reco
 ## Useful troubleshooting steps
 
 1. Record the app version/commit, operating system, target platform, and exact steps that led to the issue.
-2. Determine whether the issue affects the web client, native app, Electron desktop wrapper, or gateway.
+2. Determine whether the issue affects the Android app, Electron desktop wrapper, or gateway. A standalone web app is not distributed.
 3. Reproduce with a fresh test account and synthetic data when possible.
 4. For local development, use Node.js 22.12 or newer and install dependencies with `npm ci` in the relevant package.
 5. Run client tests with `npm test -- --runInBand` and type checks with `npx tsc --noEmit` from `client/`; run Worker tests with `npm test` from `gateway-worker/`.
