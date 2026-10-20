@@ -107,8 +107,8 @@ privacy controls before sending sensitive information.
 
 ## Operational guidance
 
-- Keep operating-system and browser accounts protected with device access controls.
-- Use the in-app clear-data control before handing a device or browser profile to someone else.
+- Keep operating-system accounts protected with device access controls; if using the development browser preview, protect the browser profile too.
+- Use the in-app clear-data control before handing a device to someone else; clear local preview data before sharing a development browser profile.
 - Keep encrypted backups and their passphrases in separate protected locations.
 - Do not put OAuth, Supabase service-role, or model-provider secrets in client code.
 - Treat the Electron renderer and its dependencies as security-sensitive; keep the packaged app and dependencies current and avoid loading untrusted remote content.
