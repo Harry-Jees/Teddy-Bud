@@ -49,7 +49,7 @@ def main() -> int:
         copy_file(artifacts, "teddy-bud-android", "TeddyBud.v.1.0-Android-arm64.apk", dist / "android" / "TeddyBud.v.1.0-Android-arm64.apk")
         for name in ("TeddyBud.v.1.0-win-x64.exe", "TeddyBud.v.1.0-win-x64.exe.blockmap"):
             copy_file(artifacts, "teddy-bud-windows", name, dist / "desktop" / name)
-        for name in ("TeddyBud.v.1.0-mac-arm64.dmg", "TeddyBud.v.1.0-mac-arm64.zip"):
+        for name in ("TeddyBud.v.1.0-mac-arm64.dmg",):
             copy_file(artifacts, "teddy-bud-macos-arm64", name, dist / "desktop" / name)
         copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-amd64.deb", dist / "desktop" / "TeddyBud.v.1.0-linux-amd64.deb")
         copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-amd64.AppImage", dist / "desktop" / "TeddyBud.v.1.0-linux-amd64.AppImage")
