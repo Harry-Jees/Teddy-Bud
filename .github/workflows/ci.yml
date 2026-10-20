@@ -116,8 +116,8 @@ jobs:
             command: desktop:linux
             artifact: teddy-bud-linux
             files: |
-              dist/desktop/TeddyBud.v.1.0-linux-x64.deb
-              dist/desktop/TeddyBud.v.1.0-linux-x64.AppImage
+              dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+              dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
