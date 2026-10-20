@@ -34,8 +34,8 @@ def main() -> int:
             copy_file(artifacts, "teddy-bud-windows", name, dist / "desktop" / name)
         copy_file(artifacts, "teddy-bud-macos-dmg", "TeddyBud.v.1.0-mac-arm64.dmg", dist / "desktop" / "TeddyBud.v.1.0-mac-arm64.dmg")
         copy_file(artifacts, "teddy-bud-macos-dmg", "TeddyBud.v.1.0-mac-x64.dmg", dist / "desktop" / "TeddyBud.v.1.0-mac-x64.dmg", required=True)
-        copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-x64.deb", dist / "desktop" / "TeddyBud.v.1.0-linux-x64.deb")
-        copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-x64.AppImage", dist / "desktop" / "TeddyBud.v.1.0-linux-x64.AppImage")
+        copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-amd64.deb", dist / "desktop" / "TeddyBud.v.1.0-linux-amd64.deb")
+        copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-amd64.AppImage", dist / "desktop" / "TeddyBud.v.1.0-linux-amd64.AppImage")
     except FileNotFoundError as exc:
         print(f"Collection failed: {exc}", file=sys.stderr)
         return 1
