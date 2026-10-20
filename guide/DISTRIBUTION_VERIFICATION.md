@@ -18,13 +18,17 @@ The verifier rejects Git LFS pointer text, implausibly small files, invalid pack
 | `desktop/TeddyBud.v.1.0-win-x64.exe` | Windows x64 | PE executable signature |
 | `desktop/TeddyBud.v.1.0-win-x64.exe.blockmap` | Windows updater metadata | Non-empty companion file |
 | `desktop/TeddyBud.v.1.0-mac-arm64.dmg` | Apple Silicon macOS installer | DMG UDIF footer |
-| `desktop/TeddyBud.v.1.0-mac-arm64.zip` | Apple Silicon macOS ZIP | ZIP CRC and `.app` bundle |
+
 | `desktop/TeddyBud.v.1.0-linux-amd64.deb` | Debian/Ubuntu x64 | Debian archive header |
 | `desktop/TeddyBud.v.1.0-linux-amd64.AppImage` | Linux x64 | ELF header and executable bit |
 
 Windows has one installer. macOS distribution is DMG only; Linux offers DEB and AppImage. There is no standalone web distribution, no iOS Simulator download, and no native iPhone/iPad package.
 
-## Web and iPhone/iPad status\n\nThere is no standalone Teddy Bud web app or web download. The Vite/React Native Web bundle is an internal renderer used by Electron desktop packages; the portfolio website is a separate presentation site.\n\n## iPhone/iPad status
+## Web and iPhone/iPad status
+
+There is no standalone Teddy Bud web app or web download. The Vite/React Native Web bundle is an internal renderer used by Electron desktop packages; the portfolio website is a separate presentation site.
+
+## iPhone/iPad status
 
 A normal installable iOS release requires a device-targeted build signed with an Apple Developer Team and an appropriate provisioning profile (or a supported distribution channel such as TestFlight/App Store). The Simulator archive is not an installable iPhone app. No signed IPA is published until the required Apple signing credentials and provisioning setup are configured.
 
