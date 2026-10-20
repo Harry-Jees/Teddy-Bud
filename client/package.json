@@ -1,5 +1,5 @@
 {
-  "name": "TeddyBud",
+  "name": "teddy-bud",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -7,13 +7,13 @@
     "ios": "react-native run-ios",
     "web": "vite --host 127.0.0.1 --open",
     "build:web": "vite build --outDir ../dist/web",
-    "build:dist": "npm run build:web && npm run desktop:prepare && electron-builder --projectDir .desktop-package --config electron-builder.yml --publish never",
+    "build:dist": "npm run desktop:prepare && electron-builder --projectDir .desktop-package --config electron-builder.yml --publish never",
     "desktop:run": "electron desktop/main.cjs",
     "desktop:prepare": "node desktop/prepare-package.cjs",
     "desktop:build": "npm run build:web -- --base=./ && npm run desktop:prepare && electron-builder --projectDir .desktop-package --config electron-builder.yml --publish never",
     "desktop:windows": "npm run desktop:build -- --win nsis",
     "desktop:macos": "npm run desktop:build -- --mac dmg",
-    "desktop:linux": "npm run desktop:build -- --linux deb",
+    "desktop:linux": "npm run desktop:build -- --linux deb AppImage",
     "lint": "eslint .",
     "start": "react-native start",
     "test": "jest"
