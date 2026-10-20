@@ -130,6 +130,14 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci --prefix client
+      - name: Clear tracked Linux package files before rebuilding
+        if: matrix.name == 'Linux Debian and AppImage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The checkout may contain LFS pointers from the previous distribution.
+          # Remove them so they cannot be mistaken for freshly generated packages.
+          rm -f dist/desktop/TeddyBud.v.1.0-linux-*.deb dist/desktop/TeddyBud.v.1.0-linux-*.AppImage
       - name: Package desktop application
         run: npm run ${{ matrix.command }} --prefix client
         env:
