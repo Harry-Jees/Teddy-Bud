@@ -151,9 +151,11 @@ jobs:
             printf 'Expected exactly one Linux AppImage, found %s: %s\n' "${#apps[@]}" "${apps[*]:-none}" >&2
             exit 1
           fi
-          mv -f "${debs[0]}" dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
-          mv -f "${apps[0]}" dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
-          chmod +x dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          deb_target=dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          app_target=dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          if [[ "${debs[0]}" != "$deb_target" ]]; then mv -f "${debs[0]}" "$deb_target"; fi
+          if [[ "${apps[0]}" != "$app_target" ]]; then mv -f "${apps[0]}" "$app_target"; fi
+          chmod +x "$app_target"
           file dist/desktop/TeddyBud.v.1.0-linux-amd64.deb dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
           test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
           test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
