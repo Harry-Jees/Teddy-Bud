@@ -18,6 +18,10 @@ def copy_file(artifacts: Path, artifact_name: str, filename: str, target: Path, 
         return
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
+    # Actions artifact ZIP extraction does not reliably preserve Unix mode bits.
+    # Restore the AppImage executable bit after it has been collected.
+    if target.name.endswith(".AppImage"):
+        target.chmod(target.stat().st_mode | 0o111)
     print(f"Collected {source} -> {target}")
 
 def main() -> int:
