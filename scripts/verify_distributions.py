@@ -15,7 +15,8 @@ EXPECTED = {
     "android/TeddyBud.v.1.0-Android-arm64.apk",
     "desktop/TeddyBud.v.1.0-win-x64.exe",
     "desktop/TeddyBud.v.1.0-win-x64.exe.blockmap",
-    "desktop/TeddyBud.v.1.0-mac-arm64.dmg",    "desktop/TeddyBud.v.1.0-linux-amd64.deb",
+    "desktop/TeddyBud.v.1.0-mac-arm64.dmg",
+    "desktop/TeddyBud.v.1.0-linux-amd64.deb",
     "desktop/TeddyBud.v.1.0-linux-amd64.AppImage",
 }
 
