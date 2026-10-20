@@ -77,7 +77,7 @@ jobs:
           cache: gradle
           cache-dependency-path: client/android/**/*.gradle*
       - run: npm ci --prefix client
-      - name: Build installable Android release APK
+      - name: Build installable Android release
         run: bash client/android/gradlew -p client/android assembleRelease -PreactNativeArchitectures=arm64-v8a
       - name: Stage Android release
         run: |
@@ -133,6 +133,17 @@ jobs:
         run: npm run ${{ matrix.command }} --prefix client
         env:
           DEBUG: electron-builder
+      - name: Normalize Linux AppImage filename
+        if: matrix.name == 'Linux Debian and AppImage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="dist/desktop/TeddyBud.v.1.0-linux-x86_64.AppImage"
+          target="dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage"
+          test -s "$source"
+          mv "$source" "$target"
+          chmod +x "$target"
+          file "$target"
       - name: Remove unpacked Electron staging files
         run: >-
           node -e "const fs=require('node:fs');
