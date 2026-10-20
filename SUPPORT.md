@@ -21,7 +21,7 @@ Please avoid posting account identifiers, private conversations, passwords, reco
 
 ## Platform limitations
 
-- The iOS ZIP currently documented in `dist/` is an iOS Simulator build, not an installable iPhone release.
+- iOS/iPhone/iPad builds are not currently offered as downloads. Native project files may exist for development, but no installable iPhone IPA or published Simulator archive is part of the supported distribution set.
 - Desktop installers may be unsigned development packages. Public Windows/macOS distribution requires the appropriate signing and platform release steps.
 - A successful CI build does not establish real-device compatibility for every OS version.
 - Chat data is locally encrypted and device/account scoped; password recovery does not restore local keys or transfer local chat history to a new device.
