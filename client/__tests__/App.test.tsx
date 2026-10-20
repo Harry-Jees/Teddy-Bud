@@ -49,7 +49,6 @@ test('chat composer sends on Enter and keeps the send button available after a f
         memorySuggestion={null}
         onSaveMemorySuggestion={noop}
         onDismissMemorySuggestion={noop}
-        memorySuggestionError={null}
         draft="A new message"
         setDraft={noop}
         onSend={onSend}
@@ -61,7 +60,7 @@ test('chat composer sends on Enter and keeps the send button available after a f
     );
   });
 
-  const composer = renderer.root.findByProps({ accessibilityLabel: 'Write a message to Teddy Bud' });
+  const composer = renderer.root.findByProps({ accessibilityLabel: 'Write a message to Teddy' });
   const nativeEvent = { nativeEvent: { text: 'A new message' } };
   expect(composer.props.onSubmitEditing).not.toBe(onSend);
   await ReactTestRenderer.act(async () => {
@@ -127,8 +126,7 @@ test('chat shows three dots and announces when Teddy Bud is responding', async (
           memorySuggestion={null}
           onSaveMemorySuggestion={noop}
           onDismissMemorySuggestion={noop}
-          memorySuggestionError={null}
-          onSaveOccasion={saveOccasion}
+            onSaveOccasion={saveOccasion}
           draft=""
           setDraft={noop}
           onSend={noop}
@@ -190,7 +188,6 @@ test('chat presents crisis resources for a direct self-harm signal', async () =>
         memorySuggestion={null}
         onSaveMemorySuggestion={jest.fn()}
         onDismissMemorySuggestion={jest.fn()}
-        memorySuggestionError={null}
         draft=""
         setDraft={jest.fn()}
         onSend={jest.fn()}
@@ -251,7 +248,6 @@ test('India crisis support presents both Tele-MANAS call numbers and its officia
         memorySuggestion={null}
         onSaveMemorySuggestion={jest.fn()}
         onDismissMemorySuggestion={jest.fn()}
-        memorySuggestionError={null}
         draft=""
         setDraft={jest.fn()}
         onSend={jest.fn()}
@@ -303,7 +299,6 @@ test('memory suggestion appears beside its reply and requires explicit approval'
         memorySuggestion={{ conversationId: 'chat-one', messageId: 2, fact: 'I hope to become a teacher.' }}
         onSaveMemorySuggestion={onSave}
         onDismissMemorySuggestion={onDismiss}
-        memorySuggestionError={null}
         draft=""
         setDraft={jest.fn()}
         onSend={jest.fn()}

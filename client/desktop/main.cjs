@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, net, protocol, safeStorage, shell } = require('electron');
+const { createCipheriv, createDecipheriv, randomBytes, createHash } = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -76,6 +77,43 @@ function encryptedSessionPath() {
   return path.join(app.getPath('userData'), 'account-session.bin');
 }
 
+function localDataKeyPath(keyName) {
+  const digest = createHash('sha256').update(keyName).digest('hex');
+  return path.join(app.getPath('userData'), 'local-data-keys', `${digest}.bin`);
+}
+
+function validLocalDataKeyName(value) {
+  return typeof value === 'string' && value.length <= 512 && value.startsWith('teddy-bud:local-data:');
+}
+
+async function localDataKey(keyName, createIfMissing = true) {
+  await requireSecureDesktopStorage();
+  const destination = localDataKeyPath(keyName);
+  try {
+    const encrypted = await fs.readFile(destination);
+    const { result } = await safeStorage.decryptStringAsync(encrypted);
+    const key = Buffer.from(result, 'base64');
+    if (key.length !== 32 || key.toString('base64') !== result) throw new Error('Invalid account data key.');
+    return key;
+  } catch (error) {
+    if (!error || error.code !== 'ENOENT') throw error;
+    if (!createIfMissing) throw new Error('The encryption key for this account is unavailable. The saved data cannot be opened.');
+  }
+
+  const key = randomBytes(32);
+  const encrypted = await safeStorage.encryptStringAsync(key.toString('base64'));
+  const temporary = `${destination}.${randomBytes(8).toString('hex')}.tmp`;
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await fs.writeFile(temporary, encrypted, { mode: 0o600 });
+  try {
+    await fs.rename(temporary, destination);
+  } catch (error) {
+    await fs.rm(temporary, { force: true });
+    if (!error || error.code !== 'EEXIST') throw error;
+  }
+  return localDataKey(keyName, false);
+}
+
 async function requireSecureDesktopStorage() {
   if (!await safeStorage.isAsyncEncryptionAvailable()) {
     throw new Error('The operating-system secure storage is unavailable. Set up Windows Credential Manager, macOS Keychain, or a Linux keyring, then restart Teddy Bud.');
@@ -142,15 +180,33 @@ function registerIpcHandlers() {
     await fs.rm(encryptedSessionPath(), { force: true });
   });
 
-  ipcMain.handle('desktop:encrypt-local-data', async (event, value) => {
+  ipcMain.handle('desktop:encrypt-local-data', async (event, keyName, value) => {
     if (!isTrustedRenderer(event.senderFrame)) throw new Error('Untrusted desktop renderer.');
-    if (typeof value !== 'string') throw new Error('Invalid local data.');
-    await requireSecureDesktopStorage();
-    const encrypted = await safeStorage.encryptStringAsync(value);
-    return Buffer.from(encrypted).toString('base64');
+    if (!validLocalDataKeyName(keyName) || typeof value !== 'string' || value.length > 10_000_000) throw new Error('Invalid local data.');
+    const key = await localDataKey(keyName);
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    cipher.setAAD(Buffer.from(keyName, 'utf8'));
+    const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+    return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString('base64');
   });
 
-  ipcMain.handle('desktop:decrypt-local-data', async (event, value) => {
+  ipcMain.handle('desktop:decrypt-local-data', async (event, keyName, value) => {
+    if (!isTrustedRenderer(event.senderFrame)) throw new Error('Untrusted desktop renderer.');
+    if (!validLocalDataKeyName(keyName) || typeof value !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+      throw new Error('Invalid encrypted local data.');
+    }
+    const encrypted = Buffer.from(value, 'base64');
+    if (encrypted.toString('base64') !== value) throw new Error('Invalid encrypted local data.');
+    if (encrypted.length < 12 + 16) throw new Error('Encrypted local data is incomplete.');
+    const key = await localDataKey(keyName, false);
+    const decipher = createDecipheriv('aes-256-gcm', key, encrypted.subarray(0, 12));
+    decipher.setAAD(Buffer.from(keyName, 'utf8'));
+    decipher.setAuthTag(encrypted.subarray(12, 28));
+    return Buffer.concat([decipher.update(encrypted.subarray(28)), decipher.final()]).toString('utf8');
+  });
+
+  ipcMain.handle('desktop:decrypt-legacy-local-data', async (event, value) => {
     if (!isTrustedRenderer(event.senderFrame)) throw new Error('Untrusted desktop renderer.');
     if (typeof value !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
       throw new Error('Invalid encrypted local data.');

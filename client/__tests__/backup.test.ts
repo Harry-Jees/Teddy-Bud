@@ -39,6 +39,8 @@ const sampleData: LocalAppData = {
   shareAboutMe: true,
   aboutMe: 'Likes short answers',
   assistantName: 'Buddy',
+  assistantCharacterId: 'teddy-bud',
+  assistantCharacterNames: { 'teddy-bud': 'Buddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
 };
 
 describe('encrypted Teddy Bud backups', () => {

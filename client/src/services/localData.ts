@@ -1,5 +1,7 @@
 import { createLocalStore } from './localStore';
 import type { LocalStore } from './localStore';
+import { ASSISTANT_CHARACTERS, DEFAULT_ASSISTANT_CHARACTER_ID, getAssistantCharacter } from '../characters';
+import type { AssistantCharacterId, AssistantCharacterNames } from '../characters';
 
 export type LocalMessage = {
   id: number;
@@ -33,6 +35,8 @@ export type LocalAppData = {
   shareAboutMe: boolean;
   aboutMe: string;
   assistantName: string;
+  assistantCharacterId?: AssistantCharacterId;
+  assistantCharacterNames?: AssistantCharacterNames;
 };
 
 const DATA_KEY_PREFIX = 'teddy-bud:local-data:';
@@ -120,6 +124,25 @@ function normalize(value: unknown): LocalAppData {
     && conversations.some(conversation => conversation.id === data.activeConversationId)
     ? data.activeConversationId
     : conversations[0]?.id ?? null;
+  const assistantCharacterId = getAssistantCharacter(data.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID).id;
+  const legacyName = typeof data.assistantName === 'string' && data.assistantName.trim()
+    ? data.assistantName.trim().slice(0, MAX_ASSISTANT_NAME_LENGTH)
+    : 'Teddy';
+  const migratedDefaultNames: Record<string, string> = { 'Teddy Bud': 'Teddy', Pip: 'Doodle', Clover: 'Mellow' };
+  const legacyAssistantName = migratedDefaultNames[legacyName] ?? legacyName;
+  const savedCharacterNames = data.assistantCharacterNames && typeof data.assistantCharacterNames === 'object'
+    ? data.assistantCharacterNames as Record<string, unknown>
+    : {};
+  const assistantCharacterNames: AssistantCharacterNames = {};
+  for (const character of ASSISTANT_CHARACTERS) {
+    const legacyCharacterId = character.id === 'doodle' ? 'pip' : character.id === 'mellow' ? 'clover' : character.id;
+    const savedName = savedCharacterNames[character.id] ?? savedCharacterNames[legacyCharacterId];
+    const normalizedSavedName = typeof savedName === 'string' && savedName.trim()
+      ? savedName.trim().slice(0, MAX_ASSISTANT_NAME_LENGTH)
+      : '';
+    assistantCharacterNames[character.id] = migratedDefaultNames[normalizedSavedName]
+      ?? (normalizedSavedName || (character.id === assistantCharacterId ? legacyAssistantName : character.name));
+  }
   return {
     conversations,
     activeConversationId,
@@ -131,9 +154,9 @@ function normalize(value: unknown): LocalAppData {
     shareChatHistory: data.shareChatHistory === true,
     shareAboutMe: data.shareAboutMe === true,
     aboutMe: typeof data.aboutMe === 'string' ? data.aboutMe.slice(0, MAX_ABOUT_ME_LENGTH) : '',
-    assistantName: typeof data.assistantName === 'string' && data.assistantName.trim()
-      ? data.assistantName.trim().slice(0, MAX_ASSISTANT_NAME_LENGTH)
-      : 'Teddy Bud',
+    assistantName: assistantCharacterNames[assistantCharacterId] ?? legacyAssistantName,
+    assistantCharacterId,
+    assistantCharacterNames,
   };
 }
 
@@ -240,7 +263,7 @@ export class LocalDataService {
     if (!owner) throw new Error('A signed-in account is required to load local data.');
     await this.writeQueue;
     const saved = await (await getStorage()).getItem(key(owner));
-    if (!saved) return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy Bud' };
+    if (!saved) return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: DEFAULT_ASSISTANT_CHARACTER_ID, assistantCharacterNames: { 'teddy-bud': 'Teddy' } };
     try {
       return normalize(JSON.parse(saved));
     } catch {

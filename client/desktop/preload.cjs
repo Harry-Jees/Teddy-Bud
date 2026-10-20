@@ -15,8 +15,9 @@ contextBridge.exposeInMainWorld('teddyBudDesktop', Object.freeze({
   loadSession: () => ipcRenderer.invoke('desktop:load-session'),
   saveSession: serializedSession => ipcRenderer.invoke('desktop:save-session', serializedSession),
   clearSession: () => ipcRenderer.invoke('desktop:clear-session'),
-  encryptLocalData: value => ipcRenderer.invoke('desktop:encrypt-local-data', value),
-  decryptLocalData: value => ipcRenderer.invoke('desktop:decrypt-local-data', value),
+  encryptLocalData: (keyName, value) => ipcRenderer.invoke('desktop:encrypt-local-data', keyName, value),
+  decryptLocalData: (keyName, value) => ipcRenderer.invoke('desktop:decrypt-local-data', keyName, value),
+  decryptLegacyLocalData: value => ipcRenderer.invoke('desktop:decrypt-legacy-local-data', value),
   onAuthCallback: listener => {
     authCallbackListener = listener;
     for (const callbackUrl of authCallbacks.splice(0)) listener(callbackUrl);

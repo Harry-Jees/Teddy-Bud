@@ -1,5 +1,13 @@
 # Teddy Bud — Architecture, Security and Delivery Audit
 
+> Historical audit snapshot: the findings below describe the repository at the
+> revision and date shown, not the current implementation. Authentication,
+> email verification, session expiry, and local account-key isolation were
+> subsequently changed. See [Security and Privacy](SECURITY_AND_PRIVACY.md)
+> and [Technical Architecture](TECHNICAL_ARCHITECTURE.md) for the current
+> behavior. The external Supabase and Cloudflare configuration still requires
+> deployment-side verification.
+
 Date: 2026-10-19
 Reviewed revision: main at e8c15b936fd9de60d1f822ba8384fee735669930
 Audit branch: audit/security-hardening-2026-10
@@ -108,7 +116,22 @@ The app already has many accessibility roles and labels, but modal focus behavio
 6. Verify that chat history deletion, memory deletion, logout, and encrypted backup restore work on web, Android, iOS, macOS, Windows, and Linux.
 7. Perform a dependency audit, secret scan, and platform-specific release-signing checks.
 
-## Local data encryption update — 20 October 2026
+## Follow-up review — 20 October 2026
+
+The app now uses Supabase email/password authentication without email
+verification. Teddy Bud sessions have an absolute one-hour lifetime and are not
+renewed. Local encryption keys are separate per Supabase user ID on native,
+Electron, and web builds. A migration path preserves existing local records as
+each account is next opened. The signup and recovery passphrase verifier table
+is private to the Worker service role. Worker test coverage checks signup,
+legacy account migration, one-hour expiry, and rate limiting.
+
+Verified operational gap: this source change does not alter live Supabase Auth
+settings. Before deployment, apply the migration and disable Confirm Email in
+Supabase Auth so signup returns a session. No auth email provider or custom
+domain is needed. No production deployment was performed by this source review.
+
+## Historical local data encryption update — 20 October 2026
 
 The browser/Electron local-data storage review item described above has been
 addressed: Electron records use OS-backed `safeStorage`; browser records use

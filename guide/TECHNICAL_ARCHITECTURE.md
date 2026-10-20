@@ -1,78 +1,73 @@
 # Technical Architecture & API Contract
 
-## 1. System Architecture
-The client app is built in React Native. It operates as a thin, secure client connecting to a remote Gateway (Cloudflare Worker) which proxies to NVIDIA-hosted AI APIs.
+## 1. System architecture
 
-## 2. Tech Stack
-- **Frontend**: React Native with React Native Web and an Electron desktop wrapper
-- **Local Storage**: Account-scoped SQLCipher on native builds; encrypted IndexedDB records on web and Electron
-- **Key Management**: Native Keychain/Keystore, Electron `safeStorage`, or a browser-profile-local non-exportable Web Crypto key
+The client is a React Native application with React Native Web and an Electron
+desktop wrapper. It uses the Cloudflare Worker gateway for account operations
+and authenticated AI requests. Supabase Auth manages email/password credentials;
+Supabase Postgres stores account profiles and private recovery verification
+records. Chats, memories, and preferences are persisted locally.
 
-## 3. Gateway Boundary (API Contract)
-The client relies entirely on an external Cloudflare Worker gateway via HTTPS. Fake transports/mocks should only be used in unit tests, not for live capabilities.
+## 2. Storage and key management
 
-### External Endpoints
-- `POST /auth/signup`: Create a Supabase email/password account and send a verification code.
-- `POST /auth/verify-signup-otp`: Verify an email signup code and create a Teddy Bud session.
-- `POST /auth/resend-signup-otp`: Resend an email signup code.
-- `POST /auth/verify-email`: Validate a confirmed Supabase access token and create a Teddy Bud session.
-- `POST /auth/login`: Sign in to Supabase with email and password, then create a Teddy Bud session.
-- `GET /auth/login`: Optional Cloudflare Access redirect flow.
-- `POST /auth/refresh`: Renews an active one-hour session.
-- `POST /auth/logout`: Revokes the current server-side session.
-- `POST /auth/register`: Device registration.
-- `POST /auth/verify`: Device verification.
-- `GET /health`: Gateway health check.
-- `GET /v1/models`: AI model discovery.
-- `POST /v1/chat/completions`: Authenticated chat proxy to NVIDIA.
+- Android, iOS, and macOS: account-specific SQLCipher databases; each random
+  database key is stored in Keychain/Keystore.
+- Electron: each account has a random AES-256-GCM key protected by Electron
+  `safeStorage`; only encrypted record values are stored in IndexedDB.
+- Web: each account has a separate non-exportable Web Crypto key in IndexedDB;
+  records use AES-256-GCM.
+- Backups: encrypted `.teddybud` files use a separate passphrase-derived key.
 
-## 4. AI Constraints
-- **Cloud-only AI**: All AI inference happens remotely. No local inference tools are permitted.
-- The client must not infer gateway routes, response schemas, model IDs, token semantics, or deployment behavior that have not been explicitly supplied by the gateway contract.
+The authenticated Supabase user ID is the local account scope and key scope.
+Existing records are migrated to per-account encryption as they are opened;
+native records move from the former shared SQLCipher database on a per-account
+basis. Web encryption protects local files at rest but does not defend against
+malicious script executing in the same origin while the app is unlocked.
 
-## 5. Browser and native authentication
-Web and native clients can create accounts with a name, email, and password,
-then verify the email with a signup OTP before signing in. Supabase Auth stores
-credentials and enforces email confirmation; its Confirmation email template
-must include `{{ .Token }}`. Email delivery uses the configured Supabase mailer.
-Alternatively, Google OAuth signs users in without requiring email or SMS
-delivery. The gateway starts an OAuth PKCE flow, stores the verifier and state
-temporarily in Durable Objects, exchanges the returned code with Supabase Auth,
-and checks the user's profile before issuing a Teddy Bud session. The Google
-client secret stays in Supabase and is never sent to the app.
-`public.user_profiles` stores the signup name and mirrors each `auth.users.id` using an insert trigger and
-has row-level security so users can select only their own row. The Worker
-validates the Supabase identity and, using that user's Supabase access token,
-checks the RLS-protected profile row before issuing its own bearer token for
-chat. No Supabase service-role key is used by the Worker.
-Browser JWTs are kept in `sessionStorage` and memory; native JWTs are kept in
-platform secure storage. Session records are stored in Durable Objects with a
-one-hour idle timeout. Refresh extends active sessions; logout revokes them
-immediately. The Worker also exposes an optional Cloudflare Access redirect
-endpoint and legacy device registration/verification endpoints.
-All `/v1/*` requests require a valid bearer JWT and are proxied by Cloudflare;
-the NVIDIA API key remains a Worker secret and is never sent to the client.
+## 3. Gateway API contract
 
-Chat history, manually saved memories, and their preferences persist locally per
-JWT subject. Native builds use SQLCipher with the database key in platform
-secure storage. Electron encrypts records through OS-backed Electron
-`safeStorage`. The web client uses AES-256-GCM with a non-exportable CryptoKey
-stored in IndexedDB; this is device/profile-local protection and does not prevent
-same-origin code from accessing data while the app runs. Existing plaintext
-web/Electron records are encrypted on first read after the storage upgrade. The web client
-fails closed if encryption is unavailable. Saved memories are sent with a chat
-request only when the user enables memory sharing.
+- `POST /auth/signup`: create an email/password account, store a keyed
+  recovery-passphrase verifier, and issue a Teddy Bud session.
+- `POST /auth/login`: verify credentials and the private recovery record; issue
+  a Teddy Bud session.
+- `POST /auth/recover`: verify the recovery passphrase, change the Supabase
+  password, and revoke that account's Teddy Bud sessions.
+- `POST /auth/migrate-legacy`: upgrade a still-valid legacy Google session
+  while preserving its Supabase user ID.
+- `GET /auth/session`: validate a saved session before loading local data.
+- `POST /auth/refresh`: always rejects renewal; sessions expire after one hour.
+- `POST /auth/logout`: revoke the current server-side session.
+- `POST /auth/register` and `POST /auth/verify`: device registration/verification
+  endpoints retained for gateway compatibility.
+- `GET /health`: gateway health check.
+- `GET /v1/models`: authenticated AI model discovery.
+- `POST /v1/chat/completions`: authenticated chat proxy to NVIDIA.
 
-Local encryption keys are not derived from a Google email or OAuth token and
-are not synchronized through Supabase. Supabase Auth manages the account email;
-the application profile table associates data with the Supabase user ID. The
-encrypted backup feature is the supported cross-device transfer path and uses
-its own passphrase-derived key. See [Security and Privacy](SECURITY_AND_PRIVACY.md)
-for the design and references.
+## 4. Authentication and session behavior
 
-The web client uses IndexedDB for local persistence; it does not require OPFS
-or cross-origin-isolation headers.
+Email is an account identifier; email ownership verification is not required.
+Configure Supabase Auth with **Confirm email** disabled so signup returns an
+Auth token and no email delivery is required. The gateway still checks for an
+RLS-protected profile and a private recovery verifier before granting access.
 
-The browser gateway Worker is deployed as
-`https://teddy-bud-browser-gateway.harryjees.workers.dev`. Its Access login
-requires a custom hostname protected by a Cloudflare Access application.
+Teddy Bud sessions are signed bearer tokens backed by Durable Object session
+records and expire one absolute hour after issue. Refresh does not renew them.
+The app clears the local token and returns to sign-in at expiry. Sign-in,
+signup, and recovery are rate-limited. Durable
+Objects also keep per-user session indexes used to revoke sessions after
+password recovery.
+
+The Worker validates the session for `/v1/*` requests and proxies to NVIDIA;
+the NVIDIA key remains a Worker secret. The `SUPABASE_SERVICE_ROLE_KEY` and
+`RECOVERY_KEY_SECRET` are also server-only. The profile query uses the user's
+Supabase token and RLS; the recovery table is accessed only by the Worker.
+
+## 5. AI and privacy constraints
+
+- All AI inference happens remotely through the gateway.
+- The client sends the active conversation and only the memories, selected
+  history, or About me content enabled by the privacy controls.
+- Provider credentials never ship in the client.
+
+See [Security and Privacy](SECURITY_AND_PRIVACY.md) for implementation limits,
+email delivery constraints, migration details, and security references.

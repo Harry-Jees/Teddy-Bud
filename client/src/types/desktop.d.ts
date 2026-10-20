@@ -8,8 +8,9 @@ declare global {
       loadSession(): Promise<string | null>;
       saveSession(serializedSession: string): Promise<void>;
       clearSession(): Promise<void>;
-      encryptLocalData(value: string): Promise<string>;
-      decryptLocalData(value: string): Promise<string>;
+      encryptLocalData(keyName: string, value: string): Promise<string>;
+      decryptLocalData(keyName: string, value: string): Promise<string>;
+      decryptLegacyLocalData(value: string): Promise<string>;
       onAuthCallback(listener: (callbackUrl: string) => void): () => void;
     };
   }

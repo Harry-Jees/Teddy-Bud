@@ -17,9 +17,8 @@ The web target uses Vite and React Native Web to render the same app UI in a des
 
 Teddy Bud uses React Native for Android, iOS, and macOS. Windows, macOS, and
 Debian/Ubuntu desktop installers wrap the same Vite/React Native Web UI with
-Electron. The desktop apps load packaged local assets, open Google sign-in and
-trusted support links in the system browser, and receive OAuth through the
-`teddybud://auth/callback` app link.
+Electron. The desktop apps load packaged local assets and open trusted support
+links in the system browser.
 
 Use Node.js 22.12 or newer, install dependencies from this directory with
 `npm ci`, then run the relevant build:
@@ -56,58 +55,57 @@ builds need a private release keystore, and iOS device archives need an Apple
 Developer Team and provisioning profile. The workflows do not publish to stores
 or deploy the website.
 
-Google is the only sign-in and account-verification method. There are no
-email/password forms, email verification codes, or alternate sign-in routes.
-Enable Google in Supabase Auth, configure its OAuth client, and disable the
-Email provider so Supabase cannot create email/password accounts. Google
-confirms the account email during OAuth. A database trigger mirrors each
-Supabase Auth UUID into the RLS-protected `user_profiles` table. The Cloudflare
-gateway verifies that the Supabase identity came from Google and checks the
-profile before issuing a Teddy Bud session. Teddy Bud never stores Google
-passwords or Supabase access tokens. Browser tokens are kept in `sessionStorage`;
-native tokens use platform secure storage. Electron desktop tokens are encrypted
-through Windows DPAPI, macOS Keychain, or a Linux Secret Service keyring. On
-Linux, configure GNOME Keyring, KWallet, or another Secret Service provider
-before signing in. Chat history, saved memories, and preferences persist locally,
-scoped to the Supabase account. Native database files use SQLCipher with a
-random key stored in Keychain/Keystore. Electron encrypts local records through
-the operating-system secure storage used by Electron `safeStorage`. Web records
-use AES-256-GCM with a non-exportable Web Crypto key stored in IndexedDB. Older
-web and Electron records are encrypted when first read after the upgrade. Browser encryption
-protects stored files and database contents; code running in the same browser
-origin can still access data while the app is unlocked. Clearing the browser
-site's data also removes the device key and local records.
+The first launch opens account creation; later launches open sign-in. Accounts
+use email and password through Supabase Auth. At signup, choose a recovery
+passphrase of 20 to 128 characters and confirm it. Choose a unique phrase made
+from at least six randomly selected words. The phrase plus account email can reset
+the password, so save it somewhere private. Supabase stores the password
+verifier. The gateway stores a keyed HMAC verifier for the recovery passphrase
+in a private table; the phrase itself is never stored. Email is an account
+identifier and the app does not require email verification or send auth emails.
+This avoids dependence on a publisher-owned domain or SMTP provider. Keep the
+recovery HMAC secret and Supabase service-role key in
+the Worker secret store only.
 
-Encryption keys are generated independently for each device or browser profile.
-Google email and Supabase salts are not used as encryption key material. The
-Supabase user ID scopes local records to the signed-in account; the email is
-managed by Supabase Auth. Portable recovery uses the encrypted `.teddybud`
-backup, protected by its own user-chosen passphrase and random salt. A backup
-requires both that passphrase and the account that created it. See
+Native session tokens use platform secure storage. Electron desktop tokens are
+encrypted through Windows DPAPI, macOS Keychain, or a Linux Secret Service
+keyring. On Linux, configure GNOME Keyring, KWallet, or another Secret Service
+provider before signing in. Passwords are not saved by the app. Chats, memories,
+and preferences persist locally, scoped to the Supabase user ID. Native database
+files use SQLCipher with a random key stored in Keychain/Keystore. Electron
+encrypts local records through the operating-system secure storage used by
+Electron `safeStorage`. Web records use AES-256-GCM with a non-exportable Web
+Crypto key stored in IndexedDB. Older web and Electron records are encrypted
+when first read after the upgrade. Browser encryption protects stored files and
+database contents; code running in the same browser origin can still access data
+while the app is unlocked. Clearing the browser site's data also removes the
+device key and local records.
+
+Encryption keys are generated independently for each account and device or
+browser profile. Native builds use a separate SQLCipher database and keychain
+key for each Supabase user ID. Electron generates one AES-256-GCM key per
+account and wraps it with operating-system secure storage. Web stores a
+separate non-exportable CryptoKey per account in IndexedDB. Password and
+recovery passphrase material are not used as local encryption keys. The
+Supabase user ID scopes local records and encryption keys to the signed-in account;
+Supabase Auth manages the email. Portable recovery uses the encrypted
+`.teddybud` backup, protected by its own user-chosen passphrase and random salt.
+A backup requires its passphrase and the account that created it. See
 [`guide/SECURITY_AND_PRIVACY.md`](../guide/SECURITY_AND_PRIVACY.md) for the
 storage model, migration behavior, and security references.
 
 Privacy toggles control whether saved memories, selected chat excerpts, and
 About me notes are included with messages sent to the configured AI provider.
 
-Configure the Google provider in Supabase with its Web OAuth client ID and
-secret. In Google Cloud, use
-`https://lvfvlrazovppkorkpwqz.supabase.co/auth/v1/callback` as the authorized
-redirect URI. In Supabase Auth URL configuration, allow the app callback
-`teddybud://auth/callback`, the local web callbacks
-`http://localhost:5173/auth/callback` and
-`http://127.0.0.1:5173/auth/callback`, and the deployed web callback URL.
-The mobile callback uses the `teddybud` app URL scheme. OAuth authorization
-codes use PKCE and are exchanged by the gateway; Google client secrets remain
-in Supabase and are never shipped with the app.
-
 The gateway URL is built into `src/config/gateway.ts`; users do not enter or
 change it. The browser gateway is deployed separately from the original
-gateway. The profile-table migrations are in `supabase/migrations`. Configure
-The Worker with `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `AUTH_REDIRECT_ORIGINS`, and
-`JWT_SIGNING_SECRET`; model and chat endpoints also require `NVIDIA_KEY_1`.
-OAuth provider secrets belong in Supabase, not the app. Keep credentials out
-of source control.
+gateway. The profile and recovery migrations are in `supabase/migrations`.
+Follow [`../gateway-worker/README.md`](../gateway-worker/README.md) to enable the
+Email provider, disable email confirmation, and configure the Worker secrets
+and allowed browser origins. Sessions expire absolutely after one hour and require
+the user to sign in again. Supabase currently includes 50,000 monthly active
+users for Auth on its Free plan; other resource limits and AI model costs remain
+separate.
 
 After enabling SQLCipher in the native SQLite build configuration, reinstall
 native dependencies and rebuild the app (`bundle exec pod install` for iOS).
@@ -117,14 +115,32 @@ Existing plain-SQLite development data is not migrated automatically.
 
 ## Conversation model behavior
 
-The gateway prefers NVIDIA's `nvidia/nemotron-3-super-120b-a12b` for
-conversation and allows up to 1024 output tokens so model reasoning does not
-consume the entire reply budget. Image-understanding requests remain limited
-to 220 output tokens. The client supplies instructions to respond briefly and
-empathetically, noticing emotional tone without diagnosing or labeling the
-person. If the preferred model returns no text or is unavailable, the client
-tries other chat-capable models from NVIDIA's catalog; model availability may
-vary by account.
+The client currently prefers NVIDIA's `nvidia/nemotron-3.5-lightning-30b-a3b`,
+`nvidia/mistral-nemo-minitron-8b-8k-instruct`, and
+`nvidia/llama-3.1-nemotron-70b-instruct`, in that order when the account's
+model catalog includes them. If a model is unavailable, the client tries other
+chat-capable models from NVIDIA's catalog; actual endpoint access can vary by
+account. Conversation requests allow up to 1024 output tokens; image requests
+remain limited to 220 output tokens. Although candidate endpoints may advertise
+larger context windows, this client currently includes at most 80,000 characters
+of recent chat history in a request.
+
+The client prompt asks the assistant to be warm, compassionate, natural, and
+multilingual, and to answer in the language the user uses. Prompt instructions
+cannot guarantee perfect fluency or understanding. NVIDIA's published model
+card for Nemotron 3.5 Lightning names English, Spanish, French, German,
+Italian, and Japanese as supported languages; it does not list Hindi or
+Malayalam. Emotional warmth and empathy are guided by the prompt; NVIDIA's
+model cards do not establish that any candidate is more empathetic than the
+others. NVIDIA Build's Google Gemma 4 31B IT is a promising evaluation
+candidate because its model card lists a 256K context window and support for
+over 140 languages. The page reviewed does not enumerate them, so Hindi and
+Malayalam quality still needs direct testing. However, its free API endpoint is
+governed by NVIDIA's API Trial Terms, which
+limit access to evaluation and prohibit production use. Do not use that trial
+endpoint in a production distribution; production use requires an appropriate
+subscription. The configured NVIDIA account must also be able to access any
+candidate endpoint.
 
 Chat history is organized into separate conversations and saved locally on
 the device without an application-defined chat or message count limit. Device

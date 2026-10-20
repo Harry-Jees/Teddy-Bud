@@ -15,6 +15,24 @@ class MemorySessions {
         const { pathname } = new URL(input instanceof Request ? input.url : input);
         const method = init.method ?? (input instanceof Request ? input.method : 'GET');
         const state = this.values.get(id) ?? {};
+        if (pathname === '/user-sessions/add' && method === 'POST') {
+          const body = init.body ?? (input instanceof Request ? await input.text() : '');
+          const { sessionId } = JSON.parse(body);
+          state.userSessions ??= [];
+          if (!state.userSessions.includes(sessionId)) state.userSessions.push(sessionId);
+          this.values.set(id, state);
+          return new Response(JSON.stringify({ success: true }), { status: 200 });
+        }
+        if (pathname === '/user-sessions/remove' && method === 'POST') {
+          const body = init.body ?? (input instanceof Request ? await input.text() : '');
+          const { sessionId } = JSON.parse(body);
+          state.userSessions = (state.userSessions ?? []).filter(value => value !== sessionId);
+          this.values.set(id, state);
+          return new Response(JSON.stringify({ success: true }), { status: 200 });
+        }
+        if (pathname === '/user-sessions/list' && method === 'GET') {
+          return new Response(JSON.stringify({ sessionIds: state.userSessions ?? [] }), { status: 200 });
+        }
         if (pathname === '/rate' && method === 'POST') {
           const body = init.body ?? (input instanceof Request ? await input.text() : '');
           const { limit } = JSON.parse(body);
@@ -96,11 +114,11 @@ async function createSession(env, userId) {
   const sessionId = `test-session-${crypto.randomUUID()}`;
   const refreshUntil = now + 3600;
   env.SESSIONS.values.set(sessionId, {
-    session: { userId, kind: 'google-user', refreshUntil },
+    session: { userId, kind: 'password-user', sessionId, refreshUntil },
   });
   return signedInternalJwt({
     sub: userId,
-    kind: 'google-user',
+    kind: 'password-user',
     sid: sessionId,
     iat: now,
     exp: refreshUntil,
@@ -109,123 +127,132 @@ async function createSession(env, userId) {
   });
 }
 
-test('only Google OAuth authentication endpoints are available', async () => {
+test('password auth routes replace Google OAuth and validate input', async () => {
   const env = makeEnv();
-  const removedEndpoints = [
-    ['GET', '/auth/login'],
-    ['POST', '/auth/login'],
+  const invalid = [
     ['POST', '/auth/signup'],
-    ['POST', '/auth/verify-signup-otp'],
-    ['POST', '/auth/resend-signup-otp'],
-    ['POST', '/auth/verify-email'],
-    ['POST', '/auth/register'],
-    ['POST', '/auth/verify'],
+    ['POST', '/auth/login'],
+    ['POST', '/auth/recover'],
   ];
-  for (const [method, path] of removedEndpoints) {
-    const response = await worker.fetch(request(path, method, method === 'GET' ? undefined : {}), env);
-    assert.equal(response.status, 404, method + ' ' + path + ' should not be an authentication route.');
+  for (const [method, path] of invalid) {
+    const response = await worker.fetch(request(path, method, {}), env);
+    assert.equal(response.status, 400, method + ' ' + path + ' should validate required fields.');
   }
+  for (const [method, path] of [
+    ['GET', '/auth/login'],
+    ['GET', '/auth/signup'],
+    ['GET', '/auth/recover'],
+    ['GET', '/auth/google/start'],
+    ['POST', '/auth/google/complete'],
+    ['POST', '/auth/verify-email'],
+    ['POST', '/auth/resend-signup-confirmation'],
+  ]) {
+    const response = await worker.fetch(request(path, method, method === 'POST' ? {} : undefined), env);
+    assert.equal(response.status, 404, method + ' ' + path + ' should not be available.');
+  }
+  const unauthenticated = await worker.fetch(request('/auth/session'), env);
+  assert.equal(unauthenticated.status, 401);
 });
 
-test('Google OAuth uses PKCE, validates the Supabase identity, and consumes its state once', async () => {
+test('signup creates a password account and session without email verification', async () => {
   const env = makeEnv();
-  const callback = 'http://localhost:5173/auth/callback';
-  const started = await worker.fetch(request(`/auth/google/start?redirect_uri=${encodeURIComponent(callback)}`), env);
-  assert.equal(started.status, 302);
-
-  const authorization = new URL(started.headers.get('Location'));
-  assert.equal(authorization.origin, env.SUPABASE_URL);
-  assert.equal(authorization.pathname, '/auth/v1/authorize');
-  assert.equal(authorization.searchParams.get('provider'), 'google');
-  assert.equal(authorization.searchParams.get('scopes'), 'openid email profile');
-  assert.equal(authorization.searchParams.get('prompt'), 'select_account');
-  assert.equal(authorization.searchParams.get('code_challenge_method'), 's256');
-  const redirectTo = new URL(authorization.searchParams.get('redirect_to'));
-  assert.equal(redirectTo.origin, 'http://localhost:5173');
-  assert.equal(redirectTo.pathname, '/auth/callback');
-  const state = redirectTo.searchParams.get('oauth_state');
-  assert.match(state, /^[A-Za-z0-9_-]{43}$/);
-  const codeVerifierChallenge = authorization.searchParams.get('code_challenge');
-  assert.match(codeVerifierChallenge, /^[A-Za-z0-9_-]{43}$/);
-
+  env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+  env.RECOVERY_KEY_SECRET = 'test-recovery-secret-with-more-than-32-characters';
+  const userId = 'password-user';
+  const recoveryRows = [];
   const oldFetch = globalThis.fetch;
-  let tokenExchangeCount = 0;
-  globalThis.fetch = async (url, init) => {
-    const requestUrl = new URL(String(url));
-    const headers = new Headers(init.headers);
-    assert.equal(headers.get('apikey'), env.SUPABASE_ANON_KEY);
-    if (requestUrl.pathname.endsWith('/auth/v1/token')) {
-      tokenExchangeCount += 1;
-      assert.equal(requestUrl.searchParams.get('grant_type'), 'pkce');
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    const method = init.method ?? (input instanceof Request ? input.method : 'GET');
+    if (url.pathname === '/auth/v1/signup' && method === 'POST') {
       const body = JSON.parse(init.body);
-      assert.equal(body.auth_code, 'google-one-time-code');
-      const challenge = Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body.code_verifier))).toString('base64url');
-      assert.equal(challenge, codeVerifierChallenge);
-      return new Response(JSON.stringify({
-        access_token: 'supabase-google-token',
-        user: {
-          id: '22222222-2222-4222-8222-222222222222',
-          email: 'google-user@example.com',
-          email_confirmed_at: '2026-10-17T12:00:00Z',
-          app_metadata: { provider: 'google', providers: ['google'] },
-          user_metadata: { picture: 'https://lh3.googleusercontent.com/a/example-profile-photo' },
-        },
-      }), { status: 200 });
+      assert.equal(body.email, 'person@example.com');
+      return new Response(JSON.stringify({ access_token: 'supabase-signup-token', user: { id: userId, email: body.email } }), { status: 200 });
     }
-    if (requestUrl.pathname.endsWith('/rest/v1/user_profiles')) {
-      assert.equal(headers.get('Authorization'), 'Bearer supabase-google-token');
-      return new Response(JSON.stringify([{ user_id: '22222222-2222-4222-8222-222222222222' }]), { status: 200 });
+    if (url.pathname === '/rest/v1/account_recovery_verifiers' && method === 'POST') {
+      recoveryRows.push(JSON.parse(init.body));
+      return new Response(null, { status: 201 });
     }
-    throw new Error(`Unexpected Supabase request: ${requestUrl}`);
+    if (url.pathname === '/rest/v1/account_recovery_verifiers' && method === 'GET') {
+      return new Response(JSON.stringify(recoveryRows), { status: 200 });
+    }
+    if (url.pathname === '/rest/v1/user_profiles' && method === 'GET') {
+      return new Response(JSON.stringify([{ user_id: userId }]), { status: 200 });
+    }
+    throw new Error(`Unexpected upstream request: ${method} ${url}`);
   };
 
   try {
-    const completed = await jsonResponse(await worker.fetch(request('/auth/google/complete', 'POST', {
-      code: 'google-one-time-code',
-      state,
+    const signup = await jsonResponse(await worker.fetch(request('/auth/signup', 'POST', {
+      email: 'Person@example.com',
+      password: 'a-secure-password-long-enough',
+      recoveryKey: 'six-random-words-kept-safe-2026',
     }), env));
-    assert.equal(completed.status, 200);
-    assert.equal(completed.body.userId, '22222222-2222-4222-8222-222222222222');
-    assert.equal(completed.body.profilePictureUrl, 'https://lh3.googleusercontent.com/a/example-profile-photo');
-    assert.match(completed.body.accessToken, /^[\w-]+\.[\w-]+\.[\w-]+$/);
-
-    const refreshed = await jsonResponse(await worker.fetch(request('/auth/refresh', 'POST', undefined, {
-      Authorization: `Bearer ${completed.body.accessToken}`,
-    }), env));
-    assert.equal(refreshed.status, 200);
-    assert.equal(refreshed.body.profilePictureUrl, completed.body.profilePictureUrl);
-
-    const replayed = await jsonResponse(await worker.fetch(request('/auth/google/complete', 'POST', {
-      code: 'google-one-time-code',
-      state,
-    }), env));
-    assert.equal(replayed.status, 401);
-    assert.equal(tokenExchangeCount, 1);
+    assert.equal(signup.status, 200);
+    assert.equal(typeof signup.body.accessToken, 'string');
+    const claims = JSON.parse(Buffer.from(signup.body.accessToken.split('.')[1], 'base64url').toString('utf8'));
+    assert.equal(claims.sub, userId);
+    assert.deepEqual(Object.keys(recoveryRows[0]).sort(), ['email', 'user_id', 'verifier']);
+    assert.equal(recoveryRows[0].verifier.length, 43);
   } finally {
     globalThis.fetch = oldFetch;
   }
 });
 
-test('Google OAuth rejects unapproved callbacks and incomplete exchange data', async () => {
+test('a valid legacy session migrates to password auth without changing chat owner ID', async () => {
   const env = makeEnv();
-  const nativeStart = await worker.fetch(
-    request(`/auth/google/start?redirect_uri=${encodeURIComponent('teddybud://auth/callback')}`),
-    env,
-  );
-  assert.equal(nativeStart.status, 302);
+  env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+  env.RECOVERY_KEY_SECRET = 'test-recovery-secret-with-more-than-32-characters';
+  const userId = 'existing-google-user-id';
+  const now = Math.floor(Date.now() / 1000);
+  const sessionId = 'existing-google-session';
+  const refreshUntil = now + 3600;
+  env.SESSIONS.values.set(sessionId, {
+    session: { userId, kind: 'google-user', sessionId, refreshUntil },
+  });
+  const legacyToken = await signedInternalJwt({
+    sub: userId, kind: 'google-user', sid: sessionId, iat: now,
+    exp: now + 60, rfe: refreshUntil, iss: 'teddy-bud-gateway',
+  });
+  const oldFetch = globalThis.fetch;
+  const storedVerifiers = [];
+  const adminUpdates = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    const method = init.method ?? (input instanceof Request ? input.method : 'GET');
+    if (url.pathname === `/auth/v1/admin/users/${userId}` && method === 'GET') {
+      return new Response(JSON.stringify({ id: userId, email: 'legacy@example.com', app_metadata: { provider: 'google', providers: ['google'] } }), { status: 200 });
+    }
+    if (url.pathname === `/auth/v1/admin/users/${userId}` && method === 'PUT') {
+      adminUpdates.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({ id: userId }), { status: 200 });
+    }
+    if (url.pathname === '/rest/v1/account_recovery_verifiers' && method === 'GET') {
+      return new Response(JSON.stringify(storedVerifiers), { status: 200 });
+    }
+    if (url.pathname === '/rest/v1/account_recovery_verifiers' && method === 'POST') {
+      storedVerifiers.push(JSON.parse(init.body));
+      return new Response(null, { status: 201 });
+    }
+    throw new Error(`Unexpected upstream request: ${method} ${url}`);
+  };
 
-  const unsafeCallback = await jsonResponse(await worker.fetch(
-    request(`/auth/google/start?redirect_uri=${encodeURIComponent('https://attacker.example/auth/callback')}`),
-    env,
-  ));
-  assert.equal(unsafeCallback.status, 400);
-
-  const missingState = await jsonResponse(await worker.fetch(request('/auth/google/complete', 'POST', {
-    code: 'google-one-time-code',
-  }), env));
-  assert.equal(missingState.status, 400);
+  try {
+    const response = await jsonResponse(await worker.fetch(request('/auth/migrate-legacy', 'POST', {
+      password: 'a-secure-password-long-enough',
+      recoveryKey: 'a-new-recovery-key-long-enough-to-test',
+    }, { Authorization: `Bearer ${legacyToken}` }), env));
+    assert.equal(response.status, 200);
+    const newClaims = JSON.parse(Buffer.from(response.body.accessToken.split('.')[1], 'base64url').toString('utf8'));
+    assert.equal(newClaims.sub, userId);
+    assert.equal(newClaims.kind, 'password-user');
+    assert.deepEqual(adminUpdates, [{ password: 'a-secure-password-long-enough' }]);
+    assert.equal(storedVerifiers[0].user_id, userId);
+    assert.equal(env.SESSIONS.values.get(sessionId).session, undefined);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
 });
-
 test('authenticated chat requests are forwarded to NVIDIA and return its completion', async () => {
   const env = makeEnv();
   env.NVIDIA_KEY_1 = 'test-nvidia-key';
@@ -259,7 +286,7 @@ test('authenticated chat requests are forwarded to NVIDIA and return its complet
     const result = await jsonResponse(response);
 
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), null);
     assert.equal(upstreamRequest.url, 'https://integrate.api.nvidia.com/v1/chat/completions');
     assert.equal(upstreamRequest.init.headers.Authorization, 'Bearer test-nvidia-key');
     assert.ok(upstreamRequest.init.signal instanceof AbortSignal);
@@ -371,21 +398,20 @@ test('chat requests reject missing auth and avoid exposing NVIDIA account detail
   }
 });
 
-test('refresh renews the one-hour idle session; logout revokes it immediately', async () => {
+test('sessions expire after one hour and logout revokes them immediately', async () => {
   const env = makeEnv();
   const token = await createSession(env, 'google-user-id');
   const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
   const expiredAccessToken = await signedInternalJwt({ ...claims, exp: Math.floor(Date.now() / 1000) - 1 });
 
-  const refreshed = await jsonResponse(await worker.fetch(request('/auth/refresh', 'POST', undefined, { Authorization: 'Bearer ' + expiredAccessToken }), env));
-  assert.equal(refreshed.status, 200);
-  const refreshedClaims = JSON.parse(Buffer.from(refreshed.body.accessToken.split('.')[1], 'base64url').toString('utf8'));
-  assert.equal(refreshedClaims.exp - refreshedClaims.iat, 3600);
-  assert.equal(refreshedClaims.rfe - refreshedClaims.iat, 3600);
+  const expired = await jsonResponse(await worker.fetch(request('/auth/refresh', 'POST', undefined, { Authorization: 'Bearer ' + expiredAccessToken }), env));
+  assert.equal(expired.status, 401);
+  assert.match(expired.body.error, /one hour/i);
 
-  const logout = await jsonResponse(await worker.fetch(request('/auth/logout', 'POST', undefined, { Authorization: 'Bearer ' + refreshed.body.accessToken }), env));
+  const activeToken = await createSession(env, 'password-user-id');
+  const logout = await jsonResponse(await worker.fetch(request('/auth/logout', 'POST', undefined, { Authorization: 'Bearer ' + activeToken }), env));
   assert.equal(logout.status, 200);
-  const protectedModels = await jsonResponse(await worker.fetch(request('/v1/models', 'GET', undefined, { Authorization: 'Bearer ' + refreshed.body.accessToken }), env));
+  const protectedModels = await jsonResponse(await worker.fetch(request('/v1/models', 'GET', undefined, { Authorization: 'Bearer ' + activeToken }), env));
   assert.equal(protectedModels.status, 401);
 });
 
@@ -414,19 +440,23 @@ test('refresh does not continue sessions issued by retired non-Google auth metho
   assert.equal(response.status, 401);
 });
 
-test('Google OAuth completion rate limits are enforced and expose CORS', async () => {
+test('signup attempts are rate-limited and CORS is restricted to app origins', async () => {
   const env = makeEnv();
-  const body = { code: 'google-one-time-code', state: 'A'.repeat(43) };
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const response = await worker.fetch(request('/auth/google/complete', 'POST', body), env);
-    assert.equal(response.status, 401);
-    assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
+  const body = {};
+  const approvedOrigin = { Origin: 'http://localhost:5173' };
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await worker.fetch(request('/auth/signup', 'POST', body, approvedOrigin), env);
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), approvedOrigin.Origin);
   }
-  const limited = await jsonResponse(await worker.fetch(request('/auth/google/complete', 'POST', body), env));
+  const limited = await jsonResponse(await worker.fetch(request('/auth/signup', 'POST', body, approvedOrigin), env));
   assert.equal(limited.status, 429);
 
-  const preflight = await worker.fetch(request('/auth/google/complete', 'OPTIONS'), env);
+  const preflight = await worker.fetch(request('/auth/signup', 'OPTIONS', undefined, approvedOrigin), env);
   assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), approvedOrigin.Origin);
+  const blockedOrigin = await worker.fetch(request('/auth/signup', 'OPTIONS', undefined, { Origin: 'https://attacker.example' }), env);
+  assert.equal(blockedOrigin.headers.get('Access-Control-Allow-Origin'), null);
 });
 
 test('public health is cheap and never calls the upstream provider', async () => {

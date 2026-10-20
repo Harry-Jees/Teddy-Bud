@@ -5,8 +5,10 @@ const DATABASE_VERSION = 2;
 const OBJECT_STORE_NAME = 'key-value';
 const KEY_STORE_NAME = 'crypto-keys';
 const KEY_ID = 'local-data-encryption-key';
-const WEB_ENVELOPE_PREFIX = 'teddybud-web-encrypted:v1:';
-const DESKTOP_ENVELOPE_PREFIX = 'teddybud-desktop-encrypted:v1:';
+const WEB_ENVELOPE_PREFIX = 'teddybud-web-encrypted:v2:';
+const WEB_LEGACY_ENVELOPE_PREFIX = 'teddybud-web-encrypted:v1:';
+const DESKTOP_ENVELOPE_PREFIX = 'teddybud-desktop-encrypted:v2:';
+const DESKTOP_LEGACY_ENVELOPE_PREFIX = 'teddybud-desktop-encrypted:v1:';
 
 type DesktopBridge = NonNullable<Window['teddyBudDesktop']>;
 
@@ -41,7 +43,7 @@ function decodeBase64(value: string): Uint8Array {
 
 class BrowserLocalStore implements LocalStore {
   private databasePromise: Promise<IDBDatabase> | null = null;
-  private encryptionKeyPromise: Promise<CryptoKey> | null = null;
+  private readonly encryptionKeyPromises = new Map<string, Promise<CryptoKey>>();
 
   private openDatabase(): Promise<IDBDatabase> {
     if (typeof indexedDB === 'undefined') {
@@ -134,8 +136,10 @@ class BrowserLocalStore implements LocalStore {
     });
   }
 
-  private getEncryptionKey(): Promise<CryptoKey> {
-    if (!this.encryptionKeyPromise) {
+  private getEncryptionKey(keyName: string, legacy = false): Promise<CryptoKey> {
+    const scope = legacy ? 'legacy-shared-key' : keyName;
+    let existing = this.encryptionKeyPromises.get(scope);
+    if (!existing) {
       const pending = (async () => {
         const candidate = await cryptoApi().subtle.generateKey(
           { name: 'AES-GCM', length: 256 },
@@ -148,10 +152,11 @@ class BrowserLocalStore implements LocalStore {
           const store = transaction.objectStore(KEY_STORE_NAME);
           let key: CryptoKey | undefined;
           let settled = false;
-          const read = store.get(KEY_ID) as IDBRequest<CryptoKey | undefined>;
+          const scopedId = legacy ? KEY_ID : `${KEY_ID}:${keyName}`;
+          const read = store.get(scopedId) as IDBRequest<CryptoKey | undefined>;
           read.onsuccess = () => {
             key = read.result ?? candidate;
-            if (!read.result) store.put(candidate, KEY_ID);
+            if (!read.result) store.put(candidate, scopedId);
           };
           read.onerror = () => {
             if (settled) return;
@@ -176,22 +181,23 @@ class BrowserLocalStore implements LocalStore {
           };
         });
       })();
-      this.encryptionKeyPromise = pending;
+      this.encryptionKeyPromises.set(scope, pending);
       pending.catch(() => {
-        if (this.encryptionKeyPromise === pending) this.encryptionKeyPromise = null;
+        if (this.encryptionKeyPromises.get(scope) === pending) this.encryptionKeyPromises.delete(scope);
       });
+      existing = pending;
     }
-    return this.encryptionKeyPromise;
+    return existing;
   }
 
   private async encrypt(keyName: string, value: string): Promise<string> {
     const bridge = desktopBridge();
     if (bridge) {
-      return `${DESKTOP_ENVELOPE_PREFIX}${await bridge.encryptLocalData(value)}`;
+      return `${DESKTOP_ENVELOPE_PREFIX}${await bridge.encryptLocalData(keyName, value)}`;
     }
 
     const crypto = cryptoApi();
-    const key = await this.getEncryptionKey();
+    const key = await this.getEncryptionKey(keyName);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const additionalData = new TextEncoder().encode(keyName);
     const ciphertext = await crypto.subtle.encrypt(
@@ -209,17 +215,24 @@ class BrowserLocalStore implements LocalStore {
     if (value.startsWith(DESKTOP_ENVELOPE_PREFIX)) {
       const bridge = desktopBridge();
       if (!bridge) throw new Error('This local data was encrypted by the Teddy Bud desktop app. Open it in that app to read it.');
-      return bridge.decryptLocalData(value.slice(DESKTOP_ENVELOPE_PREFIX.length));
+      return bridge.decryptLocalData(keyName, value.slice(DESKTOP_ENVELOPE_PREFIX.length));
     }
-    if (!value.startsWith(WEB_ENVELOPE_PREFIX)) return value;
+    if (value.startsWith(DESKTOP_LEGACY_ENVELOPE_PREFIX)) {
+      const bridge = desktopBridge();
+      if (!bridge) throw new Error('This local data was encrypted by the Teddy Bud desktop app. Open it in that app to read it.');
+      return bridge.decryptLegacyLocalData(value.slice(DESKTOP_LEGACY_ENVELOPE_PREFIX.length));
+    }
+    const legacyWeb = value.startsWith(WEB_LEGACY_ENVELOPE_PREFIX);
+    if (!legacyWeb && !value.startsWith(WEB_ENVELOPE_PREFIX)) return value;
 
-    const payload = decodeBase64(value.slice(WEB_ENVELOPE_PREFIX.length));
+    const prefix = legacyWeb ? WEB_LEGACY_ENVELOPE_PREFIX : WEB_ENVELOPE_PREFIX;
+    const payload = decodeBase64(value.slice(prefix.length));
     if (payload.byteLength < 12 + 16) throw new Error('Encrypted local data is incomplete.');
     const iv = payload.slice(0, 12);
     const ciphertext = payload.slice(12);
     const plaintext = await cryptoApi().subtle.decrypt(
       { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(keyName) },
-      await this.getEncryptionKey(),
+      await this.getEncryptionKey(keyName, legacyWeb),
       ciphertext,
     );
     return new TextDecoder().decode(plaintext);
@@ -267,7 +280,8 @@ class BrowserLocalStore implements LocalStore {
     if (saved === undefined) return undefined;
     const plaintext = await this.decrypt(key, saved);
     // Encrypt existing plaintext records on first read after this upgrade.
-    if (!saved.startsWith(WEB_ENVELOPE_PREFIX) && !saved.startsWith(DESKTOP_ENVELOPE_PREFIX)) {
+    if (saved.startsWith(WEB_LEGACY_ENVELOPE_PREFIX) || saved.startsWith(DESKTOP_LEGACY_ENVELOPE_PREFIX)
+      || (!saved.startsWith(WEB_ENVELOPE_PREFIX) && !saved.startsWith(DESKTOP_ENVELOPE_PREFIX))) {
       await this.encryptLegacyRecord(key, saved, plaintext);
     }
     return plaintext;

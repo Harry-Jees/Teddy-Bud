@@ -1,4 +1,4 @@
-import { Linking, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import type { StoredSession } from './session';
 import { GATEWAY_BASE_URL } from '../config/gateway';
@@ -7,8 +7,8 @@ type LoginResponse = { accessToken: string; expiresIn?: number; userId?: string;
 
 const SESSION_KEY = 'teddy-bud:browser-session';
 const NATIVE_SESSION_SERVICE = 'com.teddybud.account-auth';
-const currentPath = typeof window !== 'undefined' ? window.location?.pathname ?? '/' : '/';
-const WEB_BASE_PATH = currentPath === '/Teddy-Bud' || currentPath.startsWith('/Teddy-Bud/') ? '/Teddy-Bud' : '';
+const NATIVE_SETUP_SERVICE = 'com.teddybud.auth-setup';
+const SETUP_KEY = 'setup-complete';
 let inMemorySession: StoredSession | null = null;
 
 function sessionStore(): Storage | null {
@@ -63,8 +63,6 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
 }
 
 export class BrowserAuthService {
-  private callbackInFlight = new Map<string, Promise<StoredSession | null>>();
-
   private async readStoredSession(): Promise<StoredSession | null> {
     let saved: string | null;
     if (Platform.OS === 'web') {
@@ -88,11 +86,86 @@ export class BrowserAuthService {
     }
   }
 
+  private hasActiveLegacySession(token: string): boolean {
+    try {
+      const payload = token.split('.')[1];
+      if (!payload) return false;
+      const normalized = payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '=');
+      const claims = JSON.parse(atob(normalized));
+      return claims.kind === 'google-user' && typeof claims.rfe === 'number' && claims.rfe * 1000 > Date.now();
+    } catch {
+      return false;
+    }
+  }
+
+  async canMigrateLegacyAccount(): Promise<boolean> {
+    const saved = inMemorySession ?? await this.readStoredSession();
+    return Boolean(saved && this.hasActiveLegacySession(saved.accessToken));
+  }
+
+  async migrateLegacyAccount(password: string, recoveryKey: string): Promise<StoredSession> {
+    const saved = inMemorySession ?? await this.readStoredSession();
+    if (!saved || !this.hasActiveLegacySession(saved.accessToken)) {
+      throw Object.assign(new Error('This device no longer has an active account session to move.'), { status: 401 });
+    }
+    const result = await request<LoginResponse>('/auth/migrate-legacy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${saved.accessToken}` },
+      body: JSON.stringify({ password, recoveryKey }),
+    });
+    await this.markSetupComplete();
+    return this.save(result);
+  }
+
+  async shouldCreateAccount(): Promise<boolean> {
+    if (Platform.OS === 'web') {
+      try { return localStorage.getItem(SETUP_KEY) !== 'true'; } catch { return true; }
+    }
+    const setup = await Keychain.getGenericPassword({ service: NATIVE_SETUP_SERVICE });
+    return !setup;
+  }
+
+  async markSetupComplete(): Promise<void> {
+    if (Platform.OS === 'web') {
+      try { localStorage.setItem(SETUP_KEY, 'true'); } catch { /* Sign-in still works if storage is unavailable. */ }
+      return;
+    }
+    await Keychain.setGenericPassword('setup', 'true', {
+      service: NATIVE_SETUP_SERVICE,
+      accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    });
+  }
+
+  async signIn(email: string, password: string): Promise<StoredSession> {
+    const result = await request<LoginResponse>('/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    await this.markSetupComplete();
+    return this.save(result);
+  }
+
+  async createAccount(email: string, password: string, recoveryKey: string): Promise<StoredSession> {
+    const result = await request<LoginResponse>('/auth/signup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, recoveryKey }),
+    });
+    await this.markSetupComplete();
+    return this.save(result);
+  }
+
+  async recoverPassword(email: string, recoveryKey: string, newPassword: string): Promise<void> {
+    await request<{ success: boolean }>('/auth/recover', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, recoveryKey, newPassword }),
+    });
+  }
+
   async restore(): Promise<StoredSession | null> {
     const current = inMemorySession ?? await this.readStoredSession();
     if (!current) return null;
     inMemorySession = current;
-    if (current.expiresAt <= Date.now() + 30_000) {
+    if (current.expiresAt <= Date.now()) {
       try {
         return await this.refresh();
       } catch (error) {
@@ -100,69 +173,26 @@ export class BrowserAuthService {
         throw error;
       }
     }
-    return current;
-  }
-
-  async signInWithGoogle(): Promise<void> {
-    const callback = Platform.OS === 'web' && !desktopBridge()
-      ? `${window.location.origin}${WEB_BASE_PATH}/auth/callback`
-      : 'teddybud://auth/callback';
-    const startUrl = new URL(`${GATEWAY_BASE_URL}/auth/google/start`);
-    startUrl.searchParams.set('redirect_uri', callback);
-    if (Platform.OS === 'web' && desktopBridge()) {
-      await desktopBridge()!.openExternal(startUrl.toString());
-      return;
-    }
-    if (Platform.OS === 'web') {
-      window.location.assign(startUrl.toString());
-      return;
-    }
-    await Linking.openURL(startUrl.toString());
-  }
-
-  async consumeCallback(callbackUrl: string): Promise<StoredSession | null> {
-    const inFlight = this.callbackInFlight.get(callbackUrl);
-    if (inFlight) return inFlight;
-    const attempt = this.consumeCallbackOnce(callbackUrl);
-    this.callbackInFlight.set(callbackUrl, attempt);
     try {
-      return await attempt;
-    } finally {
-      if (this.callbackInFlight.get(callbackUrl) === attempt) this.callbackInFlight.delete(callbackUrl);
+      await request<{ userId: string }>('/auth/session', {
+        method: 'GET', headers: { Authorization: `Bearer ${current.accessToken}` },
+      });
+      return current;
+    } catch (error) {
+      if ((error as { status?: number }).status === 401) {
+        if (this.hasActiveLegacySession(current.accessToken)) return null;
+        await this.clear();
+        return null;
+      }
+      throw error;
     }
-  }
-
-  private async consumeCallbackOnce(callbackUrl: string): Promise<StoredSession | null> {
-    const callback = new URL(callbackUrl);
-    const callbackError = callback.searchParams.get('error_description');
-    if (callbackError) throw new Error(callbackError);
-    const code = callback.searchParams.get('code');
-    const oauthState = callback.searchParams.get('oauth_state');
-    if (!code && !oauthState) return null;
-    if (!code || !oauthState) throw new Error('The Google sign-in response is incomplete. Please try again.');
-    const result = await request<LoginResponse>('/auth/google/complete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, state: oauthState }),
-    });
-    const session = await this.save(result);
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && !desktopBridge()) {
-      window.history.replaceState(null, '', `${callback.origin}${WEB_BASE_PATH || '/'}`);
-    }
-    return session;
   }
 
   async refresh(): Promise<StoredSession> {
     const current = inMemorySession ?? await this.readStoredSession();
     if (!current) throw Object.assign(new Error('Your session has ended. Please log in again.'), { status: 401 });
-    try {
-      const response = await request<LoginResponse>('/auth/refresh', { method: 'POST', headers: { Authorization: `Bearer ${current.accessToken}` } });
-      response.profilePictureUrl ??= current.profilePictureUrl;
-      return await this.save(response);
-    } catch (error) {
-      if ((error as { status?: number }).status === 401) await this.clear();
-      throw error;
-    }
+    if (!this.hasActiveLegacySession(current.accessToken)) await this.clear();
+    throw Object.assign(new Error('Your one-hour session has expired. Please sign in again.'), { status: 401 });
   }
 
   async logout(): Promise<void> {

@@ -47,7 +47,7 @@ Simulator build, not an iPhone store package.
 | Path | Contents |
 | --- | --- |
 | `client/` | React Native app, web entry point, platform projects, desktop wrapper, and client tests |
-| `gateway-worker/` | Cloudflare Worker for Google OAuth, sessions, and authenticated model requests |
+| `gateway-worker/` | Cloudflare Worker for password authentication, recovery, sessions, and authenticated model requests |
 | `supabase/migrations/` | Database schema migrations for user profiles |
 | `guide/` | Product, architecture, design, security, release, and verification documentation |
 | `dist/` | Collected platform distributions |
@@ -73,6 +73,6 @@ Run Worker tests from `gateway-worker/` with `npm test`. The collected artifact 
 
 ## Configuration and product behavior
 
-The app uses Google sign-in through Supabase and the Cloudflare gateway. Gateway setup, approved redirect origins, and secret configuration are documented in [gateway-worker/README.md](gateway-worker/README.md). Do not place credentials in the app bundle or commit them to the repository.
+The app uses email/password accounts with user-chosen recovery passphrases and one-hour sessions. Email is an account identifier; no email verification or auth email delivery is required. Each account has separate locally encrypted chat data on a device. Gateway setup, Supabase configuration, allowed browser origins, and secret configuration are documented in [gateway-worker/README.md](gateway-worker/README.md). Do not place credentials in the app bundle or commit them to the repository.
 
 The [client README](client/README.md) documents setup, account configuration, local data, and privacy settings. The [guide index](guide/README.md) links to product and engineering documentation, including the [security and privacy model](guide/SECURITY_AND_PRIVACY.md).

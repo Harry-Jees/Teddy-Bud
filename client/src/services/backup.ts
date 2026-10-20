@@ -149,7 +149,7 @@ export async function readEncryptedBackup(text: string, owner: string, passphras
     const plaintext = await cryptoApi().subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
     const payload: unknown = JSON.parse(new TextDecoder().decode(plaintext));
     if (!payload || typeof payload !== 'object' || !('owner' in payload) || payload.owner !== owner || !('data' in payload)) {
-      throw new Error('This backup belongs to a different account. Sign in with the Google account that created it.');
+      throw new Error('This backup belongs to a different account. Sign in with the account that created it.');
     }
     return validateBackupData(payload.data);
   } catch (error) {

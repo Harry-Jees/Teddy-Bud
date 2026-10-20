@@ -30,7 +30,7 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 function emptyData(): LocalAppData {
-  return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy Bud' };
+  return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy' } };
 }
 
 describe('LocalDataService', () => {
@@ -57,7 +57,9 @@ describe('LocalDataService', () => {
       shareChatHistory: true,
       shareAboutMe: false,
       aboutMe: '',
-      assistantName: 'Teddy Bud',
+      assistantName: 'Teddy',
+      assistantCharacterId: 'teddy-bud',
+      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
     };
     await service.save('account-a', accountData);
 
@@ -68,7 +70,7 @@ describe('LocalDataService', () => {
     await service.clear('account-a');
 
     expect(await service.load('account-a')).toEqual(emptyData());
-    expect(await service.load('account-b')).toEqual({ ...emptyData(), shareMemories: true });
+    expect(await service.load('account-b')).toEqual({ ...emptyData(), shareMemories: true, assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' } });
   });
 
   test('persists all chats, messages, and memories without application count limits', async () => {
@@ -131,6 +133,7 @@ describe('LocalDataService', () => {
   test('retains existing memories when suggestions are disabled and keeps sharing independent', async () => {
     await service.save('account-a', {
       ...emptyData(),
+      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
       memories: [{ id: 1, text: 'Private note', date: 'Today' }],
       rememberInSession: false,
       shareMemories: true,
@@ -139,6 +142,7 @@ describe('LocalDataService', () => {
 
     expect(await service.load('account-a')).toEqual({
       ...emptyData(),
+      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
       memories: [{ id: 1, text: 'Private note', date: 'Today' }],
       rememberInSession: false,
       shareMemories: true,
