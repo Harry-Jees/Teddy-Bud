@@ -4,10 +4,6 @@ on:
   push:
     paths-ignore:
       - 'dist/**'
-      - '.github/workflows/ci.yml'
-      - 'scripts/collect_distributions.py'
-      - 'scripts/verify_distributions.py'
-      - '.gitattributes'
   pull_request:
   workflow_dispatch:
     inputs:
@@ -21,7 +17,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   client-checks:
@@ -81,8 +77,13 @@ jobs:
         run: bash client/android/gradlew -p client/android assembleRelease -PreactNativeArchitectures=arm64-v8a
       - name: Stage Android release
         run: |
-          mkdir -p dist/android
-          cp client/android/app/build/outputs/apk/release/app-release.apk dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          set -euo pipefail
+          source=client/android/app/build/outputs/apk/release/app-release.apk
+          target=dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          test -s "$source"
+          mkdir -p "$(dirname "$target")"
+          cp "$source" "$target"
+          test -s "$target"
       - uses: actions/upload-artifact@v4
         with:
           name: teddy-bud-android
@@ -133,22 +134,35 @@ jobs:
         run: npm run ${{ matrix.command }} --prefix client
         env:
           DEBUG: electron-builder
-      - name: Normalize Linux AppImage filename
+      - name: Normalize Linux package filenames
         if: matrix.name == 'Linux Debian and AppImage'
         shell: bash
         run: |
           set -euo pipefail
-          source="dist/desktop/TeddyBud.v.1.0-linux-x86_64.AppImage"
-          target="dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage"
-          test -s "$source"
-          mv "$source" "$target"
-          chmod +x "$target"
-          file "$target"
+          mkdir -p dist/desktop
+          shopt -s nullglob
+          debs=(dist/desktop/TeddyBud.v.1.0-linux-*.deb)
+          apps=(dist/desktop/TeddyBud.v.1.0-linux-*.AppImage)
+          if (( ${#debs[@]} != 1 )); then
+            printf 'Expected exactly one Linux DEB, found %s: %s\n' "${#debs[@]}" "${debs[*]:-none}" >&2
+            exit 1
+          fi
+          if (( ${#apps[@]} != 1 )); then
+            printf 'Expected exactly one Linux AppImage, found %s: %s\n' "${#apps[@]}" "${apps[*]:-none}" >&2
+            exit 1
+          fi
+          mv -f "${debs[0]}" dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          mv -f "${apps[0]}" dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          chmod +x dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          file dist/desktop/TeddyBud.v.1.0-linux-amd64.deb dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
       - name: Remove unpacked Electron staging files
-        run: >-
-          node -e "const fs=require('node:fs');
-          for (const name of ['win-unpacked','linux-unpacked','mac','mac-arm64'])
-          fs.rmSync('dist/desktop/'+name,{recursive:true,force:true})"
+        shell: bash
+        run: |
+          for name in win-unpacked linux-unpacked mac mac-arm64; do
+            rm -rf "dist/desktop/$name"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -169,9 +183,10 @@ jobs:
       - desktop-packages
     steps:
       - uses: actions/checkout@v4
-      - name: Clear committed distribution snapshot
-        run: git rm -rf --ignore-unmatch dist/
-      - name: Download build artifacts without merging
+        with:
+          ref: ${{ github.ref }}
+          lfs: true
+      - name: Download artifacts from the selected run
         uses: actions/download-artifact@v4
         with:
           pattern: teddy-bud-*
@@ -179,25 +194,38 @@ jobs:
           merge-multiple: false
           run-id: ${{ inputs.source_run_id || github.run_id }}
           github-token: ${{ github.token }}
-      - name: Assemble platform distributions
-        run: python scripts/collect_distributions.py source-artifacts dist
+      - name: Assemble fresh platform distributions
+        run: |
+          set -euo pipefail
+          python scripts/collect_distributions.py source-artifacts dist
       - name: Verify collected distributions
         run: python scripts/verify_distributions.py
+      - name: Confirm replacement set is complete
+        run: |
+          set -euo pipefail
+          test -s dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          test -s dist/desktop/TeddyBud.v.1.0-win-x64.exe
+          test -s dist/desktop/TeddyBud.v.1.0-win-x64.exe.blockmap
+          test -s dist/desktop/TeddyBud.v.1.0-mac-arm64.dmg
+          test -s dist/desktop/TeddyBud.v.1.0-mac-x64.dmg
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          find dist -type f -printf '%P %s bytes\n' | sort
       - uses: actions/upload-artifact@v4
         with:
           name: teddy-bud-dist
           path: dist/
           if-no-files-found: error
-      - name: Commit distributions to the triggering branch
+      - name: Commit replaced distributions to the triggering branch
         if: github.ref_type == 'branch' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+Harry-Jees@users.noreply.github.com"
-          git lfs install --local
-          git add dist/
-          if git diff --cached --quiet; then
+          git add -A dist/
+          if git diff --cached --quiet -- dist/; then
             echo "Distribution files are already up to date."
           else
-            git commit -m "chore: update compiled distributions"
+            git commit -m "chore: replace compiled distributions with verified builds"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
