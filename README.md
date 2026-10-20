@@ -1,8 +1,63 @@
 # Teddy Bud
 
-Teddy Bud is a private, supportive conversation app for web, mobile, and desktop. It uses React Native for native Android, iOS, and macOS apps, and React Native Web for browsers. Windows, macOS, and Linux desktop packages use Electron.
+<p align="center">
+  <strong>A little room to breathe.</strong><br />
+  A private, supportive AI companion for everyday conversations.
+</p>
 
-## Get started
+<p align="center">
+  <a href="https://teddybud.vercel.app/">Official website & portfolio</a> ·
+  <a href="https://github.com/Harry-Jees/Teddy-Bud">Source repository</a> ·
+  <a href="https://github.com/Harry-Jees/Teddy-Bud/issues">Feedback & bug reports</a>
+</p>
+
+---
+
+## Meet Teddy Bud
+
+Teddy Bud is an AI conversation companion built to give people a calmer, more personal place to talk, reflect, and feel heard. It is designed around a simple idea: technology should make room for people—not make their private lives feel like product data.
+
+Whether someone wants to talk through a difficult day, organize their thoughts, revisit a meaningful moment, or simply have a friendly conversation, Teddy Bud aims to respond with warmth and care in a clean, approachable interface.
+
+Teddy Bud is an AI companion, not a therapist, emergency service, or substitute for professional mental-health care. AI responses can be mistaken or incomplete.
+
+## What it is for
+
+- **Everyday conversation:** chat naturally with an AI companion.
+- **A place to reflect:** revisit conversations and keep selected memories that matter to you.
+- **User-controlled memory:** review, edit, or remove saved memories rather than treating every detail as something that must be retained.
+- **Privacy-conscious design:** conversations and approved memories are stored locally with encryption appropriate to the platform.
+- **Choice over shared context:** privacy controls determine which saved memories or excerpts may be included with a message sent to the AI provider.
+- **A consistent experience:** use the browser app, Android app, or supported desktop packages.
+
+## Privacy by design
+
+Teddy Bud is designed to minimize unnecessary collection and keep personal conversation data under the user's control.
+
+- Chats, preferences, and approved memories are stored locally on the device or browser profile.
+- Local data protection uses platform-appropriate encryption and account-scoped keys.
+- Authentication and AI requests go through the configured gateway; provider credentials stay server-side.
+- Only the conversation and optional context selected by the app's behavior and privacy settings are sent to the AI service for a response.
+- Password recovery does not magically restore local chat history or transfer encryption keys to another device.
+
+These protections reduce risk but do not mean that data is inaccessible to all software while the app is unlocked. Review the [Security and Privacy guide](guide/SECURITY_AND_PRIVACY.md) before relying on the app for sensitive information.
+
+## Where to use Teddy Bud
+
+| Platform | Current availability |
+| --- | --- |
+| Web | Browser build in `dist/web/` |
+| Android | ARM64 APK in `dist/android/` |
+| Windows | x64 desktop installer in `dist/desktop/` |
+| macOS | Apple Silicon desktop package in `dist/desktop/` |
+| Linux | x64 Debian package and AppImage in `dist/desktop/` |
+| iOS / iPhone | **Not currently available** |
+
+Downloads in the repository are development builds and may not be signed for trusted public distribution. The iOS app is not available; no iPhone/iPad installer is offered. See [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md) for the exact package set and validation limits.
+
+For the product's public-facing presentation, visit the [Teddy Bud website](https://teddybud.vercel.app/).
+
+## Getting started for developers
 
 Requirements: Node.js 22.12 or newer.
 
@@ -12,7 +67,9 @@ npm ci
 npm run web
 ```
 
-The development site opens at `http://127.0.0.1:5173/`. For the gateway Worker, install its dependencies and run its tests separately:
+The local development server opens at `http://127.0.0.1:5173/`.
+
+Run gateway Worker tests separately:
 
 ```sh
 cd gateway-worker
@@ -20,43 +77,9 @@ npm ci
 npm test
 ```
 
-## Platform packages
+### Common commands
 
-Committed build outputs are under `dist/`:
-
-| Platform | Artifact | Build type |
-| --- | --- | --- |
-| Web | `dist/web/` | Static web app and installable web manifest |
-| Android | `dist/android/TeddyBud-android-debug.apk` | Debug APK for ARM64 Android devices |
-| iOS | `dist/ios/TeddyBud-ios.zip` | iOS Simulator app bundle |
-| macOS native | `dist/macos/TeddyBud-macos.zip` | macOS app bundle |
-| Windows desktop | `dist/desktop/Teddy-Bud-1.0.0-win-x64.exe` and matching `.nsis.7z` payload | x64 NSIS installer package |
-| macOS desktop | `dist/desktop/Teddy-Bud-1.0.0-mac-arm64.dmg` | Apple Silicon Electron disk image |
-| Linux desktop | `dist/desktop/Teddy-Bud-1.0.0-linux-amd64.deb` | x64 Debian package |
-
-These are development builds. Android and Apple native outputs are not store submissions; Windows and macOS desktop builds need signing for trusted public distribution. See the [distribution verification record](guide/DISTRIBUTION_VERIFICATION.md) for artifact checks and platform-specific use requirements.
-
-`dist/` is a committed snapshot of packaged outputs, not files embedded in the
-source app. GitHub Actions rebuilds packages from the triggering source commit,
-checks their formats, then refreshes this snapshot. Check the latest successful
-workflow run to confirm the snapshot matches current source. The iOS ZIP is a
-Simulator build, not an iPhone store package.
-
-## Repository map
-
-| Path | Contents |
-| --- | --- |
-| `client/` | React Native app, web entry point, platform projects, desktop wrapper, and client tests |
-| `gateway-worker/` | Cloudflare Worker for password authentication, recovery, sessions, and authenticated model requests |
-| `supabase/migrations/` | Database schema migrations for user profiles |
-| `guide/` | Product, architecture, design, security, release, and verification documentation |
-| `dist/` | Collected platform distributions |
-| `scripts/` | Repository-level distribution verification |
-| `.github/workflows/` | CI checks and platform build workflow |
-
-## Common commands
-
-Run these from `client/` unless the command says otherwise:
+Run client commands from `client/`:
 
 | Purpose | Command |
 | --- | --- |
@@ -67,24 +90,35 @@ Run these from `client/` unless the command says otherwise:
 | Build desktop package for current OS | `npm run build:dist` |
 | Build Windows installer | `npm run desktop:windows` |
 | Build macOS disk image | `npm run desktop:macos` |
-| Build Linux Debian package | `npm run desktop:linux` |
+| Build Linux packages | `npm run desktop:linux` |
 
-Run Worker tests from `gateway-worker/` with `npm test`. The collected artifact checks can be run from the repository root with `python scripts/verify_distributions.py`.
+Run `python scripts/verify_distributions.py` from the repository root to check collected distribution artifacts.
 
-## Configuration and product behavior
+## How the repository is organized
 
-The app uses email/password accounts with user-chosen recovery passphrases and one-hour sessions. Email is an account identifier; no email verification or auth email delivery is required. Each account has separate locally encrypted chat data on a device. Gateway setup, Supabase configuration, allowed browser origins, and secret configuration are documented in [gateway-worker/README.md](gateway-worker/README.md). Do not place credentials in the app bundle or commit them to the repository.
+| Path | Purpose |
+| --- | --- |
+| `client/` | React Native app, web target, desktop wrapper, and client tests |
+| `gateway-worker/` | Cloudflare Worker for account sessions, recovery, and authenticated AI requests |
+| `supabase/migrations/` | Database schema migrations |
+| `guide/` | Product, architecture, UI, privacy, release, and distribution documentation |
+| `dist/` | Collected platform packages |
+| `scripts/` | Distribution verification tools |
+| `.github/workflows/` | CI and platform packaging workflow |
 
-The [client README](client/README.md) documents setup, account configuration, local data, and privacy settings. The [guide index](guide/README.md) links to product and engineering documentation, including the [security and privacy model](guide/SECURITY_AND_PRIVACY.md).
+## Documentation and community
 
+- [Product requirements](guide/PRD.md)
+- [Technical architecture](guide/TECHNICAL_ARCHITECTURE.md)
+- [Security and privacy](guide/SECURITY_AND_PRIVACY.md)
+- [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md)
+- [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security reporting](SECURITY.md)
+- [Support](SUPPORT.md)
 
-## Community and project policies
+## Project status and licensing
 
-- [Contributing guide](CONTRIBUTING.md): development setup, contribution expectations, and pull request checklist.
-- [Code of Conduct](CODE_OF_CONDUCT.md): respectful participation and reporting concerns.
-- [Security Policy](SECURITY.md): responsible vulnerability disclosure.
-- [Support and troubleshooting](SUPPORT.md): where to ask for help and what information to include.
-- [Issue templates](.github/ISSUE_TEMPLATE/): structured bug reports and feature requests.
-- [Pull request template](.github/PULL_REQUEST_TEMPLATE.md): review and verification checklist.
+Teddy Bud is under active development. Build success confirms packaging and automated checks, not complete real-device validation or store approval.
 
-**License status:** no repository license is currently declared. Do not assume that public availability grants permission to reuse, redistribute, or modify the code. The project owner should choose and add an appropriate license before inviting reuse under open-source terms.
+**No license is currently declared in this repository.** Public visibility does not itself grant permission to reuse or redistribute the code. A license should be selected by the project owner before the repository is described as open source.
