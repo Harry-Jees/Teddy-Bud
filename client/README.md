@@ -108,15 +108,16 @@ After enabling SQLCipher in the native SQLite build configuration, reinstall nat
 
 ## Conversation model behavior
 
-The client currently prefers NVIDIA's `nvidia/nemotron-3.5-lightning-30b-a3b`,
-`nvidia/mistral-nemo-minitron-8b-8k-instruct`, and
-`nvidia/llama-3.1-nemotron-70b-instruct`, in that order when the account's
-model catalog includes them. If a model is unavailable, the client tries other
-chat-capable models from NVIDIA's catalog; actual endpoint access can vary by
-account. Conversation requests allow up to 1024 output tokens; image requests
-remain limited to 220 output tokens. Although candidate endpoints may advertise
-larger context windows, this client currently includes at most 80,000 characters
-of recent chat history in a request.
+The client prefers `openai/gpt-oss-20b` for normal chat when it is present in the
+account's returned model catalog. Image requests prefer `meta/muse-glimmer-30b`
+when that model advertises vision support. Availability depends on the configured
+NVIDIA account and its returned catalog; the client does not guarantee either
+model is available or maintain the older fixed list of preferred chat models.
+If the preferred model is unavailable, chat selection falls back to another
+chat-capable model from the catalog. Normal conversation requests ask for up to
+4,096 output tokens, while coding and image requests ask for 220. The Worker
+applies a server-side maximum of 2,048 output tokens. The client includes at most
+80,000 characters of recent chat history in a request.
 
 The client prompt asks the assistant to be warm, compassionate, natural, and
 multilingual, and to answer in the language the user uses. Prompt instructions
