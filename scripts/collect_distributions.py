@@ -38,9 +38,10 @@ def main() -> int:
 
     # Replace the managed package folders, not merely overwrite matching names.
     # This prevents stale versions and obsolete filenames from surviving a build.
-    for managed in (dist / "android", dist / "desktop"):
-        if managed.exists():
-            shutil.rmtree(managed)
+    for managed in ("android", "desktop", "ios", "web", "macos"):
+        path = dist / managed
+        if path.exists():
+            shutil.rmtree(path)
     (dist / "android").mkdir(parents=True, exist_ok=True)
     (dist / "desktop").mkdir(parents=True, exist_ok=True)
 
