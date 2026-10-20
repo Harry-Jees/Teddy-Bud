@@ -67,7 +67,7 @@ jobs:
 
   android-build:
     if: ${{ inputs.source_run_id == '' }}
-    name: Android debug build
+    name: Android release APK
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -83,14 +83,14 @@ jobs:
           cache: gradle
           cache-dependency-path: client/android/**/*.gradle*
       - run: npm ci --prefix client
-      - run: bash client/android/gradlew -p client/android assembleDebug -PreactNativeArchitectures=arm64-v8a
+      - run: bash client/android/gradlew -p client/android assembleRelease -PreactNativeArchitectures=arm64-v8a
       - name: Stage Android build in dist
         run: |
           mkdir -p dist/android
-          cp client/android/app/build/outputs/apk/debug/app-debug.apk dist/android/TeddyBud-android-debug.apk
+          cp client/android/app/build/outputs/apk/debug/app-debug.apk dist/android/Teddybird-V-1.0-Android-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: teddy-bud-android-debug
+          name: teddy-bud-android
           path: dist/android/TeddyBud-android-debug.apk
           if-no-files-found: error
 
@@ -102,18 +102,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: iOS simulator
-            project_dir: ios
-            workspace: client/ios/TeddyBud.xcworkspace
-            scheme: TeddyBud
-            destination: generic/platform=iOS Simulator
-            app_path: client/ios/build/Build/Products/Debug-iphonesimulator/TeddyBud.app
-          - name: macOS
-            project_dir: macos
-            workspace: client/macos/TeddyBud.xcworkspace
-            scheme: TeddyBud-macOS
-            destination: generic/platform=macOS
-            app_path: client/macos/build/Build/Products/Debug/TeddyBud.app
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -175,10 +163,10 @@ jobs:
             os: windows-latest
             command: desktop:windows
             artifact: teddy-bud-windows
-          - name: macOS disk image
+          - name: macOS DMG
             os: macos-latest
             command: desktop:macos
-            artifact: teddy-bud-macos-desktop
+            artifact: teddy-bud-macos-dmg
           - name: Debian package
             os: ubuntu-24.04
             command: desktop:linux
@@ -204,15 +192,15 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: |
-            dist/desktop/Teddy-Bud-1.0.0-win-x64.exe
-            dist/desktop/Teddy-Bud-1.0.0-win-x64.exe.blockmap
-            dist/desktop/Teddy-Bud-1.0.0-mac-arm64.dmg
-            dist/desktop/Teddy-Bud-1.0.0-mac-x64.dmg
-            dist/desktop/Teddy-Bud-1.0.0-linux-amd64.deb
+            dist/desktop/Teddybird-V-1.0-win-x64.exe
+            dist/desktop/Teddybird-V-1.0-win-x64.exe.blockmap
+            dist/desktop/Teddybird-V-1.0-mac-arm64.dmg
+            dist/desktop/Teddybird-V-1.0-mac-x64.dmg
+            dist/desktop/Teddybird-V-1.0-linux-x64.deb
           if-no-files-found: error
 
   collect-dist:
-    if: ${{ always() && (inputs.source_run_id != '' || (needs.client-checks.result == 'success' && needs.worker-tests.result == 'success' && needs.android-build.result == 'success' && needs.apple-builds.result == 'success' && needs.desktop-packages.result == 'success')) }}
+    if: ${{ always() && (inputs.source_run_id != '' || (needs.client-checks.result == 'success' && needs.worker-tests.result == 'success' && needs.android-build.result == 'success' && needs.desktop-packages.result == 'success')) }}
     name: Collect all platform builds
     runs-on: ubuntu-24.04
     permissions:
@@ -222,7 +210,6 @@ jobs:
       - client-checks
       - worker-tests
       - android-build
-      - apple-builds
       - desktop-packages
     steps:
       - uses: actions/checkout@v4
