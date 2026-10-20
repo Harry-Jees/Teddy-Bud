@@ -26,7 +26,7 @@ concurrency:
 jobs:
   client-checks:
     if: ${{ inputs.source_run_id == '' }}
-    name: Web checks and build
+    name: Client tests and type checks
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -41,12 +41,6 @@ jobs:
       - run: npm ci
       - run: npm test -- --runInBand
       - run: npx tsc --noEmit
-      - run: npm run build:web
-      - uses: actions/upload-artifact@v4
-        with:
-          name: teddy-bud-web
-          path: dist/web/
-          if-no-files-found: error
 
   worker-tests:
     if: ${{ inputs.source_run_id == '' }}
@@ -88,7 +82,7 @@ jobs:
       - name: Stage Android release
         run: |
           mkdir -p dist/android
-          cp client/android/app/build/outputs/apk/release/app-release.apk dist/android/Teddybird-V-1.0-Android-arm64.apk
+          cp client/android/app/build/outputs/apk/release/app-release.apk dist/android/TeddyBud.v.1.0-Android-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
           name: teddy-bud-android
@@ -111,10 +105,10 @@ jobs:
             os: macos-latest
             command: desktop:macos
             artifact: teddy-bud-macos-dmg
-          - name: Linux Debian package
+          - name: Linux Debian and AppImage
             os: ubuntu-24.04
             command: desktop:linux
-            artifact: teddy-bud-linux-deb
+            artifact: teddy-bud-linux
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -136,11 +130,12 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: |
-            dist/desktop/Teddybird-V-1.0-win-x64.exe
+            dist/desktop/TeddyBud.v.1.0-win-x64.exe
             dist/desktop/Teddybird-V-1.0-win-x64.exe.blockmap
-            dist/desktop/Teddybird-V-1.0-mac-arm64.dmg
-            dist/desktop/Teddybird-V-1.0-mac-x64.dmg
-            dist/desktop/Teddybird-V-1.0-linux-x64.deb
+            dist/desktop/TeddyBud.v.1.0-mac-arm64.dmg
+            dist/desktop/TeddyBud.v.1.0-mac-x64.dmg
+            dist/desktop/TeddyBud.v.1.0-linux-x64.deb
+            dist/desktop/TeddyBud.v.1.0-linux-x64.AppImage
           if-no-files-found: error
 
   collect-dist:
