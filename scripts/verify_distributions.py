@@ -54,11 +54,11 @@ def verify_windows():
     if p.is_file():
         with p.open("rb") as f:
             h=f.read(64); valid=h[:2]==b"MZ" and len(h)>=64
-            if valid: f.seek(struct.unpack("<I",h[60:64])[0]); valid=f.read(4)==b"PE\\0\\0"
+            if valid: f.seek(struct.unpack("<I",h[60:64])[0]); valid=f.read(4)==b"PE\0\0"
             require(valid,"Windows installer has invalid PE signature")
     if b.is_file():
         try:
-            data=b.read_bytes(); require(data[:2]==b"\\x1f\\x8b","Blockmap is not gzip")
+            data=b.read_bytes(); require(data[:2]==b"\x1f\x8b","Blockmap is not gzip")
             gzip.decompress(data)
         except (OSError,EOFError): errors.append("Windows blockmap gzip stream invalid")
 def verify_dmg(name, required):
@@ -77,11 +77,11 @@ def verify_deb():
     if not p.is_file(): return
     members=[]
     with p.open("rb") as f:
-        if f.read(8)!=b"!<arch>\\n": errors.append("DEB has invalid ar header"); return
+        if f.read(8)!=b"!<arch>\n": errors.append("DEB has invalid ar header"); return
         while True:
             h=f.read(60)
             if not h: break
-            if len(h)!=60 or h[58:60]!=b"\\x60\\n": errors.append("Invalid DEB ar member header"); break
+            if len(h)!=60 or h[58:60]!=b"\x60\n": errors.append("Invalid DEB ar member header"); break
             name=h[:16].decode("ascii",errors="replace").strip().rstrip("/")
             try: size=int(h[48:58].decode("ascii").strip())
             except ValueError: errors.append("Invalid DEB member size"); break
