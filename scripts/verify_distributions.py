@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Validate Teddy Bud V 1.0 platform release packages."""
+"""Validate the exact supported Teddy Bud V 1.0 distribution set."""
 from __future__ import annotations
+
 import os
 import struct
 import sys
@@ -10,15 +11,33 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 errors: list[str] = []
+EXPECTED = {
+    "android/TeddyBud.v.1.0-Android-arm64.apk",
+    "desktop/TeddyBud.v.1.0-win-x64.exe",
+    "desktop/TeddyBud.v.1.0-win-x64.exe.blockmap",
+    "desktop/TeddyBud.v.1.0-mac-arm64.dmg",
+    "desktop/TeddyBud.v.1.0-linux-amd64.deb",
+    "desktop/TeddyBud.v.1.0-linux-amd64.AppImage",
+}
 
 def require(ok: bool, message: str) -> None:
     if not ok:
         errors.append(message)
 
-def verify_apk() -> None:
-    path = DIST / "android" / "TeddyBud.v.1.0-Android-arm64.apk"
-    require(path.is_file(), f"Missing APK: {path}")
+def is_real_payload(path: Path) -> bool:
     if not path.is_file():
+        require(False, f"Missing distribution file: {path.relative_to(DIST)}")
+        return False
+    with path.open("rb") as stream:
+        prefix = stream.read(128)
+    valid = not prefix.startswith(b"version https://git-lfs.github.com/spec/")
+    require(valid, f"{path.relative_to(DIST)} is a Git LFS pointer, not the actual package")
+    require(path.stat().st_size > 1024, f"{path.relative_to(DIST)} is suspiciously small ({path.stat().st_size} bytes)")
+    return valid and path.stat().st_size > 1024
+
+def verify_apk() -> None:
+    path = DIST / "android/TeddyBud.v.1.0-Android-arm64.apk"
+    if not is_real_payload(path):
         return
     require(zipfile.is_zipfile(path), "Android APK is not a valid ZIP archive")
     if zipfile.is_zipfile(path):
@@ -30,9 +49,8 @@ def verify_apk() -> None:
             require(any(n.startswith("lib/arm64-v8a/") for n in names), "APK missing ARM64 native libraries")
 
 def verify_windows() -> None:
-    path = DIST / "desktop" / "TeddyBud.v.1.0-win-x64.exe"
-    require(path.is_file(), f"Missing Windows installer: {path}")
-    if path.is_file():
+    path = DIST / "desktop/TeddyBud.v.1.0-win-x64.exe"
+    if is_real_payload(path):
         with path.open("rb") as stream:
             header = stream.read(64)
             valid = header[:2] == b"MZ" and len(header) >= 64
@@ -40,36 +58,27 @@ def verify_windows() -> None:
                 stream.seek(struct.unpack("<I", header[60:64])[0])
                 valid = stream.read(4) == b"PE\0\0"
             require(valid, "Windows installer has invalid PE signature")
-    blockmap = DIST / "desktop" / "TeddyBud.v.1.0-win-x64.exe.blockmap"
-    require(blockmap.is_file(), f"Missing Windows blockmap: {blockmap}")
+    blockmap = DIST / "desktop/TeddyBud.v.1.0-win-x64.exe.blockmap"
+    require(blockmap.is_file() and blockmap.stat().st_size > 1024, "Missing or invalid Windows blockmap")
 
-def verify_dmg(filename: str, required: bool) -> None:
-    path = DIST / "desktop" / filename
-    if not required and not path.exists():
+def verify_dmg() -> None:
+    path = DIST / "desktop/TeddyBud.v.1.0-mac-arm64.dmg"
+    if not is_real_payload(path):
         return
-    require(path.is_file(), f"Missing macOS DMG: {filename}")
-    if path.is_file():
-        with path.open("rb") as stream:
-            size = path.stat().st_size
-            prefix = stream.read(64)
-            footer = b""
-            if size >= 512:
-                stream.seek(-512, 2)
-                footer = stream.read(512)
-        require(not prefix.startswith(b"version https://git-lfs.github.com/spec/"), f"{filename} is an LFS pointer, not a DMG")
-        require(footer[:4] == b"koly", f"{filename} has no UDIF footer")
+    with path.open("rb") as stream:
+        stream.seek(-512, 2)
+        footer = stream.read(512)
+    require(footer[:4] == b"koly", "Apple Silicon DMG has no UDIF footer")
 
 def verify_deb() -> None:
-    path = DIST / "desktop" / "TeddyBud.v.1.0-linux-amd64.deb"
-    require(path.is_file(), f"Missing Debian package: {path}")
-    if path.is_file():
+    path = DIST / "desktop/TeddyBud.v.1.0-linux-amd64.deb"
+    if is_real_payload(path):
         with path.open("rb") as stream:
             require(stream.read(8) == b"!<arch>\n", "Linux DEB has an invalid ar header")
 
 def verify_appimage() -> None:
-    path = DIST / "desktop" / "TeddyBud.v.1.0-linux-amd64.AppImage"
-    require(path.is_file(), f"Missing Linux AppImage: {path}")
-    if path.is_file():
+    path = DIST / "desktop/TeddyBud.v.1.0-linux-amd64.AppImage"
+    if is_real_payload(path):
         with path.open("rb") as stream:
             require(stream.read(4) == b"\x7fELF", "Linux AppImage has no ELF executable header")
         require(os.access(path, os.X_OK), "Linux AppImage is not executable")
@@ -77,18 +86,20 @@ def verify_appimage() -> None:
 def main() -> int:
     verify_apk()
     verify_windows()
-    verify_dmg("TeddyBud.v.1.0-mac-arm64.dmg", required=True)
-    verify_dmg("TeddyBud.v.1.0-mac-x64.dmg", required=True)
+    verify_dmg()
     verify_deb()
     verify_appimage()
-    require(not (DIST / "ios").exists(), "Unexpected iOS distribution directory")
-    require(not (DIST / "web").exists(), "Unexpected web distribution directory")
-    require(not (DIST / "macos").exists(), "Unexpected duplicate macOS ZIP distribution directory")
+
+    actual = {p.relative_to(DIST).as_posix() for p in DIST.rglob("*") if p.is_file()} if DIST.exists() else set()
+    require(actual == EXPECTED, f"Distribution file set mismatch. Missing: {sorted(EXPECTED - actual)}; unexpected/stale: {sorted(actual - EXPECTED)}")
+    for obsolete in ("ios", "web", "macos"):
+        require(not (DIST / obsolete).exists(), f"Unexpected obsolete distribution directory: dist/{obsolete}/")
+
     if errors:
         for error in errors:
             print(f"FAIL: {error}")
         return 1
-    print("All Teddy Bud V 1.0 distribution checks passed.")
+    print("All six expected Teddy Bud V 1.0 distribution files passed structural checks.")
     return 0
 
 if __name__ == "__main__":
