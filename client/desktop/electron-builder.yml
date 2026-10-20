@@ -1,5 +1,5 @@
 ﻿appId: com.teddybud.app
-productName: Teddy Bud
+productName: Teddybird V 1.0
 electronVersion: 44.9.0
 asar: true
 directories:
@@ -10,7 +10,7 @@ files:
   - dist/**/*
   - icons/**/*
   - package.json
-artifactName: Teddy-Bud-${version}-${os}-${arch}.${ext}
+artifactName: Teddybird-V-1.0-${os}-${arch}.${ext}
 protocols:
   - name: Teddy Bud sign in
     schemes:
