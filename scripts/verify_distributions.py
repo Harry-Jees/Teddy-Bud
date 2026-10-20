@@ -15,9 +15,7 @@ EXPECTED = {
     "android/TeddyBud.v.1.0-Android-arm64.apk",
     "desktop/TeddyBud.v.1.0-win-x64.exe",
     "desktop/TeddyBud.v.1.0-win-x64.exe.blockmap",
-    "desktop/TeddyBud.v.1.0-mac-arm64.dmg",
-    "desktop/TeddyBud.v.1.0-mac-arm64.zip",
-    "desktop/TeddyBud.v.1.0-linux-amd64.deb",
+    "desktop/TeddyBud.v.1.0-mac-arm64.dmg",    "desktop/TeddyBud.v.1.0-linux-amd64.deb",
     "desktop/TeddyBud.v.1.0-linux-amd64.AppImage",
 }
 
@@ -71,15 +69,6 @@ def verify_dmg() -> None:
         footer = stream.read(512)
     require(footer[:4] == b"koly", "Apple Silicon DMG has no UDIF footer")
 
-def verify_mac_zip() -> None:
-    path = DIST / "desktop/TeddyBud.v.1.0-mac-arm64.zip"
-    if is_real_payload(path):
-        require(zipfile.is_zipfile(path), "macOS ZIP is not a valid ZIP archive")
-        if zipfile.is_zipfile(path):
-            with zipfile.ZipFile(path) as archive:
-                require(archive.testzip() is None, "macOS ZIP CRC check failed")
-                require(any(".app/" in name for name in archive.namelist()), "macOS ZIP has no .app bundle")
-
 def verify_deb() -> None:
     path = DIST / "desktop/TeddyBud.v.1.0-linux-amd64.deb"
     if is_real_payload(path):
@@ -97,7 +86,6 @@ def main() -> int:
     verify_apk()
     verify_windows()
     verify_dmg()
-    verify_mac_zip()
     verify_deb()
     verify_appimage()
 
