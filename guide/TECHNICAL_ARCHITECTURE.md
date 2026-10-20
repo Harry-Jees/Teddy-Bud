@@ -10,7 +10,7 @@ records. Chats, memories, and preferences are persisted locally.
 
 ## 2. Storage and key management
 
-- Android, iOS, and macOS: account-specific SQLCipher databases; each random
+- Android and macOS: account-specific SQLCipher databases; each random
   database key is stored in Keychain/Keystore.
 - Electron: each account has a random AES-256-GCM key protected by Electron
   `safeStorage`; only encrypted record values are stored in IndexedDB.
