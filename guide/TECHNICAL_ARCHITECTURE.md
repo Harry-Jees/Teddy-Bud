@@ -37,11 +37,11 @@ malicious script executing in the same origin while the app is unlocked.
 - `GET /auth/session`: validate a saved session before loading local data.
 - `POST /auth/refresh`: always rejects renewal; sessions expire after one hour.
 - `POST /auth/logout`: revoke the current server-side session.
-- `POST /auth/register` and `POST /auth/verify`: device registration/verification
-  endpoints retained for gateway compatibility.
 - `GET /health`: gateway health check.
 - `GET /v1/models`: authenticated AI model discovery.
-- `POST /v1/chat/completions`: authenticated chat proxy to NVIDIA.
+- `POST /v1/chat/completions`: authenticated chat proxy to NVIDIA-hosted model endpoints.
+
+Only the routes listed above are exposed by the public Worker dispatcher. Durable Object paths such as `/session`, `/user-sessions/*`, `/account/*`, and `/rate` are internal state operations, not public client API routes.
 
 ## 4. Authentication and session behavior
 
@@ -65,6 +65,8 @@ Supabase token and RLS; the recovery table is accessed only by the Worker.
 ## 5. AI and privacy constraints
 
 - All AI inference happens remotely through the gateway.
+- The client prefers `openai/gpt-oss-20b` for chat when that model is present in the returned catalog; image requests prefer `meta/muse-glimmer-30b` when it advertises vision support. The client does not guarantee either model is available to every NVIDIA account and does not pin a fixed fallback list.
+- Normal conversation requests ask for up to 4,096 output tokens, coding and image requests ask for 220, and the Worker applies a server-side ceiling of 2,048 output tokens. Recent chat context is capped at 80,000 characters by the client.
 - The client sends the active conversation and only the memories, selected
   history, or About me content enabled by the privacy controls.
 - Provider credentials never ship in the client.
