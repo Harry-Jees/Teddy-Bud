@@ -1,12 +1,12 @@
 # Teddy Bud Client
 
-The client package contains Teddy Bud's React Native app, browser build, and Electron desktop wrapper for currently supported targets.
+The client package contains Teddy Bud's React Native application and its Electron desktop wrapper. The web-rendered bundle is an internal desktop UI implementation detail; Teddy Bud is not distributed as a standalone web app.
 
 ## Getting started
 
-## Preview in a browser
+## Browser preview for development only
 
-The web target uses Vite and React Native Web to render the same app UI in a desktop or mobile browser.
+The Vite/React Native Web target exists for local development and to package the UI inside Electron desktop apps. It is not a supported standalone product, hosted web app, or download.
 
 1. Install Node.js 22.12 or newer.
 2. From the `client` directory, install the project dependencies with `npm ci`.
@@ -15,7 +15,7 @@ The web target uses Vite and React Native Web to render the same app UI in a des
 
 ## Platform builds
 
-Teddy Bud currently provides a web app, an Android ARM64 package, and desktop packages for Windows x64, Apple Silicon macOS, and x64 Debian/Ubuntu Linux. Windows, macOS, and Linux desktop installers wrap the Vite/React Native Web UI with Electron. The desktop apps load packaged local assets and open trusted support links in the system browser. **There is no installable iOS/iPhone app at this time.**
+Teddy Bud currently provides an Android ARM64 APK and desktop packages for Windows x64, Apple Silicon macOS, and x64 Debian/Ubuntu Linux. Windows, macOS, and Linux desktop installers wrap the locally packaged Vite/React Native Web UI with Electron. The desktop apps load packaged local assets and open trusted support links in the system browser. **There is no standalone web app, hosted browser version, or installable iOS/iPhone app.**
 
 Use Node.js 22.12 or newer, install dependencies from this directory with
 `npm ci`, then run the relevant build:
@@ -186,7 +186,7 @@ they do not make the app a medical device or substitute for professional care.
 
 ## Native development
 
-Run `npm run android` with an Android emulator or device attached. Run `npm run ios` on macOS with Xcode and CocoaPods configured. The Android distribution is an ARM64 APK. No iOS Simulator archive or installable iPhone IPA is published; a physical-device release requires Apple signing credentials and provisioning. The available packages are development outputs and do not replace signed store builds.
+Run `npm run android` with an Android emulator or device attached. The repository does not currently offer an installable iOS release. The Android distribution is an ARM64 APK. No iOS Simulator archive or installable iPhone IPA is published; a physical-device release requires Apple signing credentials and provisioning. The available packages are development outputs and do not replace signed store builds.
 
 For macOS desktop development, use `npm run desktop:run` after building the relative-path web bundle with `npm run build:web -- --base=./`. Desktop packaging commands and the current output locations are listed in the [repository README](../README.md) and the [distribution verification record](../guide/DISTRIBUTION_VERIFICATION.md).
 
