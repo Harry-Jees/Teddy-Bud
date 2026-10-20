@@ -34,7 +34,7 @@ Teddy Bud is an AI companion, not a therapist, emergency service, or substitute 
 
 Teddy Bud is designed to minimize unnecessary collection and keep personal conversation data under the user's control.
 
-- Chats, preferences, and approved memories are stored locally on the device or browser profile.
+- Chats, preferences, and approved memories are stored locally on the device.
 - Local data protection uses platform-appropriate encryption and account-scoped keys.
 - Authentication and AI requests go through the configured gateway; provider credentials stay server-side.
 - Only the conversation and optional context selected by the app's behavior and privacy settings are sent to the AI service for a response.
