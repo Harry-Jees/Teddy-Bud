@@ -86,7 +86,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: teddy-bud-android
-          path: dist/android/Teddybird-V-1.0-Android-arm64.apk
+          path: dist/android/TeddyBud.v.1.0-Android-arm64.apk
           if-no-files-found: error
 
   desktop-packages:
@@ -97,18 +97,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows installer
+          - name: Windows x64 installer
             os: windows-latest
             command: desktop:windows
             artifact: teddy-bud-windows
-          - name: macOS DMG
-            os: macos-latest
+            files: |
+              dist/desktop/TeddyBud.v.1.0-win-x64.exe
+              dist/desktop/TeddyBud.v.1.0-win-x64.exe.blockmap
+          - name: macOS Intel and Apple Silicon DMGs
+            os: macos-15
             command: desktop:macos
             artifact: teddy-bud-macos-dmg
+            files: |
+              dist/desktop/TeddyBud.v.1.0-mac-arm64.dmg
+              dist/desktop/TeddyBud.v.1.0-mac-x64.dmg
           - name: Linux Debian and AppImage
             os: ubuntu-24.04
             command: desktop:linux
             artifact: teddy-bud-linux
+            files: |
+              dist/desktop/TeddyBud.v.1.0-linux-x64.deb
+              dist/desktop/TeddyBud.v.1.0-linux-x64.AppImage
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
