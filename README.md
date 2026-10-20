@@ -28,7 +28,7 @@ Teddy Bud is an AI companion, not a therapist, emergency service, or substitute 
 - **User-controlled memory:** review, edit, or remove saved memories rather than treating every detail as something that must be retained.
 - **Privacy-conscious design:** conversations and approved memories are stored locally with encryption appropriate to the platform.
 - **Choice over shared context:** privacy controls determine which saved memories or excerpts may be included with a message sent to the AI provider.
-- **A consistent experience:** use the browser app, Android app, or supported desktop packages.
+- **Cross-platform native experience:** use the Android app or a supported Windows, macOS, or Linux desktop package.
 
 ## Privacy by design
 
@@ -46,16 +46,16 @@ These protections reduce risk but do not mean that data is inaccessible to all s
 
 | Platform | Current availability |
 | --- | --- |
-| Web | Browser build in `dist/web/` |
+| Web | **Not offered as a standalone app or download** |
 | Android | ARM64 APK in `dist/android/` |
 | Windows | x64 desktop installer in `dist/desktop/` |
-| macOS | Apple Silicon desktop package in `dist/desktop/` |
+| macOS | Apple Silicon DMG installer in `dist/desktop/` |
 | Linux | x64 Debian package and AppImage in `dist/desktop/` |
 | iOS / iPhone | **Not currently available** |
 
-Downloads in the repository are development builds and may not be signed for trusted public distribution. The iOS app is not available; no iPhone/iPad installer is offered. See [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md) for the exact package set and validation limits.
+The supported distribution set is Android APK, Windows installer, Apple Silicon macOS DMG, and Linux DEB/AppImage. There is no standalone web app, no web download, and no iPhone/iPad installer. Downloads are development builds and may not be signed for trusted public distribution. See [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md) for the exact package set and validation limits.
 
-For the product's public-facing presentation, visit the [Teddy Bud website](https://teddybud.vercel.app/).
+For the product's public-facing presentation, visit the [Teddy Bud portfolio website](https://teddybud.vercel.app/). This is a portfolio/presentation site, not a web version of the Teddy Bud app.
 
 ## Getting started for developers
 
@@ -67,7 +67,7 @@ npm ci
 npm run web
 ```
 
-The local development server opens at `http://127.0.0.1:5173/`.
+For desktop packaging, the build system creates an internal web-rendered bundle that is loaded by Electron. This is an implementation detail of the desktop app, not a standalone web product.
 
 Run gateway Worker tests separately:
 
@@ -83,10 +83,10 @@ Run client commands from `client/`:
 
 | Purpose | Command |
 | --- | --- |
-| Run web app | `npm run web` |
+| Run local browser preview (development only) | `npm run web` |
 | Client tests | `npm test -- --runInBand` |
 | TypeScript check | `npx tsc --noEmit` |
-| Build web distribution | `npm run build:web` |
+| Build internal renderer bundle (used by desktop packaging) | `npm run build:web` |
 | Build desktop package for current OS | `npm run build:dist` |
 | Build Windows installer | `npm run desktop:windows` |
 | Build macOS disk image | `npm run desktop:macos` |
@@ -98,13 +98,13 @@ Run `python scripts/verify_distributions.py` from the repository root to check c
 
 | Path | Purpose |
 | --- | --- |
-| `client/` | React Native app, web target, desktop wrapper, and client tests |
+| `client/` | React Native app, internal web renderer for desktop packaging, desktop wrapper, and client tests |
 | `gateway-worker/` | Cloudflare Worker for account sessions, recovery, and authenticated AI requests |
 | `supabase/migrations/` | Database schema migrations |
 | `guide/` | Product, architecture, UI, privacy, release, and distribution documentation |
 | `dist/` | Collected platform packages |
 | `scripts/` | Distribution verification tools |
-| `.github/workflows/` | CI and platform packaging workflow |
+| `.github/workflows/` | CI and platform packaging workflow; no website deployment workflow |
 
 ## Documentation and community
 
