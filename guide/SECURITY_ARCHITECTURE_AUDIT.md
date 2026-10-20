@@ -28,7 +28,7 @@ A valid account could repeatedly call model discovery and chat completion endpoi
 The gateway forwarded caller-supplied max_tokens and large text contexts with no server-side text-budget cap. Added a 2,048 output-token ceiling and an 80,000-character text-context limit, with regression tests. The HTTP body limit remains 1 MiB.
 
 ### High — browser chat data is not encrypted at rest by the app
-The web/Electron UI uses IndexedDB for chat history, memories, and preferences. The README already discloses that this is not application-encrypted. Same-origin script compromise (including an XSS bug or compromised dependency) could read that data. Native storage uses SQLCipher and a platform secure key store; desktop session tokens use Electron safeStorage. Before making stronger privacy claims, add an explicit browser privacy warning and evaluate user-controlled encrypted local storage or a browser-specific key-management design.
+The Electron renderer and desktop storage path are security-sensitive. The standalone browser product is not distributed; do not use browser-target implementation details to claim a hosted web app exists. Desktop renderer isolation, safeStorage behavior, and packaged dependency integrity still require platform-specific verification.
 
 ## Medium-priority findings
 
