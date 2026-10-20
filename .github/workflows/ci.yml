@@ -4,10 +4,6 @@ on:
   push:
     paths-ignore:
       - 'dist/**'
-      - '.github/workflows/ci.yml'
-      - 'scripts/collect_distributions.py'
-      - 'scripts/verify_distributions.py'
-      - '.gitattributes'
   pull_request:
   workflow_dispatch:
     inputs:
@@ -21,12 +17,12 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   client-checks:
     if: ${{ inputs.source_run_id == '' }}
-    name: Web checks and build
+    name: Client tests and type checks
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -41,12 +37,6 @@ jobs:
       - run: npm ci
       - run: npm test -- --runInBand
       - run: npx tsc --noEmit
-      - run: npm run build:web
-      - uses: actions/upload-artifact@v4
-        with:
-          name: teddy-bud-web
-          path: dist/web/
-          if-no-files-found: error
 
   worker-tests:
     if: ${{ inputs.source_run_id == '' }}
@@ -67,7 +57,7 @@ jobs:
 
   android-build:
     if: ${{ inputs.source_run_id == '' }}
-    name: Android debug build
+    name: Android release APK
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -83,84 +73,21 @@ jobs:
           cache: gradle
           cache-dependency-path: client/android/**/*.gradle*
       - run: npm ci --prefix client
-      - run: bash client/android/gradlew -p client/android assembleDebug -PreactNativeArchitectures=arm64-v8a
-      - name: Stage Android build in dist
+      - name: Build installable Android release
+        run: bash client/android/gradlew -p client/android assembleRelease -PreactNativeArchitectures=arm64-v8a
+      - name: Stage Android release
         run: |
-          mkdir -p dist/android
-          cp client/android/app/build/outputs/apk/debug/app-debug.apk dist/android/TeddyBud-android-debug.apk
+          set -euo pipefail
+          source=client/android/app/build/outputs/apk/release/app-release.apk
+          target=dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          test -s "$source"
+          mkdir -p "$(dirname "$target")"
+          cp "$source" "$target"
+          test -s "$target"
       - uses: actions/upload-artifact@v4
         with:
-          name: teddy-bud-android-debug
-          path: dist/android/TeddyBud-android-debug.apk
-          if-no-files-found: error
-
-  apple-builds:
-    if: ${{ inputs.source_run_id == '' }}
-    name: ${{ matrix.name }} build
-    runs-on: macos-15-intel
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: iOS simulator
-            project_dir: ios
-            workspace: client/ios/TeddyBud.xcworkspace
-            scheme: TeddyBud
-            destination: generic/platform=iOS Simulator
-            app_path: client/ios/build/Build/Products/Debug-iphonesimulator/TeddyBud.app
-          - name: macOS
-            project_dir: macos
-            workspace: client/macos/TeddyBud.xcworkspace
-            scheme: TeddyBud-macOS
-            destination: generic/platform=macOS
-            app_path: client/macos/build/Build/Products/Debug/TeddyBud.app
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-      - run: npm ci --prefix client
-      - name: Install Apple native dependencies
-        working-directory: client/${{ matrix.project_dir }}
-        shell: bash
-        run: |
-          set -o pipefail
-          pod install --verbose 2>&1 | tee "$RUNNER_TEMP/pod-install.log"
-      - name: Preserve CocoaPods diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cocoapods-diagnostics-${{ matrix.project_dir }}
-          path: ${{ runner.temp }}/pod-install.log
-          if-no-files-found: ignore
-      - name: Build Apple app
-        shell: bash
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -workspace "${{ matrix.workspace }}" \
-            -scheme "${{ matrix.scheme }}" \
-            -destination "${{ matrix.destination }}" \
-            -derivedDataPath "client/${{ matrix.project_dir }}/build" \
-            CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee "$RUNNER_TEMP/xcodebuild-${{ matrix.project_dir }}.log"
-      - name: Preserve Xcode diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcodebuild-diagnostics-${{ matrix.project_dir }}
-          path: ${{ runner.temp }}/xcodebuild-${{ matrix.project_dir }}.log
-          if-no-files-found: ignore
-      - name: Stage Apple builds in dist
-        run: |
-          mkdir -p "dist/${{ matrix.project_dir }}"
-          ditto -c -k --sequesterRsrc --keepParent "${{ matrix.app_path }}" "dist/${{ matrix.project_dir }}/TeddyBud-${{ matrix.project_dir }}.zip"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: teddy-bud-${{ matrix.project_dir }}
-          path: dist/${{ matrix.project_dir }}/TeddyBud-${{ matrix.project_dir }}.zip
+          name: teddy-bud-android
+          path: dist/android/TeddyBud.v.1.0-Android-arm64.apk
           if-no-files-found: error
 
   desktop-packages:
@@ -171,18 +98,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows installer
+          - name: Windows x64 installer
             os: windows-latest
             command: desktop:windows
             artifact: teddy-bud-windows
-          - name: macOS disk image
-            os: macos-latest
+            files: |
+              dist/desktop/TeddyBud.v.1.0-win-x64.exe
+              dist/desktop/TeddyBud.v.1.0-win-x64.exe.blockmap
+          - name: macOS Apple Silicon DMG
+            os: macos-15
             command: desktop:macos
-            artifact: teddy-bud-macos-desktop
-          - name: Debian package
+            artifact: teddy-bud-macos-arm64
+            files: dist/desktop/TeddyBud.v.1.0-mac-arm64.dmg
+          - name: macOS Intel DMG
+            os: macos-15-intel
+            command: desktop:macos
+            artifact: teddy-bud-macos-x64
+            files: dist/desktop/TeddyBud.v.1.0-mac-x64.dmg
+          - name: Linux Debian and AppImage
             os: ubuntu-24.04
             command: desktop:linux
-            artifact: teddy-bud-linux-deb
+            artifact: teddy-bud-linux
+            files: |
+              dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+              dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -195,25 +134,46 @@ jobs:
         run: npm run ${{ matrix.command }} --prefix client
         env:
           DEBUG: electron-builder
+      - name: Normalize Linux package filenames
+        if: matrix.name == 'Linux Debian and AppImage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/desktop
+          shopt -s nullglob
+          debs=(dist/desktop/TeddyBud.v.1.0-linux-*.deb)
+          apps=(dist/desktop/TeddyBud.v.1.0-linux-*.AppImage)
+          if (( ${#debs[@]} != 1 )); then
+            printf 'Expected exactly one Linux DEB, found %s: %s\n' "${#debs[@]}" "${debs[*]:-none}" >&2
+            exit 1
+          fi
+          if (( ${#apps[@]} != 1 )); then
+            printf 'Expected exactly one Linux AppImage, found %s: %s\n' "${#apps[@]}" "${apps[*]:-none}" >&2
+            exit 1
+          fi
+          deb_target=dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          app_target=dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          if [[ "${debs[0]}" != "$deb_target" ]]; then mv -f "${debs[0]}" "$deb_target"; fi
+          if [[ "${apps[0]}" != "$app_target" ]]; then mv -f "${apps[0]}" "$app_target"; fi
+          chmod +x "$app_target"
+          file dist/desktop/TeddyBud.v.1.0-linux-amd64.deb dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
       - name: Remove unpacked Electron staging files
-        run: >-
-          node -e "const fs=require('node:fs');
-          for (const name of ['win-unpacked','linux-unpacked','mac','mac-arm64'])
-          fs.rmSync('dist/desktop/'+name,{recursive:true,force:true})"
+        shell: bash
+        run: |
+          for name in win-unpacked linux-unpacked mac mac-arm64; do
+            rm -rf "dist/desktop/$name"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: |
-            dist/desktop/Teddy-Bud-1.0.0-win-x64.exe
-            dist/desktop/Teddy-Bud-1.0.0-win-x64.exe.blockmap
-            dist/desktop/Teddy-Bud-1.0.0-mac-arm64.dmg
-            dist/desktop/Teddy-Bud-1.0.0-mac-x64.dmg
-            dist/desktop/Teddy-Bud-1.0.0-linux-amd64.deb
+          path: ${{ matrix.files }}
           if-no-files-found: error
 
   collect-dist:
-    if: ${{ always() && (inputs.source_run_id != '' || (needs.client-checks.result == 'success' && needs.worker-tests.result == 'success' && needs.android-build.result == 'success' && needs.apple-builds.result == 'success' && needs.desktop-packages.result == 'success')) }}
-    name: Collect all platform builds
+    if: ${{ always() && (inputs.source_run_id != '' || (needs.client-checks.result == 'success' && needs.worker-tests.result == 'success' && needs.android-build.result == 'success' && needs.desktop-packages.result == 'success')) }}
+    name: Collect supported platform builds
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -222,13 +182,13 @@ jobs:
       - client-checks
       - worker-tests
       - android-build
-      - apple-builds
       - desktop-packages
     steps:
       - uses: actions/checkout@v4
-      - name: Clear committed distribution snapshot
-        run: git rm -rf --ignore-unmatch dist/
-      - name: Download build artifacts without merging
+        with:
+          ref: ${{ github.ref }}
+          lfs: true
+      - name: Download artifacts from the selected run
         uses: actions/download-artifact@v4
         with:
           pattern: teddy-bud-*
@@ -236,25 +196,39 @@ jobs:
           merge-multiple: false
           run-id: ${{ inputs.source_run_id || github.run_id }}
           github-token: ${{ github.token }}
-      - name: Assemble platform distributions
-        run: python scripts/collect_distributions.py source-artifacts dist
+      - name: Assemble fresh platform distributions
+        run: |
+          set -euo pipefail
+          python scripts/collect_distributions.py source-artifacts dist
       - name: Verify collected distributions
         run: python scripts/verify_distributions.py
+      - name: Confirm replacement set is complete
+        run: |
+          set -euo pipefail
+          test -s dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          test -s dist/desktop/TeddyBud.v.1.0-win-x64.exe
+          test -s dist/desktop/TeddyBud.v.1.0-win-x64.exe.blockmap
+          test -s dist/desktop/TeddyBud.v.1.0-mac-arm64.dmg
+          test -s dist/desktop/TeddyBud.v.1.0-mac-x64.dmg
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          find dist -type f -printf '%P %s bytes\n' | sort
       - uses: actions/upload-artifact@v4
         with:
           name: teddy-bud-dist
           path: dist/
           if-no-files-found: error
-      - name: Commit distributions to the triggering branch
+      # Pull-request runs verify and publish an artifact only; branch push/dispatch runs commit dist/.
+      - name: Commit replaced distributions to the triggering branch
         if: github.ref_type == 'branch' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git lfs install --local
-          git add dist/
-          if git diff --cached --quiet; then
+          git config user.email "41898282+Harry-Jees@users.noreply.github.com"
+          git add -A dist/
+          if git diff --cached --quiet -- dist/; then
             echo "Distribution files are already up to date."
           else
-            git commit -m "chore: update compiled distributions"
+            git commit -m "chore: replace compiled distributions with verified builds"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi

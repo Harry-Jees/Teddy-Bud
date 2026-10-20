@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble only freshly built files from isolated GitHub Actions artifacts."""
-
+"""Collect supported Teddy Bud V 1.0 distributions from isolated CI artifacts."""
 from __future__ import annotations
 
 import shutil
@@ -8,119 +7,55 @@ import sys
 from pathlib import Path
 
 
-def find_file(artifact: Path, filename: str) -> Path | None:
-    matches = sorted(path for path in artifact.rglob(filename) if path.is_file())
+def find_file(root: Path, filename: str) -> Path | None:
+    matches = sorted(p for p in root.rglob(filename) if p.is_file()) if root.is_dir() else []
     return matches[0] if matches else None
 
 
-def copy_required(artifacts: Path, artifact_name: str, filename: str, target: Path) -> None:
-    artifact = artifacts / artifact_name
-    source = find_file(artifact, filename) if artifact.is_dir() else None
+def copy_file(artifacts: Path, artifact_name: str, filename: str, target: Path, required: bool = True) -> None:
+    source = find_file(artifacts / artifact_name, filename)
     if source is None:
-        raise FileNotFoundError(f"{filename} is missing from artifact {artifact_name}")
+        if required:
+            raise FileNotFoundError(f"{filename} missing from artifact {artifact_name}")
+        print(f"Optional package not present: {artifact_name}/{filename}")
+        return
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
-    print(f"Collected {artifact_name}/{filename} -> {target}")
-
-
-def copy_optional(artifacts: Path, artifact_name: str, filename: str, target: Path) -> None:
-    artifact = artifacts / artifact_name
-    source = find_file(artifact, filename) if artifact.is_dir() else None
-    if source is not None:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-        print(f"Collected optional {artifact_name}/{filename} -> {target}")
-
-
-def collect_web(artifacts: Path, destination: Path) -> None:
-    artifact = artifacts / "teddy-bud-web"
-    if not artifact.is_dir():
-        raise FileNotFoundError("Web build artifact teddy-bud-web is missing")
-
-    candidates = sorted(artifact.rglob("index.html"))
-    index = next(
-        (
-            candidate
-            for candidate in candidates
-            if (candidate.parent / "manifest.webmanifest").is_file()
-            and (candidate.parent / "assets").is_dir()
-        ),
-        None,
-    )
-    if index is None:
-        raise FileNotFoundError("Web artifact has no index.html, manifest, and assets directory")
-
-    destination.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(index.parent, destination, dirs_exist_ok=True)
-    print(f"Collected web app from {index.parent} -> {destination}")
+    # Artifact extraction may not preserve Unix mode bits.
+    if target.name.endswith(".AppImage"):
+        target.chmod(target.stat().st_mode | 0o111)
+    print(f"Collected {source} -> {target}")
 
 
 def main() -> int:
     if len(sys.argv) != 3:
         print("Usage: collect_distributions.py ARTIFACTS_DIR DIST_DIR", file=sys.stderr)
         return 2
-
-    artifacts = Path(sys.argv[1]).resolve()
-    dist = Path(sys.argv[2]).resolve()
+    artifacts, dist = Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve()
     if not artifacts.is_dir():
         print(f"Artifact directory does not exist: {artifacts}", file=sys.stderr)
         return 2
 
+    # Replace the managed package folders, not merely overwrite matching names.
+    # This prevents stale versions and obsolete filenames from surviving a build.
+    for managed in ("android", "desktop", "ios", "web", "macos"):
+        path = dist / managed
+        if path.exists():
+            shutil.rmtree(path)
+    (dist / "android").mkdir(parents=True, exist_ok=True)
+    (dist / "desktop").mkdir(parents=True, exist_ok=True)
+
     try:
-        collect_web(artifacts, dist / "web")
-        copy_required(
-            artifacts,
-            "teddy-bud-android-debug",
-            "TeddyBud-android-debug.apk",
-            dist / "android" / "TeddyBud-android-debug.apk",
-        )
-        copy_required(
-            artifacts,
-            "teddy-bud-ios",
-            "TeddyBud-ios.zip",
-            dist / "ios" / "TeddyBud-ios.zip",
-        )
-        copy_required(
-            artifacts,
-            "teddy-bud-macos",
-            "TeddyBud-macos.zip",
-            dist / "macos" / "TeddyBud-macos.zip",
-        )
-
-        windows_files = (
-            "Teddy-Bud-1.0.0-win-x64.exe",
-            "Teddy-Bud-1.0.0-win-x64.exe.blockmap",
-        )
-        for filename in windows_files:
-            copy_required(
-                artifacts,
-                "teddy-bud-windows",
-                filename,
-                dist / "desktop" / filename,
-            )
-
-        copy_required(
-            artifacts,
-            "teddy-bud-macos-desktop",
-            "Teddy-Bud-1.0.0-mac-arm64.dmg",
-            dist / "desktop" / "Teddy-Bud-1.0.0-mac-arm64.dmg",
-        )
-        copy_optional(
-            artifacts,
-            "teddy-bud-macos-desktop",
-            "Teddy-Bud-1.0.0-mac-x64.dmg",
-            dist / "desktop" / "Teddy-Bud-1.0.0-mac-x64.dmg",
-        )
-        copy_required(
-            artifacts,
-            "teddy-bud-linux-deb",
-            "Teddy-Bud-1.0.0-linux-amd64.deb",
-            dist / "desktop" / "Teddy-Bud-1.0.0-linux-amd64.deb",
-        )
-    except FileNotFoundError as error:
-        print(f"Collection failed: {error}", file=sys.stderr)
+        copy_file(artifacts, "teddy-bud-android", "TeddyBud.v.1.0-Android-arm64.apk", dist / "android" / "TeddyBud.v.1.0-Android-arm64.apk")
+        for name in ("TeddyBud.v.1.0-win-x64.exe", "TeddyBud.v.1.0-win-x64.exe.blockmap"):
+            copy_file(artifacts, "teddy-bud-windows", name, dist / "desktop" / name)
+        copy_file(artifacts, "teddy-bud-macos-arm64", "TeddyBud.v.1.0-mac-arm64.dmg", dist / "desktop" / "TeddyBud.v.1.0-mac-arm64.dmg")
+        copy_file(artifacts, "teddy-bud-macos-x64", "TeddyBud.v.1.0-mac-x64.dmg", dist / "desktop" / "TeddyBud.v.1.0-mac-x64.dmg")
+        copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-amd64.deb", dist / "desktop" / "TeddyBud.v.1.0-linux-amd64.deb")
+        copy_file(artifacts, "teddy-bud-linux", "TeddyBud.v.1.0-linux-amd64.AppImage", dist / "desktop" / "TeddyBud.v.1.0-linux-amd64.AppImage")
+    except FileNotFoundError as exc:
+        print(f"Collection failed: {exc}", file=sys.stderr)
         return 1
-
     return 0
 
 
