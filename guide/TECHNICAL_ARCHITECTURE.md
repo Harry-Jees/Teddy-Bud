@@ -2,8 +2,7 @@
 
 ## 1. System architecture
 
-The client is a React Native application with React Native Web and an Electron
-desktop wrapper. It uses the Cloudflare Worker gateway for account operations
+The client is a React Native application with an Electron desktop wrapper. Vite/React Native Web supports a development-only browser preview and packages the UI inside desktop apps; no standalone web product is distributed. It uses the Cloudflare Worker gateway for account operations
 and authenticated AI requests. Supabase Auth manages email/password credentials;
 Supabase Postgres stores account profiles and private recovery verification
 records. Chats, memories, and preferences are persisted locally.
@@ -14,15 +13,13 @@ records. Chats, memories, and preferences are persisted locally.
   database key is stored in Keychain/Keystore.
 - Electron: each account has a random AES-256-GCM key protected by Electron
   `safeStorage`; only encrypted record values are stored in IndexedDB.
-- Web: each account has a separate non-exportable Web Crypto key in IndexedDB;
-  records use AES-256-GCM.
+- Development browser preview only: each account has a separate non-exportable Web Crypto key in IndexedDB; records use AES-256-GCM. This is not a supported public deployment target.
 - Backups: encrypted `.teddybud` files use a separate passphrase-derived key.
 
 The authenticated Supabase user ID is the local account scope and key scope.
 Existing records are migrated to per-account encryption as they are opened;
 native records move from the former shared SQLCipher database on a per-account
-basis. Web encryption protects local files at rest but does not defend against
-malicious script executing in the same origin while the app is unlocked.
+basis. Browser-preview encryption does not defend against malicious script executing in the same origin while the preview is unlocked.
 
 ## 3. Gateway API contract
 
