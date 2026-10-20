@@ -22,9 +22,9 @@ The verifier rejects Git LFS pointer text, implausibly small files, invalid pack
 | `desktop/TeddyBud.v.1.0-linux-amd64.deb` | Debian/Ubuntu x64 | Debian archive header |
 | `desktop/TeddyBud.v.1.0-linux-amd64.AppImage` | Linux x64 | ELF header and executable bit |
 
-Windows intentionally has one installer choice. macOS offers a DMG installer and a ZIP archive for Apple Silicon; Linux offers DEB and AppImage. Intel macOS, iOS Simulator, and native iPhone/iPad packages are not advertised as available downloads.
+Windows has one installer. macOS distribution is DMG only; Linux offers DEB and AppImage. There is no standalone web distribution, no iOS Simulator download, and no native iPhone/iPad package.
 
-## iPhone/iPad status
+## Web and iPhone/iPad status\n\nThere is no standalone Teddy Bud web app or web download. The Vite/React Native Web bundle is an internal renderer used by Electron desktop packages; the portfolio website is a separate presentation site.\n\n## iPhone/iPad status
 
 A normal installable iOS release requires a device-targeted build signed with an Apple Developer Team and an appropriate provisioning profile (or a supported distribution channel such as TestFlight/App Store). The Simulator archive is not an installable iPhone app. No signed IPA is published until the required Apple signing credentials and provisioning setup are configured.
 
