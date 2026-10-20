@@ -78,7 +78,7 @@ def main() -> int:
     verify_apk()
     verify_windows()
     verify_dmg("TeddyBud.v.1.0-mac-arm64.dmg", required=True)
-    verify_dmg("TeddyBud.v.1.0-mac-x64.dmg", required=False)
+    verify_dmg("TeddyBud.v.1.0-mac-x64.dmg", required=True)
     verify_deb()
     verify_appimage()
     require(not (DIST / "ios").exists(), "Unexpected iOS distribution directory")
