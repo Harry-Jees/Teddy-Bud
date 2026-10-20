@@ -98,8 +98,13 @@ android {
     }
     buildTypes {
         release {
+            // Prefer a stable release keystore when configured. Without one, use the
+            // CI debug key so the release variant remains installable for early distribution.
+            // A changing debug key can require users to uninstall before future updates.
             if (releaseKeystore) {
                 signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
             }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
