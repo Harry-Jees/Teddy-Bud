@@ -3,10 +3,14 @@
 ## 1. Product Overview
 Teddy Bud is an emotional companion chat application designed to provide a calm, personal space for natural conversation. It prioritizes warmth, trust, privacy, and technical reliability over generic AI features. It is built as a cross-platform application using React Native.
 
-## 2. Target Platforms
-- **Mobile**: Android (`.apk` / `.aab`)
-- **Desktop**: Windows (`.exe` / `.msix` via `react-native-windows`)
-- **Framework**: React Native
+## 2. Current Platform Scope
+- **Web**: browser app built with Vite and React Native Web.
+- **Android**: ARM64 APK development build.
+- **Desktop**: Windows x64 installer, Apple Silicon macOS package, and x64 Debian/Ubuntu Linux packages through Electron.
+- **Not currently available**: an installable iOS/iPhone/iPad app.
+- **Framework**: React Native, React Native Web, and Electron desktop packaging.
+
+Platform support in this section describes the current repository and collected artifacts, not a promise of store approval or signed production distribution.
 
 ## 3. Core Features
 - **Companion Chat**: Primary surface for conversational AI with support for text, multiline composition, streaming responses, and message history. Includes bounded retries for failed sends.
