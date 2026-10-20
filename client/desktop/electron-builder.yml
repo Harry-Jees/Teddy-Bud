@@ -33,9 +33,6 @@ mac:
     - target: dmg
       arch:
         - arm64
-    - target: zip
-      arch:
-        - arm64
 linux:
   icon: icons/teddy-bud.png
   category: Network;InstantMessaging;
