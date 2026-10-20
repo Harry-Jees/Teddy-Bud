@@ -12,7 +12,7 @@
     "desktop:prepare": "node desktop/prepare-package.cjs",
     "desktop:build": "npm run build:web -- --base=./ && npm run desktop:prepare && electron-builder --projectDir .desktop-package --config electron-builder.yml --publish never",
     "desktop:windows": "npm run desktop:build -- --win nsis",
-    "desktop:macos": "npm run desktop:build -- --mac dmg zip",
+    "desktop:macos": "npm run desktop:build -- --mac dmg",
     "desktop:linux": "npm run desktop:build -- --linux deb AppImage",
     "lint": "eslint .",
     "start": "react-native start",
