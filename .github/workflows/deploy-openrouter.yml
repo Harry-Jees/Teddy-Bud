@@ -1,0 +1,135 @@
+name: Deploy OpenRouter Worker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: teddy-bud-openrouter-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Verify, deploy, and smoke-test Worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    defaults:
+      run:
+        working-directory: gateway-worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: teddy-bud-browser-gateway
+      WORKER_URL: https://teddy-bud-browser-gateway.harryjees.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gateway-worker/package-lock.json
+      - name: Validate deployment credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret."; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Missing CLOUDFLARE_ACCOUNT_ID repository secret."; exit 1; }
+      - run: npm ci
+      - name: Run Worker regression tests
+        run: npm test
+      - name: Check remote secret bindings without reading values
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler secret list --name "$WORKER_NAME" > "$RUNNER_TEMP/worker-secrets.txt"
+          for secret_name in OPENROUTER_API_KEY JWT_SIGNING_SECRET RECOVERY_KEY_SECRET SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+            if ! grep -Fq "$secret_name" "$RUNNER_TEMP/worker-secrets.txt"; then
+              echo "::error::Required Cloudflare Worker secret binding is missing: $secret_name"
+              exit 1
+            fi
+          done
+          rm -f "$RUNNER_TEMP/worker-secrets.txt"
+      - name: Capture the active version for rollback
+        id: previous
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deployments list --json --name "$WORKER_NAME" > "$RUNNER_TEMP/deployments-before.json"
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import fs from 'node:fs';
+          const data = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/deployments-before.json', 'utf8'));
+          const deployments = Array.isArray(data) ? data : (data.deployments ?? data.result ?? []);
+          const current = deployments[0];
+          const active = current?.versions?.find(version => Number(version.percentage) === 100) ?? current?.versions?.[0];
+          const versionId = active?.version_id ?? active?.versionId;
+          if (!versionId || typeof versionId !== 'string') {
+            throw new Error('Could not identify the currently active Worker version; refusing to deploy without rollback protection.');
+          }
+          process.stdout.write('version_id=' + versionId + '\n');
+          NODE
+      - name: Deploy OpenRouter migration
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "attempted=true" >> "$GITHUB_OUTPUT"
+          npx wrangler deploy --name "$WORKER_NAME" --message "OpenRouter migration via GitHub Actions"
+      - name: Verify production health and auth guard
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 10); do
+            if curl --silent --show-error --fail "$WORKER_URL/health" -o "$RUNNER_TEMP/health.json"; then
+              if node -e "const h=require(process.argv[1]); process.exit(h.status==='ready' && h.provider_configured===true ? 0 : 1)" "$RUNNER_TEMP/health.json"; then
+                ready=true
+                break
+              fi
+            fi
+            sleep 6
+          done
+          if [ "$ready" != true ]; then
+            echo "::error::Worker health did not become ready with the OpenRouter provider configured."
+            cat "$RUNNER_TEMP/health.json" 2>/dev/null || true
+            exit 1
+          fi
+          status="$(curl --silent --show-error -o "$RUNNER_TEMP/models-unauthorized.json" -w '%{http_code}' "$WORKER_URL/v1/models")"
+          test "$status" = "401" || {
+            echo "::error::Unauthenticated /v1/models expected HTTP 401, got $status."
+            exit 1
+          }
+          echo "Worker health is ready and model discovery remains authenticated."
+      - name: Roll back automatically if deployment or smoke tests fail
+        if: failure() && steps.deploy.outputs.attempted == 'true' && steps.previous.outputs.version_id != ''
+        shell: bash
+        env:
+          PREVIOUS_VERSION_ID: ${{ steps.previous.outputs.version_id }}
+        run: |
+          set -euo pipefail
+          npx wrangler rollback "$PREVIOUS_VERSION_ID" --name "$WORKER_NAME" --message "Automatic rollback after failed OpenRouter deployment verification"
+          for attempt in $(seq 1 10); do
+            if curl --silent --show-error --fail "$WORKER_URL/health" -o "$RUNNER_TEMP/rollback-health.json" &&
+              node -e "const h=require(process.argv[1]); process.exit(h.status==='ready' ? 0 : 1)" "$RUNNER_TEMP/rollback-health.json"; then
+              echo "Rollback health check passed."
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::Rollback was attempted, but health verification still failed. Inspect Cloudflare Worker deployments immediately."
+          exit 1
+      - name: Publish deployment summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## OpenRouter Worker deployment"
+            echo "- Worker: $WORKER_NAME"
+            echo "- Health: ready"
+            echo "- Model catalog: authentication guard returned HTTP 401 without a session"
+            echo "- Regression tests: passed"
+            echo "- Production authenticated chat/vision smoke tests still need validation from the client."
+          } >> "$GITHUB_STEP_SUMMARY"
