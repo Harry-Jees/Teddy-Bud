@@ -17,10 +17,11 @@ const REQUEST_TIMEOUT_MS = 120_000;
 const MAX_CONTEXT_CHARS = 80_000;
 const MAX_SHARED_MEMORY_CHARS = 4_000;
 const MAX_CROSS_CHAT_CONTEXT_CHARS = 1_800;
+// Route ordinary text (including coding) to the lower-cost text model.
 const PREFERRED_CHAT_MODELS = [
-  '@cf/qwen/qwen3.8-27b',
   '@cf/zai-org/glm-4.7-flash',
 ];
+// Qwen is the vision route; GLM-4.7 Flash is text-only.
 const PREFERRED_VISION_MODEL = '@cf/qwen/qwen3.8-27b';
 const CONVERSATION_GUIDANCE = `
 IDENTITY AND PURPOSE
@@ -400,14 +401,15 @@ export class GatewayService {
       ? await this.getModelCatalog(accessToken)
       : [];
     const chatModels = preferredChatModels(catalog);
-    const selected = options.modelId
-      ? catalog.find(model => model.id === options.modelId)
-      : requiredCapability === 'vision'
-        ? catalog.find(model => model.id.toLowerCase() === PREFERRED_VISION_MODEL && model.capabilities.includes('vision'))
-          ?? catalog.find(model => model.id === '@cf/zai-org/glm-4.7-flash' && model.capabilities.includes('vision'))
+    // Image requests always use the vision-capable Qwen model, even if a text model
+    // was selected elsewhere. GLM-4.7 Flash must never receive image content.
+    const selected = requiredCapability === 'vision'
+      ? catalog.find(model => model.id.toLowerCase() === PREFERRED_VISION_MODEL && model.capabilities.includes('vision'))
+      : options.modelId
+        ? catalog.find(model => model.id === options.modelId)
         : requiredCapability === 'web_search'
           ? chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['web_search'] as GatewayCapability[] }
-        : chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['coding'] as GatewayCapability[] };
+          : chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['coding'] as GatewayCapability[] };
     if (options.modelId && !selected) throw new Error(`The selected model is not available: ${options.modelId}.`);
     if (requiredCapability && !selected) throw new Error(`No available model advertises ${requiredCapability === 'web_search' ? 'web browsing' : requiredCapability} support.`);
     if (!selected) throw new Error('No chat-capable AI model is currently available from the conversation service.');
