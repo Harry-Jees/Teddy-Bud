@@ -274,7 +274,6 @@ export class GatewayService {
           }
 
           let streamedContent = '';
-          let sawEvent = false;
           for (const line of raw.split(/\\r?\\n/)) {
             if (!line.startsWith('data:')) continue;
             const data = line.slice(5).trim();
@@ -284,7 +283,6 @@ export class GatewayService {
             if (event?.error) throw new Error(typeof event.error === 'string' ? event.error : event.error.message ?? 'The conversation service returned an error.');
             const delta = event?.choices?.[0]?.delta?.content;
             if (typeof delta === 'string' && delta) {
-              sawEvent = true;
               streamedContent += delta;
               onTextChunk(delta);
             }
