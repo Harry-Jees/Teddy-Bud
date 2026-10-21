@@ -517,8 +517,28 @@ async function models(request, env) {
   if (!await rateLimit(request, env, 'models-user', 120, claims.sub)) {
     return json(429, { error: { message: 'Too many model-catalog requests. Try again shortly.' } });
   }
+
   const response = await upstreamModels(env);
-  return new Response(response.body, { status: response.status, headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' } });
+  if (!response.ok) {
+    return json(response.status, { error: { message: 'The AI model catalog is temporarily unavailable.' } });
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    return json(502, { error: { message: 'The AI provider returned an invalid model catalog.' } });
+  }
+  if (!payload || !Array.isArray(payload.data)) {
+    return json(502, { error: { message: 'The AI provider returned an invalid model catalog.' } });
+  }
+
+  // Never advertise models that the chat endpoint will reject or that are outside
+  // the app's approved free-model policy.
+  return json(200, {
+    ...payload,
+    data: payload.data.filter(model => model && OPENROUTER_FREE_MODELS.has(model.id)),
+  });
 }
 
 function textFromContent(content) {
