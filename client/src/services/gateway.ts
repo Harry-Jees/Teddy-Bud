@@ -274,7 +274,7 @@ export class GatewayService {
           }
 
           let streamedContent = '';
-          for (const line of raw.split(/\\r?\\n/)) {
+          for (const line of raw.split(/\r?\n/)) {
             if (!line.startsWith('data:')) continue;
             const data = line.slice(5).trim();
             if (!data || data === '[DONE]') continue;
