@@ -5,6 +5,7 @@ const OPENROUTER_CHAT_TIMEOUT_MS = 120_000;
 const OPENROUTER_FREE_MODELS = new Set([
   'openai/gpt-oss-20b:free',
   'qwen/qwen3.8-27b:free',
+  'openrouter/free',
 ]);
 const FREE_MODEL_FALLBACKS = {
   'openai/gpt-oss-20b:free': ['qwen/qwen3.8-27b:free', 'openrouter/free'],
@@ -542,10 +543,19 @@ async function models(request, env) {
 
   // Never advertise models that the chat endpoint will reject or that are outside
   // the app's approved free-model policy.
-  return json(200, {
-    ...payload,
-    data: payload.data.filter(model => model && OPENROUTER_FREE_MODELS.has(model.id)),
-  });
+  const approvedModels = payload.data.filter(model => model && OPENROUTER_FREE_MODELS.has(model.id));
+  // Keep a provider-managed free fallback available even if a specific free
+  // endpoint disappears from OpenRouter's catalog. The router filters for
+  // request capabilities, including image input, and only selects free models.
+  if (!approvedModels.some(model => model.id === 'openrouter/free')) {
+    approvedModels.push({
+      id: 'openrouter/free',
+      name: 'Free model router',
+      capabilities: ['coding', 'vision', 'web_search'],
+      architecture: { input_modalities: ['text', 'image'] },
+    });
+  }
+  return json(200, { ...payload, data: approvedModels });
 }
 
 function textFromContent(content) {
