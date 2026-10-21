@@ -224,7 +224,7 @@ jobs:
           name: teddy-bud-dist
           path: dist/
           if-no-files-found: error
-      # Pull-request runs verify and publish an artifact only; branch push/dispatch runs commit dist/.
+      # Same-repository PR, branch-push, and manual runs commit verified distributions.
       - name: Commit replaced distributions to the triggering branch
         if: (github.ref_type == 'branch' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         run: |
@@ -238,5 +238,5 @@ jobs:
           else
             git commit -m "chore: replace compiled distributions with verified builds"
             target_ref="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          git push origin "HEAD:${target_ref}"
+            git push origin "HEAD:${target_ref}"
           fi
