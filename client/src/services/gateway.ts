@@ -330,6 +330,11 @@ export class GatewayService {
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           if (signal?.aborted) throw error;
+          if (retryAttempt < 2) {
+            await sleep(RETRY_DELAY_MS * (retryAttempt + 1));
+            retryOuter = true;
+            break;
+          }
           throw Object.assign(new Error('The conversation service took too long to respond. Check your connection and try again.'), { status: 408, timedOut: true });
         }
         const status = (error as HttpError).status;
