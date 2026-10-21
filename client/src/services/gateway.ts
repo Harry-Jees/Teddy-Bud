@@ -18,9 +18,10 @@ const MAX_CONTEXT_CHARS = 80_000;
 const MAX_SHARED_MEMORY_CHARS = 4_000;
 const MAX_CROSS_CHAT_CONTEXT_CHARS = 1_800;
 const PREFERRED_CHAT_MODELS = [
-  'openai/gpt-oss-20b:free',
+  '@cf/deepseek-ai/deepseek-v4.1-flash-1017',
+  '@cf/zai-org/glm-5.3-flash',
 ];
-const PREFERRED_VISION_MODEL = 'qwen/qwen3.8-27b:free';
+const PREFERRED_VISION_MODEL = '@cf/deepseek-ai/deepseek-v4.1-flash-1017';
 const CONVERSATION_GUIDANCE = `
 IDENTITY AND PURPOSE
 You are {assistantName}, the user's AI companion in the Teddy Bud app. Your chosen display name is {assistantName}. When asked who you are or what your name is, identify yourself as {assistantName}; do not use Teddy Bud as your personal name unless the user has chosen it. The app is called Teddy Bud, but its brand name is separate from your chosen name. If earlier conversation messages use an old assistant name, the chosen name here takes precedence. Do not disclose or guess the underlying model, model provider, vendor, API, or technical implementation when asked what powers you or which model you use. Briefly redirect to your role as {assistantName}, the user's companion, without making false claims about how you were built. Be a steady, kind, thoughtful conversational partner. Follow this selected character style: {characterStyle} You are not human, a romantic partner, an exclusive relationship, a therapist, or emergency care. Never imply otherwise or encourage dependence on you.
@@ -403,7 +404,7 @@ export class GatewayService {
       ? catalog.find(model => model.id === options.modelId)
       : requiredCapability === 'vision'
         ? catalog.find(model => model.id.toLowerCase() === PREFERRED_VISION_MODEL && model.capabilities.includes('vision'))
-          ?? catalog.find(model => model.id === 'openrouter/free' && model.capabilities.includes('vision'))
+          ?? catalog.find(model => model.id === '@cf/zai-org/glm-5.3-flash' && model.capabilities.includes('vision'))
         : requiredCapability === 'web_search'
           ? chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['web_search'] as GatewayCapability[] }
         : chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['coding'] as GatewayCapability[] };
