@@ -259,11 +259,38 @@ export class GatewayService {
         }
         const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
         if (!response.body?.getReader || !contentType.includes('text/event-stream')) {
-          const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
-          const content = payload.choices?.[0]?.message?.content;
-          if (typeof content !== 'string' || !content.trim()) throw new Error(payload.error?.message ?? 'No reply was returned by the conversation service.');
-          onTextChunk(content);
-          return content.trim();
+          // React Native fetch implementations may not expose a readable response stream.
+          // Read the complete body, then support both standard JSON and buffered SSE.
+          const raw = await response.text();
+          let payload: any = null;
+          try { payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
+          const jsonContent = payload?.choices?.[0]?.message?.content;
+          if (typeof jsonContent === 'string' && jsonContent.trim()) {
+            onTextChunk(jsonContent);
+            return jsonContent.trim();
+          }
+          if (payload?.error) {
+            throw new Error(typeof payload.error === 'string' ? payload.error : payload.error.message ?? 'The conversation service returned an error.');
+          }
+
+          let streamedContent = '';
+          let sawEvent = false;
+          for (const line of raw.split(/\\r?\\n/)) {
+            if (!line.startsWith('data:')) continue;
+            const data = line.slice(5).trim();
+            if (!data || data === '[DONE]') continue;
+            let event: any;
+            try { event = JSON.parse(data); } catch { throw new Error('The conversation service returned an unreadable response stream.'); }
+            if (event?.error) throw new Error(typeof event.error === 'string' ? event.error : event.error.message ?? 'The conversation service returned an error.');
+            const delta = event?.choices?.[0]?.delta?.content;
+            if (typeof delta === 'string' && delta) {
+              sawEvent = true;
+              streamedContent += delta;
+              onTextChunk(delta);
+            }
+          }
+          if (streamedContent.trim()) return streamedContent.trim();
+          throw new Error('No reply was returned by the conversation service.');
         }
 
         const reader = response.body.getReader();
@@ -430,7 +457,7 @@ export class GatewayService {
     const body: Record<string, unknown> = {
       model: selected.id,
       messages,
-      stream: Platform.OS === 'web' && typeof options.onTextChunk === 'function',
+      stream: typeof options.onTextChunk === 'function',
       max_tokens: options.task === 'coding' || options.task === 'vision' ? 220 : 4096,
       temperature: 0.65,
       top_p: 0.9,
