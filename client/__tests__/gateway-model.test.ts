@@ -136,4 +136,33 @@ describe('GatewayService', () => {
     expect(chunks.join('')).toBe('Hello there.');
   });
 
+  it('falls back to a non-streaming JSON request on Android when the stream ends without a reply', async () => {
+    const emptyStream = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+      body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+      text: async () => '',
+    };
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(emptyStream)
+      .mockResolvedValueOnce(response({ choices: [{ message: { content: 'Android fallback reply.' } }] }));
+    globalThis.fetch = fetchMock;
+    const chunks: string[] = [];
+    const { Platform } = require('react-native');
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    try {
+      await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
+        'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
+      )).resolves.toBe('Android fallback reply.');
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).stream).toBe(true);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body as string).stream).toBe(false);
+    expect(chunks.join('')).toBe('Android fallback reply.');
+  });
+
 });
