@@ -97,4 +97,43 @@ describe('GatewayService', () => {
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer expired-token' }));
     expect(fetchMock.mock.calls[1][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer refreshed-token' }));
   });
+  it('uses the streaming chat protocol whenever text chunks are requested', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(response({
+      choices: [{ message: { content: 'A streamed reply.' } }],
+    }));
+    globalThis.fetch = fetchMock;
+    const chunks: string[] = [];
+    await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
+      'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
+    )).resolves.toBe('A streamed reply.');
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(request.stream).toBe(true);
+    expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Accept: 'text/event-stream' }));
+    expect(chunks.join('')).toBe('A streamed reply.');
+  });
+
+  it('parses a buffered SSE response when native fetch has no readable body stream', async () => {
+    const bufferedSse = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+      body: null,
+      text: async () => [
+        'data: {"choices":[{"delta":{"content":"Hello"}}]}',
+        '',
+        'data: {"choices":[{"delta":{"content":" there."}}]}',
+        '',
+        'data: [DONE]',
+        '',
+      ].join('\\n'),
+    };
+    const fetchMock = jest.fn().mockResolvedValueOnce(bufferedSse);
+    globalThis.fetch = fetchMock;
+    const chunks: string[] = [];
+    await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
+      'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
+    )).resolves.toBe('Hello there.');
+    expect(chunks.join('')).toBe('Hello there.');
+  });
+
 });
