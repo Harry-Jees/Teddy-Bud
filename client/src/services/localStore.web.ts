@@ -20,7 +20,7 @@ function desktopBridge(): DesktopBridge | undefined {
 
 function cryptoApi(): Crypto {
   if (!globalThis.crypto?.subtle || !globalThis.crypto.getRandomValues) {
-    throw new Error('Secure local data encryption is unavailable in this browser. Update the browser and try again.');
+    throw new Error('Secure local data encryption is unavailable in this app. Update the app and try again.');
   }
   return globalThis.crypto;
 }
@@ -47,7 +47,7 @@ class BrowserLocalStore implements LocalStore {
 
   private openDatabase(): Promise<IDBDatabase> {
     if (typeof indexedDB === 'undefined') {
-      throw new Error('This browser does not support persistent local data storage.');
+      throw new Error('This app does not support persistent local data storage.');
     }
     if (!this.databasePromise) {
       const pending = new Promise<IDBDatabase>((resolve, reject) => {

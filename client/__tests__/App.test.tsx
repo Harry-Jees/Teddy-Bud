@@ -133,6 +133,7 @@ test('chat shows three dots and announces when Teddy Bud is responding', async (
           onRetry={noop}
           retryPending={false}
           isSending
+          isThinking
           chatError={null}
         />,
       );

@@ -177,18 +177,12 @@ export function findRelevantChatHistory(
   message: string,
 ): string[] {
   const queryTerms = searchTerms(message);
-  if (!queryTerms.size) return [];
 
   const candidates = conversations
     .filter(conversation => conversation.id !== activeConversationId)
-    .flatMap(conversation => conversation.messages.flatMap((chatMessage, index) => {
+    .flatMap((conversation, conversationIndex) => conversation.messages.flatMap((chatMessage, index) => {
       if (chatMessage.author !== 'you' || !chatMessage.text.trim()) return [];
       const reply = conversation.messages[index + 1];
-      const exchange = [chatMessage, ...(reply?.author === 'teddy' ? [reply] : [])];
-      const exchangeText = exchange.map(item => item.text.trim()).join(' ');
-      const terms = searchTerms(exchangeText);
-      if (!terms.size) return [];
-
       // Include the previous turn so short follow-up questions can recover facts
       // introduced just before the matching message (for example, a name).
       const contextStart = index >= 2 && conversation.messages[index - 1]?.author === 'teddy'
@@ -198,37 +192,58 @@ export function findRelevantChatHistory(
       const context = conversation.messages.slice(contextStart, contextEnd + 1)
         .map(item => `${item.author === 'you' ? 'You' : 'Teddy'}: ${item.text.trim()}`)
         .join('\n');
-      return [{ text: context, terms }];
+      return [{ text: context, terms: searchTerms(context), conversationId: conversation.id, conversationIndex, conversationUpdatedAt: conversation.updatedAt, messageIndex: index }];
     }));
   if (!candidates.length) return [];
 
-  const documentFrequency = new Map<string, number>();
-  for (const candidate of candidates) {
-    for (const term of queryTerms) {
-      if (candidate.terms.has(term)) {
-        documentFrequency.set(term, (documentFrequency.get(term) ?? 0) + 1);
+  let selected: typeof candidates;
+  if (queryTerms.size) {
+    const documentFrequency = new Map<string, number>();
+    for (const candidate of candidates) {
+      for (const term of queryTerms) {
+        if (candidate.terms.has(term)) {
+          documentFrequency.set(term, (documentFrequency.get(term) ?? 0) + 1);
+        }
       }
     }
+
+    const termWeights = new Map<string, number>();
+    for (const term of queryTerms) {
+      termWeights.set(term, Math.log(1 + (candidates.length + 1) / (1 + (documentFrequency.get(term) ?? 0))));
+    }
+    const totalWeight = [...termWeights.values()].reduce((sum, weight) => sum + weight, 0);
+    selected = candidates
+      .map((candidate, index) => {
+        const score = [...queryTerms]
+          .filter(term => candidate.terms.has(term))
+          .reduce((sum, term) => sum + (termWeights.get(term) ?? 0), 0) / totalWeight;
+        return { ...candidate, score, index };
+      })
+      .filter(candidate => candidate.score >= 0.12)
+      .sort((left, right) => right.score - left.score || left.index - right.index);
+  } else {
+    selected = [];
   }
 
-  const termWeights = new Map<string, number>();
-  for (const term of queryTerms) {
-    termWeights.set(term, Math.log(1 + (candidates.length + 1) / (1 + (documentFrequency.get(term) ?? 0))));
+  if (!selected.length) {
+    // Broad questions like “what did I tell you?” have no useful search terms.
+    // Give the assistant a few recent exchanges from other chats to recall from.
+    const mostRecentByConversation = new Map<string, (typeof candidates)[number]>();
+    for (const candidate of candidates) {
+      const current = mostRecentByConversation.get(candidate.conversationId);
+      if (!current || candidate.messageIndex > current.messageIndex) {
+        mostRecentByConversation.set(candidate.conversationId, candidate);
+      }
+    }
+    selected = [...mostRecentByConversation.values()]
+      .sort((left, right) => right.conversationUpdatedAt.localeCompare(left.conversationUpdatedAt)
+        || right.messageIndex - left.messageIndex
+        || left.conversationIndex - right.conversationIndex);
   }
-  const totalWeight = [...termWeights.values()].reduce((sum, weight) => sum + weight, 0);
-  const relevant = candidates
-    .map((candidate, index) => {
-      const score = [...queryTerms]
-        .filter(term => candidate.terms.has(term))
-        .reduce((sum, term) => sum + (termWeights.get(term) ?? 0), 0) / totalWeight;
-      return { ...candidate, score, index };
-    })
-    .filter(candidate => candidate.score >= 0.25)
-    .sort((left, right) => right.score - left.score || left.index - right.index);
 
   const excerpts: string[] = [];
   let used = 0;
-  for (const item of relevant) {
+  for (const item of selected) {
     if (excerpts.length >= MAX_CROSS_CHAT_EXCERPTS || used >= MAX_CROSS_CHAT_CONTEXT_CHARS) break;
     const available = Math.min(MAX_CROSS_CHAT_EXCERPT_LENGTH, MAX_CROSS_CHAT_CONTEXT_CHARS - used);
     const excerpt = item.text.length > available

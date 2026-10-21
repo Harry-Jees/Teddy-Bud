@@ -49,8 +49,8 @@ builds need a private release keystore. There is no supported iOS build or iPhon
 
 The first launch opens account creation; later launches open sign-in. Accounts
 use email and password through Supabase Auth. At signup, choose a recovery
-passphrase of 20 to 128 characters and confirm it. Choose a unique phrase made
-from at least six randomly selected words. The phrase plus account email can reset
+password of at least 6 characters and a recovery passphrase of 10 to 128
+characters, then confirm both. Choose a unique phrase. The phrase plus account email can reset
 the password, so save it somewhere private. Supabase stores the password
 verifier. The gateway stores a keyed HMAC verifier for the recovery passphrase
 in a private table; the phrase itself is never stored. Email is an account
@@ -75,7 +75,10 @@ recovery passphrase material are not used as local encryption keys. The
 Supabase user ID scopes local records and encryption keys to the signed-in account;
 Supabase Auth manages the email. Portable recovery uses the encrypted
 `.teddybud` backup, protected by its own user-chosen passphrase and random salt.
-A backup requires its passphrase and the account that created it. See
+A backup requires its passphrase and the same signed-in account that created it.
+The same `.teddybud` file can move between Android and the Windows, macOS, and
+Linux Electron releases. Mobile uses the system document picker; desktop uses
+the packaged file dialog/download flow. There is no standalone web release. See
 [`guide/SECURITY_AND_PRIVACY.md`](../guide/SECURITY_AND_PRIVACY.md) for the
 storage model, migration behavior, and security references.
 
@@ -98,33 +101,23 @@ After enabling SQLCipher in the native SQLite build configuration, reinstall nat
 
 ## Conversation model behavior
 
-The client prefers `openai/gpt-oss-20b` for normal chat when it is present in the
-account's returned model catalog. Image requests prefer `meta/muse-glimmer-30b`
-when that model advertises vision support. Availability depends on the configured
-NVIDIA account and its returned catalog; the client does not guarantee either
-model is available or maintain the older fixed list of preferred chat models.
-If the preferred model is unavailable, chat selection falls back to another
-chat-capable model from the catalog. Normal conversation requests ask for up to
+The client prefers the free OpenRouter model `openai/gpt-oss-20b:free` for
+normal chat, titles, and memory suggestions, and `qwen/qwen3.8-27b:free` for
+image requests. These free endpoints are rate-limited and may be unavailable;
+OpenRouter may return an error rather than switch to a paid model. The Worker
+also requests the lowest-latency provider endpoint available for the selected
+model. Web search uses OpenRouter's `openrouter:web_search` server tool and may
+incur a separate per-search charge. Normal conversation requests ask for up to
 4,096 output tokens, while coding and image requests ask for 220. The Worker
 applies a server-side maximum of 2,048 output tokens. The client includes at most
 80,000 characters of recent chat history in a request.
 
 The client prompt asks the assistant to be warm, compassionate, natural, and
 multilingual, and to answer in the language the user uses. Prompt instructions
-cannot guarantee perfect fluency or understanding. NVIDIA's published model
-card for Nemotron 3.5 Lightning names English, Spanish, French, German,
-Italian, and Japanese as supported languages; it does not list Hindi or
-Malayalam. Emotional warmth and empathy are guided by the prompt; NVIDIA's
-model cards do not establish that any candidate is more empathetic than the
-others. NVIDIA Build's Google Gemma 4 31B IT is a promising evaluation
-candidate because its model card lists a 256K context window and support for
-over 140 languages. The page reviewed does not enumerate them, so Hindi and
-Malayalam quality still needs direct testing. However, its free API endpoint is
-governed by NVIDIA's API Trial Terms, which
-limit access to evaluation and prohibit production use. Do not use that trial
-endpoint in a production distribution; production use requires an appropriate
-subscription. The configured NVIDIA account must also be able to access any
-candidate endpoint.
+cannot guarantee perfect fluency or understanding. Model availability, rate
+limits, output quality, and provider data practices vary across OpenRouter's
+upstream providers; review the selected model and provider terms before sending
+sensitive content.
 
 Chat history is organized into separate conversations and saved locally on
 the device without an application-defined chat or message count limit. Device

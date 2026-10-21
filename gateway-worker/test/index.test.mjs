@@ -253,9 +253,9 @@ test('a valid legacy session migrates to password auth without changing chat own
     globalThis.fetch = oldFetch;
   }
 });
-test('authenticated chat requests are forwarded to NVIDIA and return its completion', async () => {
+test('authenticated chat requests are forwarded to OpenRouter and return its completion', async () => {
   const env = makeEnv();
-  env.NVIDIA_KEY_1 = 'test-nvidia-key';
+  env.OPENROUTER_API_KEY = 'test-openrouter-key';
   let upstreamRequest;
   const oldFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
@@ -269,7 +269,7 @@ test('authenticated chat requests are forwarded to NVIDIA and return its complet
     const accessToken = await createSession(env, 'chat-integration-test');
 
     const chatBody = {
-      model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      model: 'openai/gpt-oss-20b:free',
       messages: [
         { role: 'system', content: 'Be empathetic and concise.' },
         { role: 'user', content: 'I feel overwhelmed.' },
@@ -287,8 +287,8 @@ test('authenticated chat requests are forwarded to NVIDIA and return its complet
 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('Access-Control-Allow-Origin'), null);
-    assert.equal(upstreamRequest.url, 'https://integrate.api.nvidia.com/v1/chat/completions');
-    assert.equal(upstreamRequest.init.headers.Authorization, 'Bearer test-nvidia-key');
+    assert.equal(upstreamRequest.url, 'https://openrouter.ai/api/v1/chat/completions');
+    assert.equal(upstreamRequest.init.headers.Authorization, 'Bearer test-openrouter-key');
     assert.ok(upstreamRequest.init.signal instanceof AbortSignal);
     const forwardedBody = JSON.parse(upstreamRequest.init.body);
     assert.equal(forwardedBody.model, chatBody.model);
@@ -304,7 +304,7 @@ test('authenticated chat requests are forwarded to NVIDIA and return its complet
 
 test('the gateway adds crisis response guidance when the latest user message signals immediate risk', async () => {
   const env = makeEnv();
-  env.NVIDIA_KEY_1 = 'test-nvidia-key';
+  env.OPENROUTER_API_KEY = 'test-openrouter-key';
   let forwardedBody;
   const oldFetch = globalThis.fetch;
   globalThis.fetch = async (_url, init) => {
@@ -317,7 +317,7 @@ test('the gateway adds crisis response guidance when the latest user message sig
   try {
     const accessToken = await createSession(env, 'chat-crisis-test');
     const chatBody = {
-      model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+      model: 'openai/gpt-oss-20b:free',
       messages: [
         { role: 'system', content: 'Be empathetic and concise.' },
         { role: 'user', content: 'I am writing an essay about suicide prevention.' },
@@ -365,11 +365,11 @@ test('the gateway adds crisis response guidance when the latest user message sig
   }
 });
 
-test('chat requests reject missing auth and avoid exposing NVIDIA account details', async () => {
+test('chat requests reject missing auth and surface OpenRouter model errors safely', async () => {
   const env = makeEnv();
-  env.NVIDIA_KEY_1 = 'test-nvidia-key';
+  env.OPENROUTER_API_KEY = 'test-openrouter-key';
   const body = {
-    model: 'nvidia/unavailable-model',
+    model: 'openai/unavailable-model:free',
     messages: [{ role: 'user', content: 'Hello.' }],
   };
   const unauthorized = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', body), env));
@@ -380,7 +380,7 @@ test('chat requests reject missing auth and avoid exposing NVIDIA account detail
   globalThis.fetch = async () => new Response(JSON.stringify({
     status: 404,
     title: 'Not Found',
-    detail: "Function 'model-function-id': Not found for this account.",
+    error: { message: 'No endpoints found for this model.' },
   }), { status: 404, headers: { 'Content-Type': 'application/json' } });
 
   try {
@@ -391,8 +391,7 @@ test('chat requests reject missing auth and avoid exposing NVIDIA account detail
       { Authorization: `Bearer ${accessToken}` },
     ), env));
     assert.equal(failed.status, 404);
-    assert.match(failed.body.error.message, /not enabled for this account/i);
-    assert.doesNotMatch(failed.body.error.message, /model-function-id|account\s+'[^']+'/i);
+    assert.equal(failed.body.error.message, 'No endpoints found for this model.');
   } finally {
     globalThis.fetch = oldFetch;
   }
@@ -461,14 +460,14 @@ test('signup attempts are rate-limited and CORS is restricted to app origins', a
 
 test('public health is cheap and never calls the upstream provider', async () => {
   const env = makeEnv();
-  env.NVIDIA_KEY_1 = 'test-nvidia-key';
+  env.OPENROUTER_API_KEY = 'test-openrouter-key';
   const oldFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('health must not call upstream'); };
   try {
     const ready = await jsonResponse(await worker.fetch(request('/health'), env));
     assert.equal(ready.status, 200);
     assert.deepEqual(ready.body, { status: 'ready', provider_configured: true });
-    delete env.NVIDIA_KEY_1;
+    delete env.OPENROUTER_API_KEY;
     const degraded = await jsonResponse(await worker.fetch(request('/health'), env));
     assert.equal(degraded.status, 503);
     assert.deepEqual(degraded.body, { status: 'degraded', provider_configured: false });
@@ -479,7 +478,7 @@ test('public health is cheap and never calls the upstream provider', async () =>
 
 test('chat proxy caps output tokens and rejects oversized text context', async () => {
   const env = makeEnv();
-  env.NVIDIA_KEY_1 = 'test-nvidia-key';
+  env.OPENROUTER_API_KEY = 'test-openrouter-key';
   const accessToken = await createSession(env, 'budget-test-user');
   const oldFetch = globalThis.fetch;
   let forwardedBody;
@@ -492,7 +491,7 @@ test('chat proxy caps output tokens and rejects oversized text context', async (
   };
   try {
     const response = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
-      model: 'nvidia/test-model',
+      model: 'openai/gpt-oss-20b:free',
       messages: [{ role: 'user', content: 'hello' }],
       max_tokens: 50_000,
     }, { Authorization: 'Bearer ' + accessToken }), env));
@@ -500,7 +499,7 @@ test('chat proxy caps output tokens and rejects oversized text context', async (
     assert.equal(forwardedBody.max_tokens, 2048);
 
     const oversized = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
-      model: 'nvidia/test-model',
+      model: 'openai/gpt-oss-20b:free',
       messages: [{ role: 'user', content: 'x'.repeat(80_001) }],
       max_tokens: 1024,
     }, { Authorization: 'Bearer ' + accessToken }), env));
@@ -512,7 +511,7 @@ test('chat proxy caps output tokens and rejects oversized text context', async (
 
 test('chat requests are rate-limited per authenticated account', async () => {
   const env = makeEnv();
-  env.NVIDIA_KEY_1 = 'test-nvidia-key';
+  env.OPENROUTER_API_KEY = 'test-openrouter-key';
   const accessToken = await createSession(env, 'rate-limit-test-user');
   const oldFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
@@ -520,7 +519,7 @@ test('chat requests are rate-limited per authenticated account', async () => {
     headers: { 'Content-Type': 'application/json' },
   });
   try {
-    const body = { model: 'nvidia/test-model', messages: [{ role: 'user', content: 'hello' }], max_tokens: 10 };
+    const body = { model: 'openai/gpt-oss-20b:free', messages: [{ role: 'user', content: 'hello' }], max_tokens: 10 };
     for (let attempt = 0; attempt < 60; attempt += 1) {
       const response = await worker.fetch(request('/v1/chat/completions', 'POST', body, {
         Authorization: 'Bearer ' + accessToken,

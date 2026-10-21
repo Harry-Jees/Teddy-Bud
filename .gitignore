@@ -1,5 +1,6 @@
 dist/desktop/win-unpacked/
 .playwright-mcp/
+.tools/
 
 # Local operating-system files and generated tool caches
 .DS_Store

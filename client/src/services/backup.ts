@@ -4,6 +4,7 @@ import type { LocalAppData } from './localData';
 const BACKUP_FORMAT = 'teddybud-backup';
 const BACKUP_VERSION = 1;
 const PBKDF2_ITERATIONS = 310_000;
+const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 export const MAX_BACKUP_BYTES = 25 * 1024 * 1024;
 
 type BackupEnvelope = {
@@ -24,19 +25,38 @@ function cryptoApi(): Crypto {
 }
 
 function encodeBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  let encoded = '';
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const hasSecond = index + 1 < bytes.length;
+    const hasThird = index + 2 < bytes.length;
+    const second = hasSecond ? bytes[index + 1] : 0;
+    const third = hasThird ? bytes[index + 2] : 0;
+    encoded += BASE64[Math.floor(first / 4)]
+      + BASE64[(first % 4) * 16 + Math.floor(second / 16)]
+      + (hasSecond ? BASE64[(second % 16) * 4 + Math.floor(third / 64)] : '=')
+      + (hasThird ? BASE64[third % 64] : '=');
   }
-  return btoa(binary);
+  return encoded;
 }
 
 function decodeBase64(value: string): Uint8Array {
   if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
     throw new Error('Backup encoding is invalid.');
   }
-  const binary = atob(value);
-  return Uint8Array.from(binary, character => character.charCodeAt(0));
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  const decoded = new Uint8Array((value.length / 4) * 3 - padding);
+  let outputIndex = 0;
+  for (let index = 0; index < value.length; index += 4) {
+    const first = BASE64.indexOf(value[index]);
+    const second = BASE64.indexOf(value[index + 1]);
+    const third = value[index + 2] === '=' ? 0 : BASE64.indexOf(value[index + 2]);
+    const fourth = value[index + 3] === '=' ? 0 : BASE64.indexOf(value[index + 3]);
+    decoded[outputIndex++] = first * 4 + Math.floor(second / 16);
+    if (value[index + 2] !== '=') decoded[outputIndex++] = (second % 16) * 16 + Math.floor(third / 4);
+    if (value[index + 3] !== '=') decoded[outputIndex++] = (third % 4) * 64 + fourth;
+  }
+  return decoded;
 }
 
 function validateBackupData(value: unknown): LocalAppData {

@@ -42,7 +42,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
       const error = Object.assign(
         new Error(
           response.status === 404 && path.startsWith('/auth/')
-            ? 'The browser sign-in endpoint is unavailable. Please contact the app administrator.'
+            ? 'The sign-in endpoint is unavailable. Please contact the app administrator.'
             : typeof message === 'string'
               ? message
               : `Request failed (${response.status}).`,
@@ -53,7 +53,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
     }
     return payload as T;
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('The sign-in request timed out. Check your internet connection and try again.');
     }
     throw error;

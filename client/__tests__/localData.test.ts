@@ -188,4 +188,32 @@ describe('cross-chat history retrieval', () => {
     expect(excerpts.every(excerpt => excerpt.length <= 700)).toBe(true);
     expect(excerpts.join('').length).toBeLessThanOrEqual(1_800);
   });
+
+  test('matches a follow-up against facts in the previous exchange it includes', () => {
+    const excerpts = findRelevantChatHistory([
+      conversation('career', [
+        { id: 1, text: 'I got a job interview for a role I really want.', author: 'you', time: '9:00 AM' },
+        { id: 2, text: 'That sounds like an exciting opportunity.', author: 'teddy', time: '9:01 AM' },
+        { id: 3, text: 'I feel nervous about it.', author: 'you', time: '9:02 AM' },
+        { id: 4, text: 'It makes sense to feel nervous before an interview.', author: 'teddy', time: '9:03 AM' },
+      ]),
+    ], null, 'How did I feel about the interview?');
+
+    expect(excerpts[0]).toContain('I got a job interview for a role I really want.');
+    expect(excerpts[0]).toContain('I feel nervous about it.');
+  });
+
+  test('uses recent chats as context for broad recall questions', () => {
+    const excerpts = findRelevantChatHistory([
+      conversation('newer', [
+        { id: 1, text: 'I am planning a trip to Kyoto next spring.', author: 'you', time: '9:00 AM' },
+        { id: 2, text: 'That sounds like a lovely trip.', author: 'teddy', time: '9:01 AM' },
+      ]),
+      { ...conversation('older', [
+        { id: 3, text: 'I started learning the piano.', author: 'you', time: '8:00 AM' },
+      ]), updatedAt: '2026-01-01T08:00:00.000Z' },
+    ], null, 'What was that again?');
+
+    expect(excerpts[0]).toContain('Kyoto');
+  });
 });

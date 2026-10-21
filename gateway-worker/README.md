@@ -4,9 +4,9 @@ This Worker is deployed at `https://teddy-bud-browser-gateway.harryjees.workers.
 
 ## Supabase setup
 
-1. Apply the profile migrations and [`20261020120000_add_account_recovery_verifiers.sql`](../supabase/migrations/20261020120000_add_account_recovery_verifiers.sql) from the repository root.
+1. Apply the profile migrations and [`20261020165119_add_account_recovery_verifiers.sql`](../supabase/migrations/20261020165119_add_account_recovery_verifiers.sql) from the repository root.
 2. Enable Supabase Auth's Email provider and disable **Confirm email**. Email is used as an account identifier; the app does not send signup or password-reset emails. This requires no purchased domain or SMTP provider.
-3. Configure Auth's password policy to require at least 12 characters. The app enforces that minimum too. Supabase Auth stores the password verifier; the app and gateway never save plaintext passwords. The app stores a keyed verifier for the recovery passphrase, never the passphrase itself or the user's password.
+3. Configure Auth's password policy to require at least 6 characters. The app enforces that minimum too. Supabase Auth stores the password verifier; the app and gateway never save plaintext passwords. The app stores a keyed verifier for the recovery passphrase, never the passphrase itself or the user's password.
 
 The recovery table has RLS enabled and grants no access to `anon` or `authenticated`. Only the gateway's server-side Supabase service-role secret can read or write it. The table stores the normalized email and an HMAC verifier, never the recovery passphrase itself. The HMAC uses a separate gateway secret. Do not expose either server secret in the client bundle.
 
@@ -20,7 +20,7 @@ The recovery table has RLS enabled and grants no access to `anon` or `authentica
    ```powershell
    npx wrangler secret put JWT_SIGNING_SECRET
    npx wrangler secret put RECOVERY_KEY_SECRET
-   npx wrangler secret put NVIDIA_KEY_1
+   npx wrangler secret put OPENROUTER_API_KEY
    npx wrangler secret put SUPABASE_URL
    npx wrangler secret put SUPABASE_ANON_KEY
    npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
@@ -34,7 +34,7 @@ The recovery table has RLS enabled and grants no access to `anon` or `authentica
 
 `POST /auth/signup` creates an email/password account in Supabase Auth, checks its RLS-protected profile, stores the keyed recovery-passphrase verifier in the private recovery table, and issues a Teddy Bud session. `POST /auth/login` verifies credentials and the private recovery record. `POST /auth/recover` verifies the recovery passphrase, changes the Supabase password through the Admin Auth API, and revokes all gateway sessions for that account. `POST /auth/migrate-legacy` upgrades a currently valid pre-password session, sets its password and recovery verifier, and keeps its Supabase user ID. `GET /auth/session` validates the saved session before the client loads local account data. Sign-in, signup, recovery, and migration attempts are rate-limited.
 
-Users choose a recovery passphrase during account creation and enter it again to confirm. It must be 20 to 128 characters; use a unique phrase made from at least six randomly selected words, and keep it in a password manager. Anyone who knows the passphrase and account email can reset the password. The gateway stores only a keyed HMAC verifier, not the phrase itself. Native session tokens are stored using Keychain/Keystore; Electron uses OS secure storage; browsers use session storage. Sessions expire after one absolute hour. `/auth/refresh` does not extend them; the app clears the expired session and prompts for sign-in. Chats remain encrypted locally under separate per-account keys and scoped to the Supabase user ID. Password recovery does not decrypt or transfer chats from another device.
+Users choose a recovery passphrase during account creation and enter it again to confirm. It must be 10 to 128 characters; choose a unique phrase and keep it somewhere safe. Anyone who knows the passphrase and account email can reset the password. The gateway stores only a keyed HMAC verifier, not the phrase itself. Native session tokens are stored using Keychain/Keystore; Electron uses OS secure storage; browsers use session storage. Sessions expire after one absolute hour. `/auth/refresh` does not extend them; the app clears the expired session and prompts for sign-in. Chats remain encrypted locally under separate per-account keys and scoped to the Supabase user ID. Password recovery does not decrypt or transfer chats from another device.
 
 There is no built-in administrator recovery flow if a user loses both their
 password and recovery passphrase. Supabase Auth stores password verifiers rather
@@ -47,9 +47,9 @@ Existing accounts are moved only when the device still has a valid legacy Teddy 
 
 Supabase's current Free plan includes 50,000 monthly active users for Auth. This is an Auth quota, not a promise that database, bandwidth, Worker, or model-provider costs remain free. Cloudflare's Free Worker tier currently stops serving requests when its daily quota is exceeded rather than billing overages; if you manually move the account to a paid plan, that billing model changes. The app sends no auth emails, so this flow does not require an SMTP provider or domain.
 
-The NVIDIA hosted API catalog is intended for development, testing, research, and evaluation; NVIDIA says production use requires an AI Enterprise license. Do not launch this app as a public production AI service on the current provider key without confirming the applicable license and cost. No implementation can guarantee both unlimited growth and zero cost across independent hosting and inference providers.
+Chat, coding, titles, and memory suggestions use `openai/gpt-oss-20b:free`; vision uses `qwen/qwen3.8-27b:free`. The Worker rejects any other model ID, so a client cannot accidentally route this key to a paid model. Free model endpoints are rate-limited and availability can vary. OpenRouter itself is not universally free: the optional web-search tool can incur separate charges. Set an API key spending limit in the OpenRouter dashboard and review current model/tool pricing before enabling it.
 
-Durable Objects store Teddy Bud sessions, per-user session indexes, and rate limits. `/auth/refresh` rejects renewal after the one-hour session lifetime and `/auth/logout` revokes the current session. Authenticated model and chat requests are proxied to NVIDIA; the NVIDIA key remains a Worker secret. The Worker also adds crisis response guidance for selected direct phrases. This is best effort and is not a clinical screen or emergency service.
+Durable Objects store Teddy Bud sessions, per-user session indexes, and rate limits. `/auth/refresh` rejects renewal after the one-hour session lifetime and `/auth/logout` revokes the current session. Authenticated model and chat requests are proxied to OpenRouter; the OpenRouter key remains a Worker secret and is never sent to the client. The Worker also adds crisis response guidance for selected direct phrases. This is best effort and is not a clinical screen or emergency service.
 
 ## Local checks
 

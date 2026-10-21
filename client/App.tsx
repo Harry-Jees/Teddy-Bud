@@ -29,6 +29,7 @@ import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
 import type { LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, readEncryptedBackup } from './src/services/backup';
+import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
@@ -148,7 +149,7 @@ function AccessGate() {
   useEffect(() => {
     if (!session) return undefined;
     const expireSession = () => {
-      void browserAuthService.clear().catch(() => undefined).then(() => {
+      browserAuthService.clear().catch(() => undefined).then(() => {
         setError('Your one-hour session has expired. Please sign in again.');
         setInitialMode('login');
         setSession(null);
@@ -161,11 +162,11 @@ function AccessGate() {
     }
     const timer = setTimeout(expireSession, delay);
     return () => clearTimeout(timer);
-  }, [session?.accessToken]);
+  }, [session]);
 
   if (busy) return <AuthLoading />;
   if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
-  return <TeddyBud sessionToken={session.accessToken} profilePictureUrl={session.profilePictureUrl} onLogout={() => {
+  return <TeddyBud sessionToken={session.accessToken} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
       setError(logoutError instanceof Error ? logoutError.message : 'Unable to end the server session.');
       setSession(null);
@@ -178,6 +179,8 @@ function AuthLoading() {
 }
 
 function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
+  const { width } = useWindowDimensions();
+  const compact = width < 600;
   const [mode, setMode] = useState<'login' | 'create' | 'recover' | 'migrate'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -195,22 +198,22 @@ function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthentica
       if (mode === 'login') {
         onAuthenticated(await browserAuthService.signIn(email.trim(), password));
       } else if (mode === 'create') {
-        if (password.length < 12) throw new Error('Choose a password with at least 12 characters.');
+        if (password.length < 6) throw new Error('Choose a password with at least 6 characters.');
         if (password !== confirmPassword) throw new Error('The passwords do not match.');
         const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 20 || phrase.length > 128) throw new Error('Choose a recovery passphrase with 20 to 128 characters.');
+        if (phrase.length < 10 || phrase.length > 128) throw new Error('Choose a recovery passphrase with 10 to 128 characters.');
         if (recoveryPassphraseConfirmation.trim() !== phrase) throw new Error('The recovery passphrases do not match.');
         onAuthenticated(await browserAuthService.createAccount(email.trim(), password, phrase));
       } else if (mode === 'migrate') {
-        if (password.length < 12) throw new Error('Choose a password with at least 12 characters.');
+        if (password.length < 6) throw new Error('Choose a password with at least 6 characters.');
         if (password !== confirmPassword) throw new Error('The passwords do not match.');
         const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 20 || phrase.length > 128) throw new Error('Choose a recovery passphrase with 20 to 128 characters.');
+        if (phrase.length < 10 || phrase.length > 128) throw new Error('Choose a recovery passphrase with 10 to 128 characters.');
         if (recoveryPassphraseConfirmation.trim() !== phrase) throw new Error('The recovery passphrases do not match.');
         onAuthenticated(await browserAuthService.migrateLegacyAccount(password, phrase));
       } else {
-        if (password.length < 12) throw new Error('Choose a new password with at least 12 characters.');
-        if (recoveryPassphrase.trim().length < 20) throw new Error('Enter the recovery passphrase you chose when you created your account.');
+        if (password.length < 6) throw new Error('Choose a new password with at least 6 characters.');
+        if (recoveryPassphrase.trim().length < 10) throw new Error('Enter the recovery passphrase you chose when you created your account.');
         await browserAuthService.recoverPassword(email.trim(), recoveryPassphrase.trim(), password);
         setMode('login'); setPassword(''); setRecoveryPassphrase('');
         setNotice('Password changed. Sign in with your new password.');
@@ -229,8 +232,9 @@ function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthentica
   const title = mode === 'create' ? 'Create your private space.' : mode === 'recover' ? 'Reset your password.' : mode === 'migrate' ? 'Keep your existing space.' : 'Welcome back.';
   const actionLabel = mode === 'create' ? 'Create account' : mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
 
-  return <View style={styles.authScreen}>
-    <View style={styles.authCard}>
+  return <KeyboardAvoidingView style={styles.authScreen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.authScrollContent, compact && styles.authScrollContentCompact]}>
+    <View style={[styles.authCard, compact && styles.authCardCompact]}>
       <View style={styles.authMark}><Image source={teddyBudLogo} style={styles.authLogo} accessibilityLabel="Teddy Bud" /></View>
       <Text style={styles.authEyebrow}>Teddy Bud</Text>
       <Text style={styles.authTitle}>{title}</Text>
@@ -239,15 +243,15 @@ function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthentica
       {!!notice && <View style={styles.authNotice}><Text style={styles.authNoticeText}>{notice}</Text></View>}
       {mode !== 'migrate' && <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
       {mode === 'recover' && <TextInput accessibilityLabel="Recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={setRecoveryPassphrase} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
-      <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry value={password} onChangeText={setPassword} placeholder={mode === 'recover' ? 'New password (12+ characters)' : 'Password (12+ characters)'} placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
+      <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry value={password} onChangeText={setPassword} placeholder={mode === 'recover' ? 'New password (6+ characters)' : 'Password (6+ characters)'} placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
       {(mode === 'create' || mode === 'migrate') && <>
         <TextInput accessibilityLabel="Confirm password" autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
         <Text style={styles.authKeyLabel}>RECOVERY PASSPHRASE</Text>
-        <TextInput accessibilityLabel="Choose recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={setRecoveryPassphrase} placeholder="At least 20 characters" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
-        <Text style={styles.authFootnote}>Choose a unique phrase of at least 20 characters from six or more randomly selected words, and keep it in a password manager. You will need it with your email to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
+        <TextInput accessibilityLabel="Choose recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={setRecoveryPassphrase} placeholder="At least 10 characters" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
+        <Text style={styles.authFootnote}>Choose a unique recovery passphrase of at least 10 characters and keep it somewhere safe. You will need it with your email to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
         <TextInput accessibilityLabel="Confirm recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphraseConfirmation} onChangeText={setRecoveryPassphraseConfirmation} placeholder="Confirm recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
       </>}
-      <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 20) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())} onPress={submit} style={({ pressed }) => [styles.authButton, (submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 20) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())) && styles.buttonDisabled, pressed && styles.pressed]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 10) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())} onPress={submit} style={({ pressed }) => [styles.authButton, (submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 10) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())) && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
       </Pressable>
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
@@ -255,10 +259,11 @@ function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthentica
       {mode === 'recover' ? <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>Back to sign in</Text></Pressable> : <Pressable accessibilityRole="button" onPress={() => changeMode(mode === 'login' ? 'create' : 'login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'login' ? 'Create an account' : 'Already have an account? Sign in'}</Text></Pressable>}
       <Text style={styles.authFootnote}>Your chats stay encrypted on this device. Your password and recovery passphrase are never stored in plaintext.</Text>
     </View>
-  </View>;
+    </ScrollView>
+  </KeyboardAvoidingView>;
 }
 
-function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken: string; profilePictureUrl?: string; onLogout: () => void }) {
+function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 800;
@@ -292,11 +297,15 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
   const [localDataRetry, setLocalDataRetry] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [chatErrorConversationId, setChatErrorConversationId] = useState<string | null>(null);
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
+  const [retryConversationId, setRetryConversationId] = useState<string | null>(null);
   const [streamingReply, setStreamingReply] = useState('');
   const [streamingConversationId, setStreamingConversationId] = useState<string | null>(null);
   const streamBufferRef = useRef('');
   const streamUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const receivedReplyRef = useRef('');
+  const responseAbortControllerRef = useRef<AbortController | null>(null);
 
   const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
@@ -374,7 +383,7 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
       }
       const conversationTitle = existing.messages.some(item => item.author === 'you') || message.author !== 'you'
         ? existing.title
-        : message.text.trim().slice(0, 48) || 'New chat';
+        : existing.title === 'New chat' ? message.text.trim().slice(0, 48) || 'New chat' : existing.title;
       const updated = { ...existing, title: conversationTitle, updatedAt, messages: [...existing.messages, message] };
       return [updated, ...current.filter(conversation => conversation.id !== conversationId)];
     });
@@ -420,10 +429,12 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
     setRenameDraft('');
   };
 
-  const deleteConversation = useCallback((conversation: Conversation) => confirmAction(
-    'Delete this chat?',
-    `"${conversation.title}" and its messages will be removed from this device for this account.`,
-    () => {
+  const deleteConversation = useCallback((conversation: Conversation) => {
+    if (streamingConversationId === conversation.id) return;
+    confirmAction(
+      'Delete this chat?',
+      `"${conversation.title}" and its messages will be removed from this device for this account.`,
+      () => {
       const remaining = conversations.filter(item => item.id !== conversation.id);
       setConversations(remaining);
       if (activeConversationId === conversation.id) {
@@ -432,11 +443,11 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
         setChatError(null);
         setRetryMessage(null);
       }
-    },
-  ), [activeConversationId, conversations]);
+      },
+    );
+  }, [activeConversationId, conversations, streamingConversationId]);
 
   const startNewConversation = useCallback(() => {
-    if (isSending) return;
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     const now = new Date().toISOString();
     setConversations(current => [{
@@ -447,19 +458,15 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
       messages: [],
     }, ...current]);
     setActiveConversationId(id);
+    setPage('chat');
     setDraft('');
-    setChatError(null);
-    setRetryMessage(null);
-  }, [isSending]);
+  }, []);
 
   const selectConversation = useCallback((id: string) => {
-    if (isSending) return;
     setActiveConversationId(id);
     setPage('chat');
     setDraft('');
-    setChatError(null);
-    setRetryMessage(null);
-  }, [isSending]);
+  }, []);
 
   const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed(value => !value);
@@ -585,8 +592,12 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
     if (!messageToRetry) setRetryMessage(null);
     setDraft('');
     setIsSending(true);
+    const abortController = new AbortController();
+    responseAbortControllerRef.current = abortController;
     setChatError(null);
+    setChatErrorConversationId(null);
     streamBufferRef.current = '';
+    receivedReplyRef.current = '';
     if (streamUpdateTimerRef.current) clearTimeout(streamUpdateTimerRef.current);
     streamUpdateTimerRef.current = null;
     setStreamingReply('');
@@ -594,6 +605,10 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
 
     try {
       const history = messageToRetry ? messages.slice(0, -1) : messages;
+      const isFirstExchange = !history.some(message => message.author === 'you');
+      const conversationBeforeReply = conversations.find(conversation => conversation.id === conversationId);
+      const fallbackTitle = text.trim().slice(0, 48) || 'New chat';
+      const shouldGenerateTitle = isFirstExchange && (!conversationBeforeReply || conversationBeforeReply.title === 'New chat' || conversationBeforeReply.title === fallbackTitle);
       const responseText = await gatewayService.sendChatMessage(text, history.map(message => ({
         role: message.author === 'you' ? 'user' : 'assistant',
         content: message.text,
@@ -608,7 +623,9 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
           : [],
         crisisConcern: hasCrisisSignal(text)
           || history.slice(-4).some(message => message.author === 'you' && hasCrisisSignal(message.text)),
+        signal: abortController.signal,
         onTextChunk: chunk => {
+          receivedReplyRef.current += chunk;
           streamBufferRef.current += chunk;
           if (streamUpdateTimerRef.current) return;
           streamUpdateTimerRef.current = setTimeout(() => {
@@ -616,7 +633,7 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
             streamBufferRef.current = '';
             streamUpdateTimerRef.current = null;
             setStreamingReply(current => current + buffered);
-          }, 50);
+          }, 16);
         },
       });
 
@@ -628,12 +645,23 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
       };
 
       appendConversationMessage(conversationId, assistantMessage);
+      if (shouldGenerateTitle) {
+        gatewayService.generateChatTitle(text, responseText, sessionToken).then(generatedTitle => {
+          if (!generatedTitle) return;
+          setConversations(current => current.map(conversation => conversation.id === conversationId && conversation.title === fallbackTitle
+            ? { ...conversation, title: generatedTitle, updatedAt: new Date().toISOString() }
+            : conversation));
+        }).catch(() => {
+          // Title generation is optional; keep the first-message fallback if it fails.
+        });
+      }
       streamBufferRef.current = '';
       if (streamUpdateTimerRef.current) clearTimeout(streamUpdateTimerRef.current);
       streamUpdateTimerRef.current = null;
       setStreamingReply('');
       setStreamingConversationId(null);
       setRetryMessage(null);
+      setRetryConversationId(null);
       if (rememberInSession && mayContainDurableMemory(text)) {
         const suggestionRequestId = ++memorySuggestionRequestId.current;
         gatewayService.suggestMemory(text, sessionToken).then(suggestion => {
@@ -645,6 +673,25 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
         });
       }
     } catch (error) {
+      if (abortController.signal.aborted) {
+        const partialReply = receivedReplyRef.current.trim();
+        if (partialReply) {
+          appendConversationMessage(conversationId, {
+            id: nextMessageId.current = Math.max(Date.now(), nextMessageId.current + 1),
+            text: partialReply,
+            author: 'teddy',
+            time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          });
+        }
+        setRetryMessage(null);
+        setRetryConversationId(null);
+        streamBufferRef.current = '';
+        if (streamUpdateTimerRef.current) clearTimeout(streamUpdateTimerRef.current);
+        streamUpdateTimerRef.current = null;
+        setStreamingReply('');
+        setStreamingConversationId(null);
+        return;
+      }
       streamBufferRef.current = '';
       if (streamUpdateTimerRef.current) clearTimeout(streamUpdateTimerRef.current);
       streamUpdateTimerRef.current = null;
@@ -659,17 +706,24 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
         } catch (restoreError) {
           const detail = restoreError instanceof Error ? restoreError.message : 'Your session could not be restored.';
           setChatError(`Your sign-in could not be refreshed. ${detail}`);
+          setChatErrorConversationId(conversationId);
           setRetryMessage(text);
+          setRetryConversationId(conversationId);
           return;
         }
       }
       const message = chatErrorMessage(error);
       setChatError(message);
+      setChatErrorConversationId(conversationId);
       setRetryMessage(text);
+      setRetryConversationId(conversationId);
     } finally {
+      if (responseAbortControllerRef.current === abortController) responseAbortControllerRef.current = null;
       setIsSending(false);
     }
   };
+
+  const stopResponse = () => responseAbortControllerRef.current?.abort();
 
   const openCrisisResources = () => {
     openExternalUrl('https://findahelpline.com/').catch(error => {
@@ -703,9 +757,9 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
         page={page}
         onNavigate={setPage}
         onNewConversation={startNewConversation}
-        newConversationDisabled={isSending}
         conversations={conversations}
         activeConversationId={activeConversationId}
+        busyConversationId={streamingConversationId}
         onPinConversation={setConversationPinned}
         onDeleteConversation={deleteConversation}
         onRenameConversation={beginRenameConversation}
@@ -729,7 +783,7 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
         <View style={styles.contentArea}>
           {localDataError ? <LocalDataError error={localDataError} onRetry={retryLocalData} onClear={clearUnavailableLocalData} /> : !localDataReady || localDataOwner !== owner ? <LocalDataLoading /> : <>
           {localDataSaveError && <LocalDataSaveWarning error={localDataSaveError} onRetry={retryLocalData} />}
-          {page === 'chat' && <ChatPage wide={wide} assistantName={assistantName} messages={messages} streamingReply={activeConversationId === streamingConversationId ? streamingReply : ''} conversationTitle={activeConversation?.title ?? 'A quiet place to be'} onOpenHistory={() => setPage('history')} onRenameChat={() => { if (activeConversation) beginRenameConversation(activeConversation); }} isPinned={activeConversation?.pinned === true} canManageChat={activeConversation !== null} onTogglePin={() => { if (activeConversation) setConversationPinned(activeConversation.id, !activeConversation.pinned); }} onOpenCrisisResources={openCrisisResources} emergencyCallOption={emergencyCallOption} crisisHelplineOption={crisisHelplineOption} onCallEmergency={callEmergencyServices} onCallHelpline={callCrisisHelpline} onTextHelpline={textCrisisHelpline} onOpenHelplineWebsite={openHelplineWebsite} onSaveOccasion={fact => {
+          {page === 'chat' && <ChatPage wide={wide} assistantName={assistantName} messages={messages} streamingReply={activeConversationId === streamingConversationId ? streamingReply : ''} isThinking={isSending && activeConversationId === streamingConversationId} conversationTitle={activeConversation?.title ?? 'A quiet place to be'} onOpenHistory={() => setPage('history')} onRenameChat={() => { if (activeConversation) beginRenameConversation(activeConversation); }} isPinned={activeConversation?.pinned === true} canManageChat={activeConversation !== null} onTogglePin={() => { if (activeConversation) setConversationPinned(activeConversation.id, !activeConversation.pinned); }} onOpenCrisisResources={openCrisisResources} emergencyCallOption={emergencyCallOption} crisisHelplineOption={crisisHelplineOption} onCallEmergency={callEmergencyServices} onCallHelpline={callCrisisHelpline} onTextHelpline={textCrisisHelpline} onOpenHelplineWebsite={openHelplineWebsite} onSaveOccasion={fact => {
             const normalized = fact.trim().slice(0, 500);
             if (normalized && !memories.some(memory => memory.text.toLowerCase() === normalized.toLowerCase())) {
               setMemories(current => [{ id: Date.now(), text: normalized, date: 'Added just now' }, ...current]);
@@ -742,11 +796,11 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
                 : [{ id: Date.now(), text: fact, date: 'Added just now' }, ...current]);
             }
             setMemorySuggestion(null);
-          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={sendMessage} onRetry={() => retryMessage && sendMessage(retryMessage)} retryPending={Boolean(retryMessage)} isSending={isSending} chatError={chatError} />}
+          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={sendMessage} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
           {page === 'history' && <ChatHistoryPage
             conversations={conversations}
             activeConversationId={activeConversationId}
-            isSending={isSending}
+            busyConversationId={streamingConversationId}
             onBack={() => setPage('chat')}
             onSelect={selectConversation}
             onNewConversation={startNewConversation}
@@ -805,9 +859,6 @@ function TeddyBud({ sessionToken, profilePictureUrl, onLogout }: { sessionToken:
 
 function chatErrorMessage(error: unknown): string {
   const detail = error instanceof Error ? error.message : '';
-  if (/Function\s+['"][^'"]+['"]\s*:\s*Not found for account\s+['"][^'"]+['"]/i.test(detail)) {
-    return 'The NVIDIA account configured for Teddy Bud cannot access this model yet. Enable Public API Endpoints for that NVIDIA account or configure a key with access, then retry.';
-  }
   const status = (error as { status?: unknown } | null)?.status;
   if (error instanceof DOMException && error.name === 'AbortError') return 'The conversation service took too long to respond. Check your connection and try again.';
   if (/failed to fetch|network request failed|fetch failed|load failed/i.test(detail)) return "Teddy Bud couldn't reach the conversation service. Check your internet connection and try again.";
@@ -816,10 +867,10 @@ function chatErrorMessage(error: unknown): string {
   return detail || 'The conversation service is unavailable right now.';
 }
 
-function ConversationHistoryList({ conversations, activeConversationId, disabled, onSelect, onPin, onDelete, onRename }: {
+function ConversationHistoryList({ conversations, activeConversationId, busyConversationId, onSelect, onPin, onDelete, onRename }: {
   conversations: Conversation[];
   activeConversationId: string | null;
-  disabled: boolean;
+  busyConversationId?: string | null;
   onSelect: (id: string) => void;
   onPin?: (id: string, pinned: boolean) => void;
   onDelete?: (conversation: Conversation) => void;
@@ -835,7 +886,6 @@ function ConversationHistoryList({ conversations, activeConversationId, disabled
       accessibilityRole="button"
       accessibilityLabel={`Open chat: ${conversation.title}`}
       accessibilityState={{ selected: conversation.id === activeConversationId }}
-      disabled={disabled}
       onPress={() => onSelect(conversation.id)}
       style={({ pressed }) => [
         styles.historyItemOpen,
@@ -852,16 +902,16 @@ function ConversationHistoryList({ conversations, activeConversationId, disabled
     {openMenuId === conversation.id && onPin && onDelete && <View style={styles.chatActionMenu} accessibilityRole="menu">
       {onRename && <Pressable accessibilityRole="menuitem" onPress={() => { setOpenMenuId(null); onRename(conversation); }} style={({ pressed }) => [styles.chatActionItem, pressed && styles.pressed]}><Text style={styles.chatActionText}>Rename chat</Text></Pressable>}
       <Pressable accessibilityRole="menuitem" onPress={() => { onPin(conversation.id, !conversation.pinned); setOpenMenuId(null); }} style={({ pressed }) => [styles.chatActionItem, pressed && styles.pressed]}><Text style={styles.chatActionText}>{conversation.pinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
-      <Pressable accessibilityRole="menuitem" onPress={() => { setOpenMenuId(null); onDelete(conversation); }} style={({ pressed }) => [styles.chatActionItem, styles.chatActionDelete, pressed && styles.pressed]}><Text style={[styles.chatActionText, styles.chatActionDeleteText]}>Delete chat</Text></Pressable>
+      <Pressable accessibilityRole="menuitem" accessibilityState={{ disabled: busyConversationId === conversation.id }} disabled={busyConversationId === conversation.id} onPress={() => { setOpenMenuId(null); onDelete(conversation); }} style={({ pressed }) => [styles.chatActionItem, styles.chatActionDelete, busyConversationId === conversation.id && styles.buttonDisabled, pressed && styles.pressed]}><Text style={[styles.chatActionText, styles.chatActionDeleteText]}>Delete chat</Text></Pressable>
     </View>}
     </View>;
   }) : <Text style={styles.historyEmpty}>Your chats will appear here as you talk with Teddy Bud.</Text>;
 }
 
-function ChatHistoryPage({ conversations, activeConversationId, isSending, onBack, onSelect, onNewConversation }: {
+function ChatHistoryPage({ conversations, activeConversationId, busyConversationId, onBack, onSelect, onNewConversation }: {
   conversations: Conversation[];
   activeConversationId: string | null;
-  isSending: boolean;
+  busyConversationId?: string | null;
   onBack: () => void;
   onSelect: (id: string) => void;
   onNewConversation: () => void;
@@ -872,11 +922,11 @@ function ChatHistoryPage({ conversations, activeConversationId, isSending, onBac
         <Text style={styles.eyebrow}>YOUR SPACE</Text>
         <Text style={styles.pageTitle}>Your chats</Text>
       </View>
-      <Button label="Back to chat" onPress={onBack} disabled={isSending} tone="quiet" />
+      <Button label="Back to chat" onPress={onBack} tone="quiet" />
     </View>
-    <Button label="New chat" onPress={onNewConversation} disabled={isSending} />
+    <Button label="New chat" onPress={onNewConversation} />
     <ScrollView style={styles.mobileHistoryList} keyboardShouldPersistTaps="handled">
-      <ConversationHistoryList conversations={conversations} activeConversationId={activeConversationId} disabled={isSending} onSelect={onSelect} />
+      <ConversationHistoryList conversations={conversations} activeConversationId={activeConversationId} busyConversationId={busyConversationId} onSelect={onSelect} />
     </ScrollView>
   </View>;
 }
@@ -920,15 +970,15 @@ function confirmAction(title: string, message: string, onConfirm: () => void) {
   ]);
 }
 
-const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, page, onNavigate, onNewConversation, newConversationDisabled, conversations, activeConversationId, onSelectConversation, onPinConversation, onDeleteConversation, onRenameConversation }: {
+const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, page, onNavigate, onNewConversation, conversations, activeConversationId, busyConversationId, onSelectConversation, onPinConversation, onDeleteConversation, onRenameConversation }: {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   page: Page;
   onNavigate: (page: Page) => void;
   onNewConversation: () => void;
-  newConversationDisabled: boolean;
   conversations: Conversation[];
   activeConversationId: string | null;
+  busyConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onPinConversation: (id: string, pinned: boolean) => void;
   onDeleteConversation: (conversation: Conversation) => void;
@@ -1018,7 +1068,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
           {!labelsCollapsed && <Animated.View style={{ opacity: labelOpacity }}><Text style={styles.brandName}>Teddy Bud</Text><Text style={styles.sidebarCaption}>A quiet place to be</Text></Animated.View>}
         </View>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Start a new chat" accessibilityHint={labelsCollapsed ? 'Start a new conversation' : undefined} disabled={newConversationDisabled} onPress={onNewConversation} style={({ pressed }) => [styles.newChatButton, labelsCollapsed && styles.newChatButtonCollapsed, newConversationDisabled && styles.buttonDisabled, pressed && styles.pressed]}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Start a new chat" accessibilityHint={labelsCollapsed ? 'Start a new conversation' : undefined} onPress={onNewConversation} style={({ pressed }) => [styles.newChatButton, labelsCollapsed && styles.newChatButtonCollapsed, pressed && styles.pressed]}>
         <Text style={styles.newChatGlyph}>+</Text>{!labelsCollapsed && <Animated.Text style={[styles.newChatLabel, { opacity: labelOpacity }]}>New chat</Animated.Text>}
       </Pressable>
       {!labelsCollapsed && <Animated.Text style={[styles.sidebarLabel, { opacity: labelOpacity }]}>YOUR SPACE</Animated.Text>}
@@ -1028,7 +1078,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
         {!labelsCollapsed && <ConversationHistoryList
           conversations={conversations}
           activeConversationId={activeConversationId}
-          disabled={newConversationDisabled}
+          busyConversationId={busyConversationId}
           onSelect={onSelectConversation}
           onPin={onPinConversation}
           onDelete={onDeleteConversation}
@@ -1043,16 +1093,6 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
   );
 });
 
-function ProfileAvatar({ uri }: { uri?: string }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [uri]);
-  return <View style={styles.accountAvatar}>
-    {uri && !failed
-      ? <Image source={{ uri }} style={styles.accountAvatarImage} accessibilityLabel="Account profile photo" onError={() => setFailed(true)} />
-      : <Text style={styles.accountAvatarText}>TB</Text>}
-  </View>;
-}
-
 function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }: { item: (typeof navItems)[number]; selected: boolean; onPress: () => void; collapsed?: boolean; labelOpacity?: Animated.Value }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityHint={collapsed ? `Open ${item.label}` : undefined} accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.navButton, collapsed && styles.navButtonCollapsed, selected && styles.navButtonSelected, pressed && styles.pressed]}>
     <Text style={[styles.navIcon, selected && styles.navIconSelected]}>{item.icon}</Text><Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
@@ -1066,7 +1106,7 @@ function BottomNav({ page, onNavigate, bottomInset }: { page: Page; onNavigate: 
   </Pressable>)}</View>;
 }
 
-export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, onRetry, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: () => void; onRetry: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
+export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, onStop, onRetry, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: () => void; onStop: () => void; onRetry: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
   const canSend = !!draft.trim() && !isSending;
   const [composerFocused, setComposerFocused] = useState(false);
   const [manualCrisisSupport, setManualCrisisSupport] = useState(false);
@@ -1103,7 +1143,7 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
           </View>
           {message.author === 'teddy' && memorySuggestion?.messageId === message.id && <MemorySuggestionCard fact={memorySuggestion.fact} onSave={onSaveMemorySuggestion} onDismiss={onDismissMemorySuggestion} />}
         </View>)}
-        {isSending && (streamingReply
+        {isThinking && (streamingReply
           ? <View style={styles.messageRow}><View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View><View style={[styles.messageBubble, styles.teddyBubble]}><MarkdownReply content={streamingReply} /></View></View>
           : <View style={styles.sendingRow}><View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View><TypingIndicator /></View>)}
         {chatError && <View style={styles.errorBanner}><Text style={styles.errorText}>{chatError}</Text>{retryPending && <Pressable accessibilityRole="button" onPress={onRetry} disabled={isSending} style={styles.retryButton}><Text style={styles.retryButtonText}>Retry</Text></Pressable>}</View>}
@@ -1128,7 +1168,9 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
       </View>
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={() => onSend()} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={() => onSend()} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, !canSend && styles.sendButtonDisabled, pressed && styles.pressed]}><PaperPlaneIcon /></Pressable>
+        {isSending
+          ? <Pressable accessibilityRole="button" accessibilityLabel="Stop response" onPress={onStop} style={({ pressed }) => [styles.sendButton, styles.stopButton, pressed && styles.pressed]}><View style={styles.stopIcon} /></Pressable>
+          : <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={() => onSend()} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, !canSend && styles.sendButtonDisabled, pressed && styles.pressed]}><PaperPlaneIcon /></Pressable>}
       </View>
       {wide && <Text style={styles.composerFootnote}>{isSending ? 'Sending to the companion service…' : 'Your conversation is saved on this device.'}</Text>}
     </View>
@@ -1352,13 +1394,19 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete }
 
 function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, onRememberChange, onShareMemoriesChange, onShareChatHistoryChange, onShareAboutMeChange, onClear }: { wide: boolean; rememberInSession: boolean; shareMemories: boolean; shareChatHistory: boolean; shareAboutMe: boolean; onRememberChange: (value: boolean) => void; onShareMemoriesChange: (value: boolean) => void; onShareChatHistoryChange: (value: boolean) => void; onShareAboutMeChange: (value: boolean) => void; onClear: () => void }) {
   const [policyLinkError, setPolicyLinkError] = useState('');
+  const isDesktopApp = Platform.OS === 'web' && typeof window !== 'undefined' && !!window.teddyBudDesktop?.isDesktop;
+  const storagePrivacyDescription = isDesktopApp
+    ? "Chats, profile notes, and memories are stored in this desktop app and encrypted with a key protected by your operating system. The open app can access its saved data. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat."
+    : Platform.OS === 'web'
+      ? "Chats, profile notes, and memories are stored in this browser's local database and encrypted with a separate key for each account. This protects saved data at rest, but code running in this browser while Teddy Bud is open could access it. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat."
+      : "Chats, profile notes, and memories are stored in this device's encrypted local database. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat.";
   const openPolicy = (url: string) => {
     setPolicyLinkError('');
     openExternalUrl(url).catch(() => setPolicyLinkError('Could not open this page. Check your connection and try again.'));
   };
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR DATA, YOUR CHOICES</Text><Text style={styles.pageTitle}>Privacy</Text><Text style={styles.pageDescription}>Choose what stays on this device and what accompanies your chats.</Text></View>
-    <View style={styles.privacyBanner}><View style={styles.privacyShield}><Text style={styles.shieldGlyph}>⌑</Text></View><View style={styles.privacyCopy}><Text style={styles.privacyTitle}>Your chats stay on this device</Text><Text style={styles.privacyBody}>{Platform.OS === 'web' ? "Chats, profile notes, and memories are stored in this browser's local database and encrypted with a separate key for each account. This protects saved data at rest, but code running in this browser while Teddy Bud is open could access it. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat." : "Chats, profile notes, and memories are stored in this device's encrypted local database. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat."}</Text></View></View>
+    <View style={styles.privacyBanner}><View style={styles.privacyShield}><Text style={styles.shieldGlyph}>⌑</Text></View><View style={styles.privacyCopy}><Text style={styles.privacyTitle}>Your chats stay on this device</Text><Text style={styles.privacyBody}>{storagePrivacyDescription}</Text></View></View>
     <Text style={styles.settingsSectionLabel}>MEMORY & CONTEXT</Text>
     <View style={styles.settingsCard}>
       <SettingRow icon="✳" title="Suggest memory notes" description="Let the assistant suggest durable details from your messages. Turning this off keeps existing notes but stops new suggestions." value={rememberInSession} onChange={onRememberChange} />
@@ -1409,23 +1457,12 @@ function SettingsPage({ wide, aboutMe, assistantName, assistantCharacterId, assi
   }, [assistantCharacterId, assistantCharacterNames, assistantName]);
 
   const exportBackupFile = async () => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') {
-      setBackupStatus('Open Settings in the browser app to create or load .teddybud files.');
-      return;
-    }
     setBackupBusy(true);
     setBackupStatus('Encrypting your backup…');
     try {
       const fileContents = await onExport(backupPassphrase);
-      const objectUrl = URL.createObjectURL(new Blob([fileContents], { type: 'application/vnd.teddybud+json' }));
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = `teddy-bud-${new Date().toISOString().slice(0, 10)}.teddybud`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
-      setBackupStatus('Encrypted backup downloaded. Keep the passphrase somewhere safe; it cannot be recovered.');
+      const saved = await saveBackupFile(fileContents);
+      setBackupStatus(saved ? 'Encrypted backup saved. Keep the passphrase somewhere safe; it cannot be recovered.' : 'Backup export cancelled.');
     } catch (error) {
       setBackupStatus(error instanceof Error ? error.message : 'The backup could not be created.');
     } finally {
@@ -1434,30 +1471,20 @@ function SettingsPage({ wide, aboutMe, assistantName, assistantCharacterId, assi
   };
 
   const chooseBackupFile = () => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') {
-      setBackupStatus('Open Settings in the browser app to create or load .teddybud files.');
-      return;
-    }
-    const picker = document.createElement('input');
-    picker.type = 'file';
-    picker.accept = '.teddybud,application/vnd.teddybud+json,application/json';
-    picker.onchange = () => {
-      const file = picker.files?.[0];
-      if (!file) return;
-      if (file.size > MAX_BACKUP_BYTES) {
-        setBackupStatus('This file is larger than the supported 25 MB limit. Your saved data was not changed.');
-        picker.value = '';
-        return;
+    setBackupBusy(true);
+    setBackupStatus('Select an encrypted backup…');
+    pickBackupFile(MAX_BACKUP_BYTES).then(contents => {
+      if (contents === null) {
+        setBackupStatus('Import cancelled. Your saved data was not changed.');
+        return false;
       }
-      setBackupBusy(true);
       setBackupStatus('Checking the encrypted backup…');
-      file.text().then(contents => onImport(contents, backupPassphrase)).then(imported => {
-        setBackupStatus(imported ? 'Backup loaded for this account on this device.' : 'Import cancelled. Your saved data was not changed.');
-      }).catch(error => {
-        setBackupStatus(error instanceof Error ? error.message : 'The backup could not be loaded.');
-      }).finally(() => setBackupBusy(false));
-    };
-    picker.click();
+      return onImport(contents, backupPassphrase);
+    }).then(imported => {
+      if (typeof imported === 'boolean') setBackupStatus(imported ? 'Backup restored for this account on this device.' : 'Import cancelled. Your saved data was not changed.');
+    }).catch(error => {
+      setBackupStatus(error instanceof Error ? error.message : 'The backup could not be loaded.');
+    }).finally(() => setBackupBusy(false));
   };
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
@@ -1509,7 +1536,13 @@ function SettingsPage({ wide, aboutMe, assistantName, assistantCharacterId, assi
 }
 
 function SettingRow({ icon, title, description, value, onChange }: { icon: string; title: string; description: string; value: boolean; onChange: (value: boolean) => void }) {
-  return <View style={styles.settingRow}><View style={styles.settingIcon}><Text style={styles.settingGlyph}>{icon}</Text></View><View style={styles.settingText}><Text style={styles.settingTitle}>{title}</Text><Text style={styles.settingDescription}>{description}</Text></View><Pressable accessibilityRole="switch" accessibilityState={{ checked: value }} accessibilityLabel={title} onPress={() => onChange(!value)} style={[styles.switchTrack, value && styles.switchOn]}><View style={[styles.switchThumb, value && styles.switchThumbOn]} /></Pressable></View>;
+  const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(progress, { toValue: value ? 1 : 0, duration: 190, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+  }, [progress, value]);
+  const thumbPosition = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 17] });
+  const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: ['#DED8D0', C.cocoa] });
+  return <View style={styles.settingRow}><View style={styles.settingIcon}><Text style={styles.settingGlyph}>{icon}</Text></View><View style={styles.settingText}><Text style={styles.settingTitle}>{title}</Text><Text style={styles.settingDescription}>{description}</Text></View><Pressable accessibilityRole="switch" accessibilityState={{ checked: value }} accessibilityLabel={title} onPress={() => onChange(!value)} style={styles.switchHitArea}><Animated.View style={[styles.switchTrack, { backgroundColor: trackColor }]}><Animated.View style={[styles.switchThumb, { transform: [{ translateX: thumbPosition }] }]} /></Animated.View></Pressable></View>;
 }
 
 function Button({ label, onPress, tone = 'primary', disabled = false }: { label: string; onPress: () => void; tone?: 'primary' | 'quiet'; disabled?: boolean }) {
@@ -1548,7 +1581,7 @@ const styles = StyleSheet.create({
   authDivider: { color: C.muted, fontSize: 9, letterSpacing: 1.2, textAlign: 'center', marginVertical: 16 },
   authToggle: { alignSelf: 'center', minHeight: 38, justifyContent: 'center', marginTop: 8 },
   authToggleText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
-  authScreen: { flex: 1, backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center', padding: 24 }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 20 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
+  authScreen: { flex: 1, backgroundColor: C.canvas }, authScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 24, justifyContent: 'flex-start' }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 22 }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 20 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
   root: { flex: 1, flexDirection: 'row', backgroundColor: C.canvas }, main: { flex: 1, minWidth: 0 },
   newChatButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatButtonCollapsed: { paddingHorizontal: 0, justifyContent: 'center' }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
   headerPinnedButton: { backgroundColor: '#EEE5DB' }, headerPinnedButtonLabel: { color: C.cocoaDark },
@@ -1565,7 +1598,7 @@ const styles = StyleSheet.create({
   composerWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 68, maxWidth: 760, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 9, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDDCD6', borderRadius: 24, paddingHorizontal: 11, paddingVertical: 8, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerCardFocused: { borderColor: '#B49A83', shadowColor: C.cocoa, shadowOpacity: 0.14, shadowRadius: 17, shadowOffset: { width: 0, height: 0 }, elevation: 3 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, maxWidth: 760, alignSelf: 'center', width: '100%', marginBottom: 7 }, chatToolButton: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', paddingHorizontal: 10 }, chatToolIcon: { color: C.cocoa, fontSize: 13 }, chatToolLabel: { color: C.cocoaDark, fontSize: 10, fontWeight: '600' }, toolIconButton: { width: 31, height: 31, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { flex: 1, minWidth: 0, color: C.ink, fontSize: 14, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 7, maxHeight: 110, minHeight: 46 }, sendButton: { flexShrink: 0, width: 46, height: 46, borderRadius: 17, backgroundColor: '#B9A797', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: C.cocoa }, sendButtonDisabled: { opacity: 0.72 }, sendArrowIcon: { width: 20, height: 20, position: 'relative' }, sendArrowShaft: { position: 'absolute', left: 2, top: 9, width: 15, height: 1.7, borderRadius: 1, backgroundColor: C.white, transform: [{ rotate: '-45deg' }] }, sendArrowTop: { position: 'absolute', left: 9, top: 3, width: 8, height: 1.7, borderRadius: 1, backgroundColor: C.white }, sendArrowRight: { position: 'absolute', right: 3, top: 3, width: 1.7, height: 8, borderRadius: 1, backgroundColor: C.white }, composerFootnote: { color: '#706458', fontSize: 11, textAlign: 'center', marginTop: 8, lineHeight: 14 },
   bottomNav: { height: 62, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }, bottomNavItem: { flex: 1, minWidth: 0, height: 54, alignItems: 'center', justifyContent: 'center', gap: 2 }, bottomIcon: { fontSize: 19, color: '#75685C', lineHeight: 22 }, bottomIconActive: { color: C.cocoa }, bottomLabel: { fontSize: 10, color: '#6F6256', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' },
   pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#6F6256', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#75685C', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#6E6054', fontSize: 17 }, deleteGlyph: { color: '#855748', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
-  privacyBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: C.greenLight, borderRadius: 16, marginBottom: 27 }, privacyShield: { width: 35, height: 35, backgroundColor: '#D7E3D4', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, shieldGlyph: { color: C.green, fontSize: 19 }, privacyCopy: { flex: 1 }, privacyTitle: { color: '#435943', fontSize: 13, fontWeight: '700', marginBottom: 5 }, privacyBody: { color: '#65745F', fontSize: 12, lineHeight: 17 }, settingsSectionLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginTop: 3 }, settingsCard: { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, paddingHorizontal: 15, marginBottom: 23 }, settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 }, settingIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' }, settingGlyph: { color: C.cocoa, fontSize: 15 }, settingText: { flex: 1 }, settingTitle: { color: C.ink, fontSize: 12, fontWeight: '700', lineHeight: 17 }, settingDescription: { color: C.muted, fontSize: 12, lineHeight: 15, marginTop: 3 }, switchTrack: { width: 42, height: 25, borderRadius: 14, backgroundColor: '#DED8D0', padding: 3, justifyContent: 'center' }, switchOn: { backgroundColor: C.cocoa }, switchThumb: { width: 19, height: 19, borderRadius: 10, backgroundColor: C.white }, switchThumbOn: { alignSelf: 'flex-end' }, settingSeparator: { height: 1, backgroundColor: C.line, marginLeft: 44 }, gatewaySection: { borderRadius: 18 }, gatewaySectionFocused: { borderWidth: 1, borderColor: '#D6BAA5', padding: 10, marginHorizontal: -10, marginBottom: 14, backgroundColor: '#F8F0E8' }, gatewayIntro: { flexDirection: 'row', gap: 11, paddingTop: 16, paddingBottom: 14 }, gatewayIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, gatewayGlyph: { color: C.cocoa, fontSize: 16 }, inputLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.1, fontWeight: '700', marginBottom: 7 }, gatewayInput: { height: 45, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 12 }, gatewayActions: { paddingTop: 11, paddingBottom: 15, gap: 9 }, connectionStatus: { color: C.muted, fontSize: 11, lineHeight: 15 }, connectionReady: { color: C.green }, connectionError: { color: C.rose }, clearRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15 }, clearIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#F8EAE5', alignItems: 'center', justifyContent: 'center' }, clearGlyph: { color: C.rose, fontSize: 16 }, clearButton: { minHeight: 36, minWidth: 54, borderRadius: 11, borderWidth: 1, borderColor: '#E7D8D2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 }, clearButtonText: { color: C.rose, fontSize: 11, fontWeight: '700' }, versionText: { textAlign: 'center', color: '#6E6258', fontSize: 10, letterSpacing: 1.4, marginTop: 2, marginBottom: 16 },
+  privacyBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: C.greenLight, borderRadius: 16, marginBottom: 27 }, privacyShield: { width: 35, height: 35, backgroundColor: '#D7E3D4', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, shieldGlyph: { color: C.green, fontSize: 19 }, privacyCopy: { flex: 1 }, privacyTitle: { color: '#435943', fontSize: 13, fontWeight: '700', marginBottom: 5 }, privacyBody: { color: '#65745F', fontSize: 12, lineHeight: 17 }, settingsSectionLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginTop: 3 }, settingsCard: { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, paddingHorizontal: 15, marginBottom: 23 }, settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 }, settingIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' }, settingGlyph: { color: C.cocoa, fontSize: 15 }, settingText: { flex: 1 }, settingTitle: { color: C.ink, fontSize: 12, fontWeight: '700', lineHeight: 17 }, settingDescription: { color: C.muted, fontSize: 12, lineHeight: 15, marginTop: 3 }, switchHitArea: { padding: 2 }, switchTrack: { width: 42, height: 25, borderRadius: 14, padding: 3, justifyContent: 'center' }, switchThumb: { width: 19, height: 19, borderRadius: 10, backgroundColor: C.white }, settingSeparator: { height: 1, backgroundColor: C.line, marginLeft: 44 }, gatewaySection: { borderRadius: 18 }, gatewaySectionFocused: { borderWidth: 1, borderColor: '#D6BAA5', padding: 10, marginHorizontal: -10, marginBottom: 14, backgroundColor: '#F8F0E8' }, gatewayIntro: { flexDirection: 'row', gap: 11, paddingTop: 16, paddingBottom: 14 }, gatewayIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, gatewayGlyph: { color: C.cocoa, fontSize: 16 }, inputLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.1, fontWeight: '700', marginBottom: 7 }, gatewayInput: { height: 45, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 12 }, gatewayActions: { paddingTop: 11, paddingBottom: 15, gap: 9 }, connectionStatus: { color: C.muted, fontSize: 11, lineHeight: 15 }, connectionReady: { color: C.green }, connectionError: { color: C.rose }, clearRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15 }, clearIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#F8EAE5', alignItems: 'center', justifyContent: 'center' }, clearGlyph: { color: C.rose, fontSize: 16 }, clearButton: { minHeight: 36, minWidth: 54, borderRadius: 11, borderWidth: 1, borderColor: '#E7D8D2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 }, clearButtonText: { color: C.rose, fontSize: 11, fontWeight: '700' }, versionText: { textAlign: 'center', color: '#6E6258', fontSize: 10, letterSpacing: 1.4, marginTop: 2, marginBottom: 16 },
   button: { minHeight: 42, backgroundColor: C.cocoa, borderRadius: 13, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 17 }, buttonQuiet: { backgroundColor: '#F2ECE4' }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: C.white, fontSize: 11, fontWeight: '700' }, buttonTextQuiet: { color: C.cocoaDark }, pressed: { opacity: 0.75 }, disabledText: { color: '#6E6258' },
   localLoadingScreen: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: C.canvas },
   localLoadingTitle: { color: C.ink, fontSize: 21, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
@@ -1622,6 +1655,8 @@ const styles = StyleSheet.create({
   typingIndicator: { minWidth: 48, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 12 },
   typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.muted },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(45, 36, 29, 0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 }, modalCard: { width: '100%', maxWidth: 460, backgroundColor: C.paper, borderRadius: 22, padding: 22 }, modalTopline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }, modalIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, modalIconText: { color: C.cocoa, fontSize: 18 }, closeButton: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.paperAlt }, closeText: { color: C.muted, fontSize: 22, lineHeight: 24 }, modalTitle: { color: C.ink, fontWeight: '700', fontSize: 20, letterSpacing: -0.4 }, modalBody: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 7, marginBottom: 16 }, memoryInput: { minHeight: 100, maxHeight: 180, backgroundColor: '#F9F6F1', borderColor: C.line, borderWidth: 1, borderRadius: 14, padding: 13, color: C.ink, fontSize: 13, lineHeight: 19 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 17 }, suggestedFact: { color: C.ink, fontSize: 15, lineHeight: 22, fontWeight: '600', backgroundColor: '#F9F6F1', borderRadius: 14, padding: 13, marginTop: 12 }, historyCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: C.paper, borderRadius: 22, padding: 22 }, historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 }, historyList: { maxHeight: 430, marginTop: 14 }, historyItemWrap: { position: 'relative', width: '100%', minWidth: 0, marginBottom: 6 }, historyItem: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 3, paddingHorizontal: 4, paddingVertical: 4, borderRadius: 13, borderWidth: 1, borderColor: 'transparent' }, historyItemOpen: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, borderRadius: 10 }, historyItemSelected: { backgroundColor: '#F2E5C9', borderColor: '#D9B879' }, chatMenuTrigger: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, chatMenuDots: { color: C.muted, fontSize: 16, fontWeight: '700', letterSpacing: 1 }, chatActionMenu: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 12, padding: 5, marginHorizontal: 5, marginTop: -1, shadowColor: '#302821', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, chatActionItem: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8 }, chatActionText: { color: C.ink, fontSize: 12, fontWeight: '500' }, chatActionDelete: { backgroundColor: '#FCF5F2' }, chatActionDeleteText: { color: C.rose }, historyItemCopy: { flex: 1, minWidth: 0 }, historyItemTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, historyItemTitleSelected: { color: '#5A422C' }, historyItemPreview: { color: C.muted, fontSize: 11, marginTop: 5 }, historyEmpty: { textAlign: 'center', color: C.muted, fontSize: 12, lineHeight: 19, padding: 20 }, memorySuggestionError: { color: C.rose, fontSize: 11, lineHeight: 16, paddingHorizontal: 8, paddingVertical: 8 },
+  stopButton: { backgroundColor: '#7B453E' },
+  stopIcon: { width: 15, height: 15, borderRadius: 3, backgroundColor: C.white },
 });
 
 export default App;
