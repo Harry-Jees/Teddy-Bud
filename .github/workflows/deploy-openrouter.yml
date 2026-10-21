@@ -75,8 +75,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "attempted=true" >> "$GITHUB_OUTPUT"
           npx wrangler deploy --name "$WORKER_NAME" --message "OpenRouter migration via GitHub Actions"
+          echo "deployed=true" >> "$GITHUB_OUTPUT"
       - name: Verify deployed version includes all required secret bindings
         shell: bash
         run: |
@@ -128,7 +128,7 @@ jobs:
           }
           echo "Worker health is ready and model discovery remains authenticated."
       - name: Roll back automatically if deployment or smoke tests fail
-        if: failure() && steps.deploy.outputs.attempted == 'true' && steps.previous.outputs.version_id != ''
+        if: failure() && steps.deploy.outputs.deployed == 'true' && steps.previous.outputs.version_id != ''
         shell: bash
         env:
           PREVIOUS_VERSION_ID: ${{ steps.previous.outputs.version_id }}
