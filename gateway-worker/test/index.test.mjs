@@ -365,11 +365,11 @@ test('the gateway adds crisis response guidance when the latest user message sig
   }
 });
 
-test('chat requests reject missing auth and surface OpenRouter model errors safely', async () => {
+test('chat requests reject missing auth and surface upstream errors for approved models safely', async () => {
   const env = makeEnv();
   env.OPENROUTER_API_KEY = 'test-openrouter-key';
   const body = {
-    model: 'openai/unavailable-model:free',
+    model: 'openai/gpt-oss-20b:free',
     messages: [{ role: 'user', content: 'Hello.' }],
   };
   const unauthorized = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', body), env));
