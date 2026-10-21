@@ -365,6 +365,86 @@ test('the gateway adds crisis response guidance when the latest user message sig
   }
 });
 
+test('chat requests fall back across free model endpoints when one is unavailable', async () => {
+  const env = makeEnv();
+  env.OPENROUTER_API_KEY = 'test-openrouter-key';
+  const accessToken = await createSession(env, 'model-fallback-test');
+  const attemptedModels = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input);
+    assert.equal(url.pathname, '/api/v1/chat/completions');
+    const body = JSON.parse(init.body);
+    attemptedModels.push(body.model);
+    if (body.model === 'openai/gpt-oss-20b:free') {
+      return new Response(JSON.stringify({ error: { message: 'No endpoints found for this model.' } }), {
+        status: 404, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (body.model === 'qwen/qwen3.8-27b:free') {
+      return new Response(JSON.stringify({ error: { message: 'Model endpoint is rate-limited.' } }), {
+        status: 429, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    assert.equal(body.model, 'openrouter/free');
+    return new Response(JSON.stringify({
+      choices: [{ message: { role: 'assistant', content: 'I am here with you.' } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const result = await jsonResponse(await worker.fetch(request(
+      '/v1/chat/completions',
+      'POST',
+      { model: 'openai/gpt-oss-20b:free', messages: [{ role: 'user', content: 'Hello.' }] },
+      { Authorization: `Bearer ${accessToken}` },
+    ), env));
+    assert.equal(result.status, 200);
+    assert.equal(result.body.choices[0].message.content, 'I am here with you.');
+    assert.deepEqual(attemptedModels, [
+      'openai/gpt-oss-20b:free',
+      'qwen/qwen3.8-27b:free',
+      'openrouter/free',
+    ]);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+test('vision requests can fall back to the free model router', async () => {
+  const env = makeEnv();
+  env.OPENROUTER_API_KEY = 'test-openrouter-key';
+  const accessToken = await createSession(env, 'vision-fallback-test');
+  const oldFetch = globalThis.fetch;
+  const attemptedModels = [];
+  globalThis.fetch = async (_input, init = {}) => {
+    const body = JSON.parse(init.body);
+    attemptedModels.push(body.model);
+    if (body.model === 'qwen/qwen3.8-27b:free') {
+      return new Response(JSON.stringify({ error: { message: 'No endpoints found for this model.' } }), {
+        status: 404, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({
+      choices: [{ message: { role: 'assistant', content: 'I can see the image.' } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const result = await jsonResponse(await worker.fetch(request(
+      '/v1/chat/completions',
+      'POST',
+      { model: 'qwen/qwen3.8-27b:free', messages: [{ role: 'user', content: [{ type: 'text', text: 'Describe this image.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }] },
+      { Authorization: `Bearer ${accessToken}` },
+    ), env));
+    assert.equal(result.status, 200);
+    assert.equal(result.body.choices[0].message.content, 'I can see the image.');
+    assert.deepEqual(attemptedModels, ['qwen/qwen3.8-27b:free', 'openrouter/free']);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('chat requests reject missing auth and surface upstream errors for approved models safely', async () => {
   const env = makeEnv();
   env.OPENROUTER_API_KEY = 'test-openrouter-key';
