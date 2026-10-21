@@ -458,6 +458,40 @@ test('signup attempts are rate-limited and CORS is restricted to app origins', a
   assert.equal(blockedOrigin.headers.get('Access-Control-Allow-Origin'), null);
 });
 
+test('model catalog only advertises models approved by the chat proxy', async () => {
+  const env = makeEnv();
+  env.OPENROUTER_API_KEY = 'test-openrouter-key';
+  const accessToken = await createSession(env, 'model-catalog-test-user');
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(new URL(input).pathname, '/api/v1/models');
+    return new Response(JSON.stringify({
+      data: [
+        { id: 'openai/gpt-oss-20b:free', name: 'Approved chat model' },
+        { id: 'qwen/qwen3.8-27b:free', name: 'Approved vision model' },
+        { id: 'vendor/paid-model', name: 'Not approved' },
+      ],
+      object: 'list',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const result = await jsonResponse(await worker.fetch(request(
+      '/v1/models',
+      'GET',
+      undefined,
+      { Authorization: 'Bearer ' + accessToken },
+    ), env));
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.data.map(model => model.id), [
+      'openai/gpt-oss-20b:free',
+      'qwen/qwen3.8-27b:free',
+    ]);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('public health is cheap and never calls the upstream provider', async () => {
   const env = makeEnv();
   env.OPENROUTER_API_KEY = 'test-openrouter-key';
