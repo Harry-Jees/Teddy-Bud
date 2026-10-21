@@ -99,8 +99,9 @@ backup envelope so the passphrase can derive the same key during restore.
 
 ## Data sent to the AI provider
 
-Chat requests go through the Cloudflare gateway to the configured NVIDIA-hosted
-model API. Privacy controls determine whether memories, selected chat excerpts,
+Chat requests go through the Cloudflare gateway to OpenRouter's OpenAI-compatible
+model API. The gateway advertises and accepts only the configured allowlist of
+approved free model IDs. OpenRouter account limits and upstream availability still apply. Privacy controls determine whether memories, selected chat excerpts,
 and the About me note are added to a request. The gateway holds provider
 credentials; those credentials are not shipped in the client. Consult the
 privacy controls before sending sensitive information.
