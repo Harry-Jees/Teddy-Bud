@@ -177,7 +177,6 @@ function parseMemorySuggestion(content: string): string | null {
   }
   return fact.trim().slice(0, 500);
 }
-
 function parseChatTitle(content: string): string | null {
   const normalized = content.trim().replace(/^title\s*:\s*/i, '').replace(/["'“”]/g, '').replace(/\s+/g, ' ');
   const title = normalized.split(' ').filter(Boolean).slice(0, 2).join(' ').replace(/[.,:;!?]+$/g, '').slice(0, 48).trim();
@@ -358,7 +357,6 @@ export class GatewayService {
     const body = await this.requestWithToken<{ data?: any[] }>('/v1/models', {}, accessToken);
     return (body.data ?? []).map(normalizeModel).filter((model): model is GatewayModel => Boolean(model));
   }
-
   async getModels(accessToken: string): Promise<string[]> { return (await this.getModelCatalog(accessToken)).map(model => model.id); }
   async getAvailableCodingModels(accessToken: string): Promise<GatewayModel[]> { return (await this.getModelCatalog(accessToken)).filter(model => model.capabilities.includes('coding')); }
 
@@ -467,9 +465,50 @@ export class GatewayService {
       provider: { sort: 'latency', data_collection: 'deny' },
     };
     if (options.enableWebBrowsing) body.tools = [{ type: 'openrouter:web_search' }];
-    const content = body.stream
-      ? await this.requestChatStream('/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, accessToken, options.onTextChunk!, options.signal)
-      : (await this.requestWithToken<{ choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } }>('/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: options.signal }, accessToken, 1)).choices?.[0]?.message?.content;
+    let content: string | undefined;
+    if (body.stream) {
+      let chunksReceived = 0;
+      try {
+        content = await this.requestChatStream(
+          '/v1/chat/completions',
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+          accessToken,
+          chunk => {
+            chunksReceived += 1;
+            options.onTextChunk?.(chunk);
+          },
+          options.signal,
+        );
+      } catch (streamError) {
+        // Some Android fetch implementations report a stream-capable body but
+        // terminate it without delivering events. Retry once using ordinary JSON
+        // only when no text was delivered, so partial replies are never duplicated.
+        if (Platform.OS === 'web' || options.signal?.aborted || chunksReceived > 0) throw streamError;
+        const fallbackBody = { ...body, stream: false };
+        const fallback = await this.requestWithToken<{
+          choices?: Array<{ message?: { content?: string } }>;
+          error?: { message?: string };
+        }>('/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fallbackBody),
+          signal: options.signal,
+        }, accessToken, 1);
+        content = fallback.choices?.[0]?.message?.content;
+        if (typeof content === 'string' && content.trim()) options.onTextChunk?.(content);
+        else throw streamError;
+      }
+    } else {
+      content = (await this.requestWithToken<{
+        choices?: Array<{ message?: { content?: string } }>;
+        error?: { message?: string };
+      }>('/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      }, accessToken, 1)).choices?.[0]?.message?.content;
+    }
     if (typeof content !== 'string' || !content.trim()) throw new Error('No reply was returned by the conversation service.');
     return content.trim();
   }
