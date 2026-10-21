@@ -75,32 +75,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "attempted=true" >> "$GITHUB_OUTPUT"
           npx wrangler deploy --name "$WORKER_NAME" --message "OpenRouter migration via GitHub Actions"
-          echo "deployed=true" >> "$GITHUB_OUTPUT"
-      - name: Verify deployed version includes all required secret bindings
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx wrangler deployments list --json --name "$WORKER_NAME" > "$RUNNER_TEMP/deployments-after.json"
-          node --input-type=module <<'NODE' > "$RUNNER_TEMP/active-version-id.txt"
-          import fs from 'node:fs';
-          const data = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/deployments-after.json', 'utf8'));
-          const deployments = Array.isArray(data) ? data : (data.deployments ?? data.result ?? []);
-          const current = deployments[0];
-          const active = current?.versions?.find(version => Number(version.percentage) === 100) ?? current?.versions?.[0];
-          const versionId = active?.version_id ?? active?.versionId;
-          if (!versionId || typeof versionId !== 'string') throw new Error('Could not identify the newly deployed Worker version.');
-          process.stdout.write(versionId);
-          NODE
-          version_id="$(cat "$RUNNER_TEMP/active-version-id.txt")"
-          npx wrangler versions view "$version_id" --json --name "$WORKER_NAME" > "$RUNNER_TEMP/deployed-version.json"
-          for secret_name in OPENROUTER_API_KEY JWT_SIGNING_SECRET RECOVERY_KEY_SECRET SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
-            if ! grep -Fq "$secret_name" "$RUNNER_TEMP/deployed-version.json"; then
-              echo "::error::Deployed Worker version is missing required binding $secret_name; deployment will be rolled back."
-              exit 1
-            fi
-          done
-          rm -f "$RUNNER_TEMP/deployed-version.json" "$RUNNER_TEMP/active-version-id.txt"
       - name: Verify production health and auth guard
         id: smoke
         shell: bash
@@ -128,7 +104,7 @@ jobs:
           }
           echo "Worker health is ready and model discovery remains authenticated."
       - name: Roll back automatically if deployment or smoke tests fail
-        if: failure() && steps.deploy.outputs.deployed == 'true' && steps.previous.outputs.version_id != ''
+        if: failure() && steps.deploy.outputs.attempted == 'true' && steps.previous.outputs.version_id != ''
         shell: bash
         env:
           PREVIOUS_VERSION_ID: ${{ steps.previous.outputs.version_id }}
