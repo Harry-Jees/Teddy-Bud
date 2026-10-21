@@ -16,3 +16,6 @@ class_name = "GatewayStateStore"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GatewayStateStore"]
+
+[ai]
+binding = "AI"
