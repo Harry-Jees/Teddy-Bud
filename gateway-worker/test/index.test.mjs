@@ -566,7 +566,9 @@ test('model catalog only advertises models approved by the chat proxy', async ()
     assert.deepEqual(result.body.data.map(model => model.id), [
       'openai/gpt-oss-20b:free',
       'qwen/qwen3.8-27b:free',
+      'openrouter/free',
     ]);
+    assert.deepEqual(result.body.data[2].capabilities, ['coding', 'vision', 'web_search']);
   } finally {
     globalThis.fetch = oldFetch;
   }
