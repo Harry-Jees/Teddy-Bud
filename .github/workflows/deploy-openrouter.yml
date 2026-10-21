@@ -45,12 +45,13 @@ jobs:
         run: |
           set -euo pipefail
           npx wrangler secret list --name "$WORKER_NAME" > "$RUNNER_TEMP/worker-secrets.txt"
-          for secret_name in OPENROUTER_API_KEY JWT_SIGNING_SECRET RECOVERY_KEY_SECRET SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+          while IFS= read -r secret_name; do
+            [ -n "$secret_name" ] || continue
             if ! grep -Fq "$secret_name" "$RUNNER_TEMP/worker-secrets.txt"; then
               echo "::error::Required Cloudflare Worker secret binding is missing: $secret_name"
               exit 1
             fi
-          done
+          done < ../.github/required-worker-secrets.txt
           rm -f "$RUNNER_TEMP/worker-secrets.txt"
       - name: Capture the active version for rollback
         id: previous
