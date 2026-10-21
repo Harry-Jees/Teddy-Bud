@@ -132,7 +132,7 @@ describe('GatewayService', () => {
         '',
         'data: [DONE]',
         '',
-      ].join('\\n'),
+      ].join('\n'),
     };
     const fetchMock = jest.fn().mockResolvedValueOnce(bufferedSse);
     globalThis.fetch = fetchMock;
