@@ -506,11 +506,11 @@ async function validateSession(request, env) {
   return json(200, { userId: claims.sub });
 }
 
-const PRIMARY_MODEL = '@cf/deepseek-ai/deepseek-v4.1-flash-1017';
-const FALLBACK_MODEL = '@cf/zai-org/glm-5.3-flash';
+const PRIMARY_MODEL = '@cf/qwen/qwen3.8-27b';
+const FALLBACK_MODEL = '@cf/zai-org/glm-4.7-flash';
 const APPROVED_MODELS = [
-  { id: PRIMARY_MODEL, name: 'DeepSeek V4.1 Flash', capabilities: ['coding', 'vision'], architecture: { input_modalities: ['text', 'image'] } },
-  { id: FALLBACK_MODEL, name: 'GLM-5.3 Flash', capabilities: ['coding', 'vision'], architecture: { input_modalities: ['text', 'image'] } },
+  { id: PRIMARY_MODEL, name: 'Qwen 3.8 27B', capabilities: ['coding', 'vision', 'reasoning', 'function_calling', 'multilingual'], architecture: { input_modalities: ['text', 'image'] } },
+  { id: FALLBACK_MODEL, name: 'GLM-4.7 Flash', capabilities: ['coding', 'reasoning', 'function_calling', 'multilingual'], architecture: { input_modalities: ['text'] } },
 ];
 
 async function models(request, env) {
