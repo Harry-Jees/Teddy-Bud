@@ -458,7 +458,8 @@ export class GatewayService {
     const body: Record<string, unknown> = {
       model: selected.id,
       messages,
-      stream: typeof options.onTextChunk === 'function',
+      // React Native's fetch streaming support is inconsistent across Android versions. Use a normal JSON response on native platforms.
+      stream: Platform.OS === 'web' && typeof options.onTextChunk === 'function',
       max_tokens: options.task === 'coding' || options.task === 'vision' ? 220 : 4096,
       temperature: 0.65,
       top_p: 0.9,
@@ -508,6 +509,9 @@ export class GatewayService {
         body: JSON.stringify(body),
         signal: options.signal,
       }, accessToken, 1)).choices?.[0]?.message?.content;
+      // Native requests are deliberately non-streaming; publish the complete reply
+      // through the same UI callback after JSON parsing succeeds.
+      if (typeof content === 'string' && content.trim()) options.onTextChunk?.(content.trim());
     }
     if (typeof content !== 'string' || !content.trim()) throw new Error('No reply was returned by the conversation service.');
     return content.trim();
