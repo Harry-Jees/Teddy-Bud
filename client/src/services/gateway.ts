@@ -132,7 +132,9 @@ function preferredChatModels(catalog: GatewayModel[]): GatewayModel[] {
   const preferred = PREFERRED_CHAT_MODELS
     .map(id => catalog.find(model => model.id.toLowerCase() === id))
     .filter((model): model is GatewayModel => Boolean(model));
-  return preferred;
+  if (preferred.length) return preferred;
+  const freeRouter = catalog.find(model => model.id === 'openrouter/free');
+  return freeRouter ? [freeRouter] : [];
 }
 
 function needsAppGuide(message: string, history: GatewayMessage[]): boolean {
@@ -401,6 +403,7 @@ export class GatewayService {
       ? catalog.find(model => model.id === options.modelId)
       : requiredCapability === 'vision'
         ? catalog.find(model => model.id.toLowerCase() === PREFERRED_VISION_MODEL && model.capabilities.includes('vision'))
+          ?? catalog.find(model => model.id === 'openrouter/free' && model.capabilities.includes('vision'))
         : requiredCapability === 'web_search'
           ? chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['web_search'] as GatewayCapability[] }
         : chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['coding'] as GatewayCapability[] };
