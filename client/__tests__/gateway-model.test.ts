@@ -97,22 +97,29 @@ describe('GatewayService', () => {
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer expired-token' }));
     expect(fetchMock.mock.calls[1][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer refreshed-token' }));
   });
-  it('uses the streaming chat protocol whenever text chunks are requested', async () => {
+  it('uses streaming on web when text chunks are requested', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce(response({
       choices: [{ message: { content: 'A streamed reply.' } }],
     }));
     globalThis.fetch = fetchMock;
     const chunks: string[] = [];
-    await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
-      'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
-    )).resolves.toBe('A streamed reply.');
-    const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(request.stream).toBe(true);
-    expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Accept: 'text/event-stream' }));
-    expect(chunks.join('')).toBe('A streamed reply.');
+    const { Platform } = require('react-native');
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+    try {
+      await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
+        'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
+      )).resolves.toBe('A streamed reply.');
+      const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(request.stream).toBe(true);
+      expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Accept: 'text/event-stream' }));
+      expect(chunks.join('')).toBe('A streamed reply.');
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
   });
 
-  it('parses a buffered SSE response when native fetch has no readable body stream', async () => {
+  it('parses a buffered SSE response when web fetch has no readable body stream', async () => {
     const bufferedSse = {
       ok: true,
       status: 200,
@@ -125,15 +132,22 @@ describe('GatewayService', () => {
         '',
         'data: [DONE]',
         '',
-      ].join('\n'),
+      ].join('\\n'),
     };
     const fetchMock = jest.fn().mockResolvedValueOnce(bufferedSse);
     globalThis.fetch = fetchMock;
     const chunks: string[] = [];
-    await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
-      'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
-    )).resolves.toBe('Hello there.');
-    expect(chunks.join('')).toBe('Hello there.');
+    const { Platform } = require('react-native');
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+    try {
+      await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
+        'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
+      )).resolves.toBe('Hello there.');
+      expect(chunks.join('')).toBe('Hello there.');
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
   });
 
   it('uses a buffered JSON response on Android and publishes it through the reply callback', async () => {
