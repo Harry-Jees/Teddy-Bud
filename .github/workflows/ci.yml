@@ -39,6 +39,7 @@ jobs:
       - run: npm ci
       - run: npm test -- --runInBand
       - run: npx tsc --noEmit
+      - run: npm run build:web
 
   worker-tests:
     if: ${{ inputs.source_run_id == '' }}
