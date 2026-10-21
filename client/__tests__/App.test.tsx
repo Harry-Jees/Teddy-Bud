@@ -7,6 +7,24 @@ import ReactTestRenderer from 'react-test-renderer';
 import { Animated, Modal, Text } from 'react-native';
 import { ChatPage } from '../App';
 
+jest.mock('@react-native-documents/picker', () => ({
+  errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
+  isErrorWithCode: () => false,
+  keepLocalCopy: jest.fn(),
+  pick: jest.fn(),
+  saveDocuments: jest.fn(),
+  types: { json: 'application/json' },
+}));
+
+jest.mock('react-native-file-access', () => ({
+  Dirs: { CacheDir: '/tmp' },
+  FileSystem: {
+    writeFile: jest.fn(),
+    readFile: jest.fn(),
+    unlink: jest.fn(),
+  },
+}));
+
 jest.mock('@op-engineering/op-sqlite', () => ({
   Storage: class {
     async getItem() {
