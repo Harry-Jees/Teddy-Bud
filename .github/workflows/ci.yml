@@ -5,6 +5,8 @@ on:
     paths-ignore:
       - 'dist/**'
   pull_request:
+    paths-ignore:
+      - 'dist/**'
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -190,7 +192,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
           lfs: true
       - name: Download artifacts from the selected run
         uses: actions/download-artifact@v4
@@ -223,7 +226,7 @@ jobs:
           if-no-files-found: error
       # Pull-request runs verify and publish an artifact only; branch push/dispatch runs commit dist/.
       - name: Commit replaced distributions to the triggering branch
-        if: github.ref_type == 'branch' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: (github.ref_type == 'branch' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -234,5 +237,6 @@ jobs:
             echo "Distribution files are already up to date."
           else
             git commit -m "chore: replace compiled distributions with verified builds"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
+            target_ref="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git push origin "HEAD:${target_ref}"
           fi
