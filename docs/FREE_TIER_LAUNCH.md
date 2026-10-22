@@ -8,8 +8,8 @@ Teddy Bud launches with one plan: **Free**. Do not add checkout, payment-provide
 
 - One unified allowance of **40 credits per user per UTC day**.
 - Text requests cost **1 credit**.
-- Image-containing requests cost **5 credits**.
-- The gateway detects image content and selects the model server-side: GLM-4.7 Flash for text, Qwen 3.8 27B for images.
+- Image-containing requests cost **1 credit**, the same as a text request.
+- The gateway detects image content and selects the model server-side: GLM-4.7 Flash for text, Qwen 3.8 27B for images.\n- Free includes four personalities; Pro will offer seven and Premium ten when those plans launch.
 - Durable Object storage reserves credits atomically before inference, refunds reservations on inference errors before a response is returned, and commits successful requests.
 - Authenticated `GET /v1/credits` returns the current balance and reset time.
 - The app's client cannot supply a user ID, plan, or credit cost to change its allowance.
@@ -29,7 +29,7 @@ Before deployment:
 5. Deploy via the protected workflow with automatic rollback; then perform authenticated text and image smoke tests.
 6. Monitor Cloudflare AI usage and keep an emergency way to disable inference if spending exceeds budget.
 
-## Future paid tiers
+## Future paid tiers\n\nPro and Premium are announced as coming soon only; checkout and paid entitlements remain disabled. Pro is planned for seven personalities and improved models; Premium is planned for ten personalities and the highest model tier. Do not expose locked personalities as selectable in Free.
 
 Keep future plan/entitlement logic provider-independent, but do not collect payments yet. When the product is ready, compare and test providers such as Razorpay and Cashfree, confirm merchant eligibility and all-in recurring fees, then add checkout and signed webhook handling in a separate release. A paid plan must not be advertised or activated until payment verification, idempotency, refunds, cancellations, renewals, and durable entitlement updates are tested.
 
