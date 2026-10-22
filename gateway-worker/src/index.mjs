@@ -607,25 +607,27 @@ async function completions(request, env) {
       }
     }
   }
-  // Enforce model routing at the gateway so clients cannot send images to a text-only model
-  // or deliberately select the more expensive vision model for ordinary text requests.
+  // Enforce model routing at the gateway so clients cannot send images to a text-only model.
   const effectiveModel = hasImage ? PRIMARY_MODEL : FALLBACK_MODEL;
-  // The launch policy intentionally charges one credit for either message type.
-  const costCredits = 1;
+  // User messages cost one credit regardless of text/image. Small auxiliary tasks
+  // use a separate strict daily cap so auto-titles and memory suggestions don't
+  // silently consume a user's 40 chat credits.
+  const backgroundTask = ['title', 'memory'].includes(input.metadata?.teddyBudTask) ? input.metadata.teddyBudTask : null;
+  const costCredits = backgroundTask ? 0 : 1;
   const reservationId = crypto.randomUUID();
   const reservation = await dailyCreditsRequest(env, claims.sub, '/credits/reserve', {
-    reservationId, cost: costCredits, dailyLimit: 40,
+    reservationId, cost: costCredits, background: Boolean(backgroundTask), dailyLimit: 40, backgroundDailyLimit: 10,
   });
   if (!reservation.ok) {
     return json(503, { error: { message: 'Usage limits are temporarily unavailable. Please try again shortly.' } });
   }
   const quota = await reservation.json();
   if (quota.allowed !== true) {
-    return json(429, { error: { message: 'You have used today’s 40 credits. Your credits reset at 00:00 UTC.', code: 'DAILY_CREDITS_EXHAUSTED', used: quota.used, limit: 40, remaining: 0, resetAt: quota.resetAt } });
+    return json(429, { error: { message: quota.backgroundLimit ? 'The daily limit for background tasks has been reached. Please try again tomorrow.' : 'You have used today’s 40 credits. Your credits reset at 00:00 UTC.', code: quota.backgroundLimit ? 'DAILY_BACKGROUND_TASKS_EXHAUSTED' : 'DAILY_CREDITS_EXHAUSTED', used: quota.used, limit: 40, remaining: Math.max(0, 40 - (quota.used ?? 40)), resetAt: quota.resetAt } });
   }
   const options = {
     messages: filteredMessages,
-    max_tokens: Number.isInteger(input.max_tokens) && input.max_tokens > 0 ? Math.min(input.max_tokens, hasImage ? 512 : 1536) : (hasImage ? 512 : 768),
+    max_tokens: Number.isInteger(input.max_tokens) && input.max_tokens > 0 ? Math.min(input.max_tokens, backgroundTask ? 256 : hasImage ? 512 : 1536) : (backgroundTask ? 128 : hasImage ? 512 : 768),
     temperature: typeof input.temperature === 'number' ? Math.max(0, Math.min(input.temperature, 1.2)) : 0.7,
     stream: input.stream === true,
   };
