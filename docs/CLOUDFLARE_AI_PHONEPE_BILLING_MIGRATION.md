@@ -2,14 +2,17 @@
 
 ## Current migration target
 
-- Primary conversation model: `@cf/deepseek-ai/deepseek-v4.1-flash-1017` (multimodal, reasoning, long context).
-- Secondary model: `@cf/zai-org/glm-5.3-flash` (multimodal fallback).
+- Text conversation model: `@cf/zai-org/glm-4.7-flash` (text-only, lower-cost routing).
+- Image understanding model: `@cf/qwen/qwen3.8-27b` (vision-capable).
+- Initial Free plan: 40 credits per user per UTC day; one text message or one image message costs one credit.
+- Pro (7 personalities) and Premium (10 personalities) are coming soon; no checkout is enabled in the initial release.
+- Industrial / Enterprise local inference is a planned deployment mode; see `docs/PLANS_AND_ENTERPRISE.md`.
 - Inference is routed through the gateway's Cloudflare Workers AI binding; the client must never receive provider credentials.
 - PhonePe Payment Gateway is the intended checkout provider. Do not enable paid entitlements until merchant onboarding, signed webhook verification, idempotency, refunds and renewal events are implemented and tested.
 
 ## Required Cloudflare setup
 
-1. Enable Workers Paid billing or prepaid AI Gateway credits. These frontier models are not available on the standard Workers Free billing allowance.
+1. Confirm the account's Workers AI free allowance and model pricing before launch. Any free daily allocation is shared by the Cloudflare account, not per Teddy Bud user; inference above the allowance may incur charges.
 2. Configure the `AI` binding in `gateway-worker/wrangler.toml`.
 3. Monitor actual Workers AI model usage and account-level spend; the daily free allocation is shared by the Cloudflare account, not per Teddy Bud user.
 4. Deploy to a staging Worker first and run integration tests before production traffic is switched.
@@ -27,6 +30,8 @@ Reserve an upper-bound amount before inference, reconcile on completion, and rel
 For pricing, calculate the included inference budget plus allocated infrastructure and payment fees, then apply a target gross margin and abuse/refund buffer. Publish limits only after real traffic measurements establish a safe allowance.
 
 ## PhonePe production prerequisites
+
+Payment integration is deferred for the initial Free-only release. Do not add checkout or paid entitlements until plan demand and actual model costs have been measured. The requirements below are a future checklist, not implemented functionality.
 
 Do not commit credentials. The following must be provisioned in Cloudflare secrets after merchant onboarding:
 
