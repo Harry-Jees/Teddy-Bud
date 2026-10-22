@@ -134,9 +134,7 @@ function preferredChatModels(catalog: GatewayModel[]): GatewayModel[] {
   const preferred = PREFERRED_CHAT_MODELS
     .map(id => catalog.find(model => model.id.toLowerCase() === id))
     .filter((model): model is GatewayModel => Boolean(model));
-  if (preferred.length) return preferred;
-  const freeRouter = catalog.find(model => model.id === 'openrouter/free');
-  return freeRouter ? [freeRouter] : [];
+  return preferred;
 }
 
 function needsAppGuide(message: string, history: GatewayMessage[]): boolean {
@@ -474,9 +472,7 @@ export class GatewayService {
       max_tokens: options.task === 'coding' || options.task === 'vision' ? 220 : 4096,
       temperature: 0.65,
       top_p: 0.9,
-      provider: { sort: 'latency', data_collection: 'deny' },
     };
-    if (options.enableWebBrowsing) body.tools = [{ type: 'openrouter:web_search' }];
     let content: string | undefined;
     if (body.stream) {
       let chunksReceived = 0;
