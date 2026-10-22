@@ -35,7 +35,8 @@ class MemorySessions {
         }
         if (pathname.startsWith('/credits/') && (method === 'POST' || method === 'GET')) {
           const day = new Date().toISOString().slice(0, 10);
-          state.credits = state.credits?.day === day ? state.credits : { day, used: 0, reservations: {} };
+          state.credits = state.credits?.day === day ? state.credits : { day, used: 0, backgroundUsed: 0, reservations: {} };
+          state.credits.backgroundUsed ??= 0;
           const reset = new Date(`${day}T00:00:00.000Z`);
           reset.setUTCDate(reset.getUTCDate() + 1);
           const resetAt = reset.toISOString();
@@ -45,15 +46,23 @@ class MemorySessions {
           }
           const body = JSON.parse(init.body ?? (input instanceof Request ? await input.text() : '{}'));
           if (pathname === '/credits/reserve') {
-            if (state.credits.used + body.cost > 40) return new Response(JSON.stringify({ allowed: false, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
+            const background = body.background === true;
+            if (background && state.credits.backgroundUsed >= Math.min(body.backgroundDailyLimit ?? 10, 10)) {
+              return new Response(JSON.stringify({ allowed: false, backgroundLimit: true, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
+            }
+            if (!background && state.credits.used + body.cost > 40) return new Response(JSON.stringify({ allowed: false, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
+            if (background) state.credits.backgroundUsed += 1;
             state.credits.used += body.cost;
-            state.credits.reservations[body.reservationId] = { cost: body.cost, status: 'reserved' };
+            state.credits.reservations[body.reservationId] = { cost: body.cost, background, status: 'reserved' };
             this.values.set(id, state);
             return new Response(JSON.stringify({ allowed: true, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
           }
           const reservation = state.credits.reservations[body.reservationId];
           if (reservation?.status === 'reserved') {
-            if (pathname === '/credits/refund') state.credits.used -= reservation.cost;
+            if (pathname === '/credits/refund') {
+              state.credits.used -= reservation.cost;
+              if (reservation.background) state.credits.backgroundUsed = Math.max(0, state.credits.backgroundUsed - 1);
+            }
             reservation.status = pathname === '/credits/refund' ? 'refunded' : 'committed';
           }
           this.values.set(id, state);
