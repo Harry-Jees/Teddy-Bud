@@ -1534,9 +1534,9 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
           const selected = selectedCharacterId === character.id;
           const savedName = assistantCharacterNames?.[character.id] ?? character.name;
           const shownName = selected && characterNameDraft.trim() ? characterNameDraft.trim() : savedName;
-          return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}`} accessibilityState={{ selected }} onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected]}>
+          return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}${character.tier === 'free' ? '' : ', coming soon'}`} accessibilityState={{ selected, disabled: character.tier !== 'free' }} disabled={character.tier !== 'free'} onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected, character.tier !== 'free' && { opacity: 0.62 }]}>
             <Text style={styles.characterChoiceIcon}>{character.symbol}</Text>
-            <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text></View>
+            <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text>{character.tier !== 'free' && <Text style={styles.characterChoiceTagline}>{character.tier === 'pro' ? 'PRO' : 'PREMIUM'} · COMING SOON</Text>}</View>
             {selected && <Text style={styles.characterChoiceCheck}>✓</Text>}
           </Pressable>;
         })}
