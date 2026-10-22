@@ -596,7 +596,7 @@ async function completions(request, env) {
   // Enforce model routing at the gateway so clients cannot send images to a text-only model
   // or deliberately select the more expensive vision model for ordinary text requests.
   const effectiveModel = hasImage ? PRIMARY_MODEL : FALLBACK_MODEL;
-  const costCredits = hasImage ? 5 : 1;
+  const costCredits = 1;
   const reservationId = crypto.randomUUID();
   const reservation = await dailyCreditsRequest(env, claims.sub, '/credits/reserve', {
     reservationId, cost: costCredits, dailyLimit: 40,
@@ -812,7 +812,7 @@ export class GatewayStateStore {
         state.reservations ??= {};
         if (action === 'reserve') {
           const cost = body.cost;
-          if (!Number.isInteger(cost) || ![1, 5].includes(cost) || typeof body.reservationId !== 'string') {
+          if (!Number.isInteger(cost) || cost !== 1 || typeof body.reservationId !== 'string') {
             responseBody = { allowed: false, error: 'Invalid credit reservation.' };
             return;
           }
