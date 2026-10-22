@@ -19,7 +19,7 @@ Credits are a product-level usage guard, not an exact billing ledger. Cloudflare
 
 ## Deployment status and safety
 
-The migration code is committed to `migration/cloudflare-workers-ai-phonepe`; it is **not yet live**. The connected Cloudflare account has both approved models, but the production Worker currently lacks the `AI` binding and still has the old OpenRouter configuration. Keep the current production version until the new version is tested and the required Supabase/auth secret bindings are confirmed.
+The migration code is committed to `migration/cloudflare-workers-ai-phonepe`; it is **not yet live**. A staged version (`6ceee0eb-cc75-4cfc-b6cf-a6cb42ea7765`) was uploaded and verified to contain the `AI` binding plus the existing Supabase/auth secret binding names. The active production deployment is still the previous OpenRouter version. Keep it active until CI and the staged code are validated; the staged version has not been deployed.
 
 Before deployment:
 1. Run gateway tests and client type checks/build.
