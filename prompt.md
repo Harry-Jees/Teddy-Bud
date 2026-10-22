@@ -2,7 +2,7 @@
 
 ## Current migration state
 
-The migration branch routes ordinary text to Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash` and image-containing requests to `@cf/qwen/qwen3.8-27b`. Both models were verified in the connected Cloudflare account. `gateway-worker/wrangler.toml` declares the `AI` binding. The live Worker still has the older OpenRouter configuration; do not deploy the migration until the secret-binding checks below pass.
+The migration branch routes ordinary text to Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash` and image-containing requests to `@cf/qwen/qwen3.8-27b`. Both models were verified in the connected Cloudflare account. `gateway-worker/wrangler.toml` declares the `AI` binding. Staged version `6ceee0eb-cc75-4cfc-b6cf-a6cb42ea7765` has been verified to include the AI binding and all required auth/Supabase secret binding names. The live Worker remains on the previous OpenRouter deployment until CI and code validation pass.
 
 ## Automated checks
 
