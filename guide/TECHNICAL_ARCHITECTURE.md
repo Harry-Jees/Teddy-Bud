@@ -36,7 +36,7 @@ basis. Browser-preview encryption does not defend against malicious script execu
 - `POST /auth/logout`: revoke the current server-side session.
 - `GET /health`: gateway health check.
 - `GET /v1/models`: authenticated AI model discovery.
-- `POST /v1/chat/completions`: authenticated chat proxy to NVIDIA-hosted model endpoints.
+- `POST /v1/chat/completions`: authenticated chat proxy to OpenRouter's OpenAI-compatible API.
 
 Only the routes listed above are exposed by the public Worker dispatcher. Durable Object paths such as `/session`, `/user-sessions/*`, `/account/*`, and `/rate` are internal state operations, not public client API routes.
 
@@ -54,15 +54,15 @@ signup, and recovery are rate-limited. Durable
 Objects also keep per-user session indexes used to revoke sessions after
 password recovery.
 
-The Worker validates the session for `/v1/*` requests and proxies to NVIDIA;
-the NVIDIA key remains a Worker secret. The `SUPABASE_SERVICE_ROLE_KEY` and
+The Worker validates the session for `/v1/*` requests and proxies to OpenRouter;
+OPENROUTER_API_KEY remains a Worker secret. The `SUPABASE_SERVICE_ROLE_KEY` and
 `RECOVERY_KEY_SECRET` are also server-only. The profile query uses the user's
 Supabase token and RLS; the recovery table is accessed only by the Worker.
 
 ## 5. AI and privacy constraints
 
 - All AI inference happens remotely through the gateway.
-- The client prefers `openai/gpt-oss-20b` for chat when that model is present in the returned catalog; image requests prefer `meta/muse-glimmer-30b` when it advertises vision support. The client does not guarantee either model is available to every NVIDIA account and does not pin a fixed fallback list.
+- The gateway exposes only the approved free model IDs `openai/gpt-oss-20b:free` and `qwen/qwen3.8-27b:free`. The client selects chat and vision capabilities from this filtered catalog; the gateway independently rejects every model outside the same allowlist. OpenRouter availability and model capabilities may change.
 - Normal conversation requests ask for up to 4,096 output tokens, coding and image requests ask for 220, and the Worker applies a server-side ceiling of 2,048 output tokens. Recent chat context is capped at 80,000 characters by the client.
 - The client sends the active conversation and only the memories, selected
   history, or About me content enabled by the privacy controls.

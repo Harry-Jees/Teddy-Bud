@@ -17,10 +17,12 @@ const REQUEST_TIMEOUT_MS = 120_000;
 const MAX_CONTEXT_CHARS = 80_000;
 const MAX_SHARED_MEMORY_CHARS = 4_000;
 const MAX_CROSS_CHAT_CONTEXT_CHARS = 1_800;
+// Route ordinary text (including coding) to the lower-cost text model.
 const PREFERRED_CHAT_MODELS = [
-  'openai/gpt-oss-20b:free',
+  '@cf/zai-org/glm-4.7-flash',
 ];
-const PREFERRED_VISION_MODEL = 'qwen/qwen3.8-27b:free';
+// Qwen is the vision route; GLM-4.7 Flash is text-only.
+const PREFERRED_VISION_MODEL = '@cf/qwen/qwen3.8-27b';
 const CONVERSATION_GUIDANCE = `
 IDENTITY AND PURPOSE
 You are {assistantName}, the user's AI companion in the Teddy Bud app. Your chosen display name is {assistantName}. When asked who you are or what your name is, identify yourself as {assistantName}; do not use Teddy Bud as your personal name unless the user has chosen it. The app is called Teddy Bud, but its brand name is separate from your chosen name. If earlier conversation messages use an old assistant name, the chosen name here takes precedence. Do not disclose or guess the underlying model, model provider, vendor, API, or technical implementation when asked what powers you or which model you use. Briefly redirect to your role as {assistantName}, the user's companion, without making false claims about how you were built. Be a steady, kind, thoughtful conversational partner. Follow this selected character style: {characterStyle} You are not human, a romantic partner, an exclusive relationship, a therapist, or emergency care. Never imply otherwise or encourage dependence on you.
@@ -132,7 +134,9 @@ function preferredChatModels(catalog: GatewayModel[]): GatewayModel[] {
   const preferred = PREFERRED_CHAT_MODELS
     .map(id => catalog.find(model => model.id.toLowerCase() === id))
     .filter((model): model is GatewayModel => Boolean(model));
-  return preferred;
+  if (preferred.length) return preferred;
+  const freeRouter = catalog.find(model => model.id === 'openrouter/free');
+  return freeRouter ? [freeRouter] : [];
 }
 
 function needsAppGuide(message: string, history: GatewayMessage[]): boolean {
@@ -177,7 +181,6 @@ function parseMemorySuggestion(content: string): string | null {
   }
   return fact.trim().slice(0, 500);
 }
-
 function parseChatTitle(content: string): string | null {
   const normalized = content.trim().replace(/^title\s*:\s*/i, '').replace(/["'“”]/g, '').replace(/\s+/g, ' ');
   const title = normalized.split(' ').filter(Boolean).slice(0, 2).join(' ').replace(/[.,:;!?]+$/g, '').slice(0, 48).trim();
@@ -259,11 +262,36 @@ export class GatewayService {
         }
         const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
         if (!response.body?.getReader || !contentType.includes('text/event-stream')) {
-          const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
-          const content = payload.choices?.[0]?.message?.content;
-          if (typeof content !== 'string' || !content.trim()) throw new Error(payload.error?.message ?? 'No reply was returned by the conversation service.');
-          onTextChunk(content);
-          return content.trim();
+          // React Native fetch implementations may not expose a readable response stream.
+          // Read the complete body, then support both standard JSON and buffered SSE.
+          const raw = await response.text();
+          let payload: any = null;
+          try { payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
+          const jsonContent = payload?.choices?.[0]?.message?.content;
+          if (typeof jsonContent === 'string' && jsonContent.trim()) {
+            onTextChunk(jsonContent);
+            return jsonContent.trim();
+          }
+          if (payload?.error) {
+            throw new Error(typeof payload.error === 'string' ? payload.error : payload.error.message ?? 'The conversation service returned an error.');
+          }
+
+          let streamedContent = '';
+          for (const line of raw.split(/\r?\n/)) {
+            if (!line.startsWith('data:')) continue;
+            const data = line.slice(5).trim();
+            if (!data || data === '[DONE]') continue;
+            let event: any;
+            try { event = JSON.parse(data); } catch { throw new Error('The conversation service returned an unreadable response stream.'); }
+            if (event?.error) throw new Error(typeof event.error === 'string' ? event.error : event.error.message ?? 'The conversation service returned an error.');
+            const delta = event?.choices?.[0]?.delta?.content;
+            if (typeof delta === 'string' && delta) {
+              streamedContent += delta;
+              onTextChunk(delta);
+            }
+          }
+          if (streamedContent.trim()) return streamedContent.trim();
+          throw new Error('No reply was returned by the conversation service.');
         }
 
         const reader = response.body.getReader();
@@ -305,6 +333,11 @@ export class GatewayService {
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
           if (signal?.aborted) throw error;
+          if (retryAttempt < 2) {
+            await sleep(RETRY_DELAY_MS * (retryAttempt + 1));
+            retryOuter = true;
+            break;
+          }
           throw Object.assign(new Error('The conversation service took too long to respond. Check your connection and try again.'), { status: 408, timedOut: true });
         }
         const status = (error as HttpError).status;
@@ -324,11 +357,14 @@ export class GatewayService {
     throw Object.assign(new Error('Your sign-in session could not be refreshed.'), { status: 401 });
   }
 
+  async getCreditBalance(accessToken: string): Promise<{ day: string; used: number; remaining: number; limit: number; resetAt: string }> {
+    return this.requestWithToken<{ day: string; used: number; remaining: number; limit: number; resetAt: string }>('/v1/credits', {}, accessToken);
+  }
+
   async getModelCatalog(accessToken: string): Promise<GatewayModel[]> {
     const body = await this.requestWithToken<{ data?: any[] }>('/v1/models', {}, accessToken);
     return (body.data ?? []).map(normalizeModel).filter((model): model is GatewayModel => Boolean(model));
   }
-
   async getModels(accessToken: string): Promise<string[]> { return (await this.getModelCatalog(accessToken)).map(model => model.id); }
   async getAvailableCodingModels(accessToken: string): Promise<GatewayModel[]> { return (await this.getModelCatalog(accessToken)).filter(model => model.capabilities.includes('coding')); }
 
@@ -369,13 +405,15 @@ export class GatewayService {
       ? await this.getModelCatalog(accessToken)
       : [];
     const chatModels = preferredChatModels(catalog);
-    const selected = options.modelId
-      ? catalog.find(model => model.id === options.modelId)
-      : requiredCapability === 'vision'
-        ? catalog.find(model => model.id.toLowerCase() === PREFERRED_VISION_MODEL && model.capabilities.includes('vision'))
+    // Image requests always use the vision-capable Qwen model, even if a text model
+    // was selected elsewhere. GLM-4.7 Flash must never receive image content.
+    const selected = requiredCapability === 'vision'
+      ? catalog.find(model => model.id.toLowerCase() === PREFERRED_VISION_MODEL && model.capabilities.includes('vision'))
+      : options.modelId
+        ? catalog.find(model => model.id === options.modelId)
         : requiredCapability === 'web_search'
           ? chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['web_search'] as GatewayCapability[] }
-        : chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['coding'] as GatewayCapability[] };
+          : chatModels[0] ?? { id: PREFERRED_CHAT_MODELS[0], capabilities: ['coding'] as GatewayCapability[] };
     if (options.modelId && !selected) throw new Error(`The selected model is not available: ${options.modelId}.`);
     if (requiredCapability && !selected) throw new Error(`No available model advertises ${requiredCapability === 'web_search' ? 'web browsing' : requiredCapability} support.`);
     if (!selected) throw new Error('No chat-capable AI model is currently available from the conversation service.');
@@ -430,6 +468,7 @@ export class GatewayService {
     const body: Record<string, unknown> = {
       model: selected.id,
       messages,
+      // React Native's fetch streaming support is inconsistent across Android versions. Use a normal JSON response on native platforms.
       stream: Platform.OS === 'web' && typeof options.onTextChunk === 'function',
       max_tokens: options.task === 'coding' || options.task === 'vision' ? 220 : 4096,
       temperature: 0.65,
@@ -437,9 +476,53 @@ export class GatewayService {
       provider: { sort: 'latency', data_collection: 'deny' },
     };
     if (options.enableWebBrowsing) body.tools = [{ type: 'openrouter:web_search' }];
-    const content = body.stream
-      ? await this.requestChatStream('/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, accessToken, options.onTextChunk!, options.signal)
-      : (await this.requestWithToken<{ choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } }>('/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: options.signal }, accessToken, 1)).choices?.[0]?.message?.content;
+    let content: string | undefined;
+    if (body.stream) {
+      let chunksReceived = 0;
+      try {
+        content = await this.requestChatStream(
+          '/v1/chat/completions',
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+          accessToken,
+          chunk => {
+            chunksReceived += 1;
+            options.onTextChunk?.(chunk);
+          },
+          options.signal,
+        );
+      } catch (streamError) {
+        // Some Android fetch implementations report a stream-capable body but
+        // terminate it without delivering events. Retry once using ordinary JSON
+        // only when no text was delivered, so partial replies are never duplicated.
+        if (Platform.OS === 'web' || options.signal?.aborted || chunksReceived > 0) throw streamError;
+        const fallbackBody = { ...body, stream: false };
+        const fallback = await this.requestWithToken<{
+          choices?: Array<{ message?: { content?: string } }>;
+          error?: { message?: string };
+        }>('/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fallbackBody),
+          signal: options.signal,
+        }, accessToken, 1);
+        content = fallback.choices?.[0]?.message?.content;
+        if (typeof content === 'string' && content.trim()) options.onTextChunk?.(content);
+        else throw streamError;
+      }
+    } else {
+      content = (await this.requestWithToken<{
+        choices?: Array<{ message?: { content?: string } }>;
+        error?: { message?: string };
+      }>('/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: options.signal,
+      }, accessToken, 1)).choices?.[0]?.message?.content;
+      // Native requests are deliberately non-streaming; publish the complete reply
+      // through the same UI callback after JSON parsing succeeds.
+      if (typeof content === 'string' && content.trim()) options.onTextChunk?.(content.trim());
+    }
     if (typeof content !== 'string' || !content.trim()) throw new Error('No reply was returned by the conversation service.');
     return content.trim();
   }

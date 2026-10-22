@@ -20,7 +20,6 @@ The recovery table has RLS enabled and grants no access to `anon` or `authentica
    ```powershell
    npx wrangler secret put JWT_SIGNING_SECRET
    npx wrangler secret put RECOVERY_KEY_SECRET
-   npx wrangler secret put OPENROUTER_API_KEY
    npx wrangler secret put SUPABASE_URL
    npx wrangler secret put SUPABASE_ANON_KEY
    npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
@@ -28,7 +27,7 @@ The recovery table has RLS enabled and grants no access to `anon` or `authentica
 
    Generate `JWT_SIGNING_SECRET` and `RECOVERY_KEY_SECRET` independently using a cryptographically secure random generator with at least 32 bytes. `SUPABASE_SERVICE_ROLE_KEY` is highly privileged: keep it only in the Worker secret store. Never use it in the app. The anon/publishable key is not a secret.
 5. Set the non-secret `AUTH_REDIRECT_ORIGINS` Worker variable to the exact browser origins allowed to call the gateway, comma-separated. Include local development, for example `http://localhost:5173,http://127.0.0.1:5173`, and the deployed app origin. The Worker does not return CORS access to arbitrary origins. Native clients do not send a browser Origin header.
-6. Deploy with `npm run deploy`.
+6. For production, use the protected GitHub Actions workflow `.github/workflows/deploy-cloudflare-ai.yml`. It stages a Worker version and checks that the `AI`, Durable Object, KV, and required secret binding names are present before directing production traffic to it. Do not use a direct production deploy until the staged bindings have been verified.
 
 ## Account and recovery flow
 
@@ -47,9 +46,11 @@ Existing accounts are moved only when the device still has a valid legacy Teddy 
 
 Supabase's current Free plan includes 50,000 monthly active users for Auth. This is an Auth quota, not a promise that database, bandwidth, Worker, or model-provider costs remain free. Cloudflare's Free Worker tier currently stops serving requests when its daily quota is exceeded rather than billing overages; if you manually move the account to a paid plan, that billing model changes. The app sends no auth emails, so this flow does not require an SMTP provider or domain.
 
-Chat, coding, titles, and memory suggestions use `openai/gpt-oss-20b:free`; vision uses `qwen/qwen3.8-27b:free`. The Worker rejects any other model ID, so a client cannot accidentally route this key to a paid model. Free model endpoints are rate-limited and availability can vary. OpenRouter itself is not universally free: the optional web-search tool can incur separate charges. Set an API key spending limit in the OpenRouter dashboard and review current model/tool pricing before enabling it.
+Chat, coding, titles, and memory suggestions route to Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`; requests containing an image are routed server-side to `@cf/qwen/qwen3.8-27b`. The `AI` binding is declared in `wrangler.toml`; both model IDs were confirmed present in the connected Cloudflare account. The native Workers AI binding does not require a provider API key.
 
-Durable Objects store Teddy Bud sessions, per-user session indexes, and rate limits. `/auth/refresh` rejects renewal after the one-hour session lifetime and `/auth/logout` revokes the current session. Authenticated model and chat requests are proxied to OpenRouter; the OpenRouter key remains a Worker secret and is never sent to the client. The Worker also adds crisis response guidance for selected direct phrases. This is best effort and is not a clinical screen or emergency service.
+The Free plan has one shared balance of 40 credits per UTC day: text requests cost 1 credit and image requests cost 5. The gateway reserves credits atomically in Durable Objects, refunds them for inference errors before a response is returned, and exposes the balance through authenticated `GET /v1/credits`. Clients cannot choose their own user ID or credit cost. This is a product usage cap, not a precise billing ledger; monitor Cloudflare AI usage and account spend separately.
+
+Durable Objects store Teddy Bud sessions, per-user session indexes, burst limits, and daily credits. `/auth/refresh` rejects renewal after the one-hour session lifetime and `/auth/logout` revokes the current session. The Worker also adds crisis response guidance for selected direct phrases. This is best effort and is not a clinical screen or emergency service.
 
 ## Local checks
 

@@ -7,6 +7,24 @@ import ReactTestRenderer from 'react-test-renderer';
 import { Animated, Modal, Text } from 'react-native';
 import { ChatPage } from '../App';
 
+jest.mock('@react-native-documents/picker', () => ({
+  errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
+  isErrorWithCode: () => false,
+  keepLocalCopy: jest.fn(),
+  pick: jest.fn(),
+  saveDocuments: jest.fn(),
+  types: { json: 'application/json' },
+}));
+
+jest.mock('react-native-file-access', () => ({
+  Dirs: { CacheDir: '/tmp' },
+  FileSystem: {
+    writeFile: jest.fn(),
+    readFile: jest.fn(),
+    unlink: jest.fn(),
+  },
+}));
+
 jest.mock('@op-engineering/op-sqlite', () => ({
   Storage: class {
     async getItem() {
@@ -52,6 +70,7 @@ test('chat composer sends on Enter and keeps the send button available after a f
         draft="A new message"
         setDraft={noop}
         onSend={onSend}
+        onStop={jest.fn()}
         onRetry={noop}
         retryPending
         isSending={false}
@@ -130,6 +149,7 @@ test('chat shows three dots and announces when Teddy Bud is responding', async (
           draft=""
           setDraft={noop}
           onSend={noop}
+          onStop={jest.fn()}
           onRetry={noop}
           retryPending={false}
           isSending
@@ -192,6 +212,7 @@ test('chat presents crisis resources for a direct self-harm signal', async () =>
         draft=""
         setDraft={jest.fn()}
         onSend={jest.fn()}
+        onStop={jest.fn()}
         onRetry={jest.fn()}
         retryPending={false}
         isSending={false}
@@ -252,6 +273,7 @@ test('India crisis support presents both Tele-MANAS call numbers and its officia
         draft=""
         setDraft={jest.fn()}
         onSend={jest.fn()}
+        onStop={jest.fn()}
         onRetry={jest.fn()}
         retryPending={false}
         isSending={false}
@@ -303,6 +325,7 @@ test('memory suggestion appears beside its reply and requires explicit approval'
         draft=""
         setDraft={jest.fn()}
         onSend={jest.fn()}
+        onStop={jest.fn()}
         onRetry={jest.fn()}
         retryPending={false}
         isSending={false}

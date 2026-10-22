@@ -24,7 +24,7 @@ describe('GatewayService', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('https://gateway.test/v1/chat/completions');
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer test-token' }));
     const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(request.model).toBe('openai/gpt-oss-20b');
+    expect(request.model).toBe('@cf/zai-org/glm-4.7-flash');
     expect(request.max_tokens).toBe(4096);
     expect(request.messages[0].content).toContain('You are Pankaj');
     expect(request.messages[0].content).toContain('Do not disclose or guess the underlying model');
@@ -78,7 +78,7 @@ describe('GatewayService', () => {
     await expect(gateway.suggestMemory('My long-term goal is to become a teacher.', 'test-token')).resolves.toBe('I am working toward becoming a teacher.');
     await expect(gateway.suggestMemory('I had tea this morning.', 'test-token')).resolves.toBeNull();
     const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(request.model).toBe('openai/gpt-oss-20b');
+    expect(request.model).toBe('@cf/zai-org/glm-4.7-flash');
     expect(request.max_tokens).toBe(256);
     expect(request.tool_choice.function.name).toBe('emit_memory_suggestion');
   });
@@ -97,4 +97,78 @@ describe('GatewayService', () => {
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer expired-token' }));
     expect(fetchMock.mock.calls[1][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer refreshed-token' }));
   });
+  it('uses streaming on web when text chunks are requested', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(response({
+      choices: [{ message: { content: 'A streamed reply.' } }],
+    }));
+    globalThis.fetch = fetchMock;
+    const chunks: string[] = [];
+    const { Platform } = require('react-native');
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+    try {
+      await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
+        'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
+      )).resolves.toBe('A streamed reply.');
+      const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+      expect(request.stream).toBe(true);
+      expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Accept: 'text/event-stream' }));
+      expect(chunks.join('')).toBe('A streamed reply.');
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
+  });
+
+  it('parses a buffered SSE response when web fetch has no readable body stream', async () => {
+    const bufferedSse = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'text/event-stream' }),
+      body: null,
+      text: async () => [
+        'data: {"choices":[{"delta":{"content":"Hello"}}]}',
+        '',
+        'data: {"choices":[{"delta":{"content":" there."}}]}',
+        '',
+        'data: [DONE]',
+        '',
+      ].join('\n'),
+    };
+    const fetchMock = jest.fn().mockResolvedValueOnce(bufferedSse);
+    globalThis.fetch = fetchMock;
+    const chunks: string[] = [];
+    const { Platform } = require('react-native');
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+    try {
+      await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
+        'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
+      )).resolves.toBe('Hello there.');
+      expect(chunks.join('')).toBe('Hello there.');
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
+  });
+
+  it('uses a buffered JSON response on Android and publishes it through the reply callback', async () => {
+    const fetchMock = jest.fn().mockResolvedValueOnce(response({
+      choices: [{ message: { content: 'Android buffered reply.' } }],
+    }));
+    globalThis.fetch = fetchMock;
+    const chunks: string[] = [];
+    const { Platform } = require('react-native');
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    try {
+      await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
+        'Hello', [], 'test-token', { onTextChunk: chunk => chunks.push(chunk) },
+      )).resolves.toBe('Android buffered reply.');
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).stream).toBe(false);
+    expect(chunks.join('')).toBe('Android buffered reply.');
+  });
+
 });
