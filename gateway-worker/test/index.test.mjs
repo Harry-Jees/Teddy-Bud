@@ -489,3 +489,45 @@ test('credit exhaustion remains enforced even when clients request a different m
   assert.equal(limited.body.error.code, 'DAILY_CREDITS_EXHAUSTED');
 });
 
+
+
+test('non-streaming inference failures refund the reserved credit', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => { throw new Error('synthetic inference failure'); };
+  const accessToken = await createSession(env, 'refund-text-user');
+  const response = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello.' }],
+    stream: false,
+  }, { Authorization: 'Bearer ' + accessToken }), env));
+  assert.equal(response.status, 502);
+  assert.match(response.body.error.message, /credits were returned/i);
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, {
+    Authorization: 'Bearer ' + accessToken,
+  }), env));
+  assert.equal(balance.body.used, 0);
+  assert.equal(balance.body.remaining, 40);
+});
+
+test('streaming inference failures before the first token refund the reserved credit', async () => {
+  const env = makeEnv();
+  env.AI.run = async (_model, options) => {
+    assert.equal(options.stream, true);
+    return new ReadableStream({
+      start(controller) { controller.error(new Error('synthetic stream failure')); },
+    });
+  };
+  const accessToken = await createSession(env, 'refund-stream-user');
+  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello.' }],
+    stream: true,
+  }, { Authorization: 'Bearer ' + accessToken }), env);
+  assert.equal(response.status, 200);
+  await assert.rejects(() => response.text());
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, {
+    Authorization: 'Bearer ' + accessToken,
+  }), env));
+  assert.equal(balance.body.used, 0);
+  assert.equal(balance.body.remaining, 40);
+});
