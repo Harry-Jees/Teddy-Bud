@@ -313,7 +313,7 @@ test('authenticated text chat uses Cloudflare GLM and charges one unified credit
   assert.equal(result.body.teddyBudCredits.used, 1);
 });
 
-test('image requests are routed to Cloudflare Qwen and charge five credits', async () => {
+test('image requests are routed to Cloudflare Qwen and charge one credit', async () => {
   const env = makeEnv();
   let selectedModel;
   env.AI.run = async model => {
@@ -332,15 +332,15 @@ test('image requests are routed to Cloudflare Qwen and charge five credits', asy
   const result = await jsonResponse(response);
   assert.equal(result.status, 200);
   assert.equal(selectedModel, '@cf/qwen/qwen3.8-27b');
-  assert.equal(result.body.teddyBudCredits.charged, 5);
-  assert.equal(result.body.teddyBudCredits.used, 5);
+  assert.equal(result.body.teddyBudCredits.charged, 1);
+  assert.equal(result.body.teddyBudCredits.used, 1);
 });
 
 test('daily unified credit limit rejects a request that would exceed 40 credits', async () => {
   const env = makeEnv();
   env.AI.run = async () => ({ response: 'Test reply.' });
   const accessToken = await createSession(env, 'daily-credit-user');
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; i < 40; i += 1) {
     const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
       model: '@cf/qwen/qwen3.8-27b',
       messages: [{ role: 'user', content: [{ type: 'text', text: 'Describe this.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }],
