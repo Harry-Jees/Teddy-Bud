@@ -1,0 +1,154 @@
+name: Deploy Cloudflare AI Worker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: teddy-bud-cloudflare-ai-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Verify, deploy, and smoke-test Worker
+    if: github.ref == 'refs/heads/migration/cloudflare-workers-ai-phonepe'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    defaults:
+      run:
+        working-directory: gateway-worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WORKER_NAME: teddy-bud-browser-gateway
+      WORKER_URL: https://teddy-bud-browser-gateway.harryjees.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gateway-worker/package-lock.json
+      - name: Validate deployment credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing CLOUDFLARE_API_TOKEN repository secret."; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "::error::Missing CLOUDFLARE_ACCOUNT_ID repository secret."; exit 1; }
+      - run: npm ci
+      - name: Run Worker regression tests
+        run: npm test
+      - name: Check existing Cloudflare secret names without reading values
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler secret list --name "$WORKER_NAME" > "$RUNNER_TEMP/worker-secrets.txt"
+          while IFS= read -r secret_name; do
+            [ -n "$secret_name" ] || continue
+            if ! grep -Fq "$secret_name" "$RUNNER_TEMP/worker-secrets.txt"; then
+              echo "::error::Required Cloudflare Worker secret is missing: $secret_name"
+              exit 1
+            fi
+          done < ../.github/required-worker-secrets.txt
+          rm -f "$RUNNER_TEMP/worker-secrets.txt"
+      - name: Capture the active version for rollback
+        id: previous
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deployments list --json --name "$WORKER_NAME" > "$RUNNER_TEMP/deployments-before.json"
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import fs from 'node:fs';
+          const data = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/deployments-before.json', 'utf8'));
+          const deployments = Array.isArray(data) ? data : (data.deployments ?? data.result ?? []);
+          const current = deployments[0];
+          const active = current?.versions?.find(version => Number(version.percentage) === 100) ?? current?.versions?.[0];
+          const versionId = active?.version_id ?? active?.versionId;
+          if (!versionId || typeof versionId !== 'string') throw new Error('Could not identify the active Worker version; refusing to deploy without rollback protection.');
+          process.stdout.write('version_id=' + versionId + '\n');
+          NODE
+      - name: Deploy Cloudflare Workers AI migration
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "attempted=true" >> "$GITHUB_OUTPUT"
+          npx wrangler deploy --name "$WORKER_NAME" --message "Cloudflare Workers AI migration with unified daily credits"
+      - name: Verify active version bindings
+        id: bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deployments list --json --name "$WORKER_NAME" > "$RUNNER_TEMP/deployments-after.json"
+          VERSION_ID="$(node --input-type=module -e "import fs from 'node:fs'; const data=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/deployments-after.json','utf8')); const ds=Array.isArray(data)?data:(data.deployments??data.result??[]); const d=ds[0]; const v=d?.versions?.find(x=>Number(x.percentage)===100)??d?.versions?.[0]; process.stdout.write(v?.version_id??v?.versionId??'')")"
+          test -n "$VERSION_ID" || { echo "::error::Could not identify the deployed version."; exit 1; }
+          curl --silent --show-error --fail             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME/versions/$VERSION_ID"             -o "$RUNNER_TEMP/version.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/version.json', 'utf8'));
+          if (payload.success !== true) throw new Error('Cloudflare did not return version metadata.');
+          const bindings = payload.result?.resources?.bindings ?? [];
+          const names = new Set(bindings.map(binding => binding.name));
+          const required = ['AI', 'SESSIONS', 'DEVICE_KEYS', 'JWT_SIGNING_SECRET', 'RECOVERY_KEY_SECRET', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
+          const missing = required.filter(name => !names.has(name));
+          if (missing.length) throw new Error('Deployed version is missing required bindings: ' + missing.join(', '));
+          console.log('Verified required binding names; secret values were not read.');
+          NODE
+      - name: Verify production health and auth guards
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in $(seq 1 10); do
+            if curl --silent --show-error --fail "$WORKER_URL/health" -o "$RUNNER_TEMP/health.json"; then
+              if node -e "const h=require(process.argv[1]); process.exit(h.status==='ready' && h.provider_configured===true && h.provider==='cloudflare-workers-ai' ? 0 : 1)" "$RUNNER_TEMP/health.json"; then
+                ready=true
+                break
+              fi
+            fi
+            sleep 6
+          done
+          if [ "$ready" != true ]; then
+            echo "::error::Worker health did not become ready with Cloudflare Workers AI configured."
+            cat "$RUNNER_TEMP/health.json" 2>/dev/null || true
+            exit 1
+          fi
+          for path in /v1/models /v1/credits; do
+            status="$(curl --silent --show-error -o /dev/null -w '%{http_code}' "$WORKER_URL$path")"
+            test "$status" = "401" || { echo "::error::$path expected HTTP 401 without a session, got $status."; exit 1; }
+          done
+          echo "Worker health is ready; model catalog and credit balance remain authenticated."
+      - name: Roll back automatically if deployment verification fails
+        if: failure() && steps.deploy.outputs.attempted == 'true' && steps.previous.outputs.version_id != ''
+        shell: bash
+        env:
+          PREVIOUS_VERSION_ID: ${{ steps.previous.outputs.version_id }}
+        run: |
+          set -euo pipefail
+          npx wrangler rollback "$PREVIOUS_VERSION_ID" --name "$WORKER_NAME" --message "Automatic rollback after failed Cloudflare AI deployment verification"
+          for attempt in $(seq 1 10); do
+            if curl --silent --show-error --fail "$WORKER_URL/health" -o "$RUNNER_TEMP/rollback-health.json" &&
+              node -e "const h=require(process.argv[1]); process.exit(h.status==='ready' ? 0 : 1)" "$RUNNER_TEMP/rollback-health.json"; then
+              echo "Rollback health check passed."
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::Rollback was attempted, but health verification still failed. Inspect Cloudflare Worker deployments immediately."
+          exit 1
+      - name: Publish deployment summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## Cloudflare Workers AI deployment"
+            echo "- Worker: $WORKER_NAME"
+            echo "- Models: GLM-4.7 Flash (text), Qwen 3.8 27B (images)"
+            echo "- Daily allowance: 40 credits (1 text, 5 image)"
+            echo "- Health and auth guards: passed"
+            echo "- Authenticated text and vision client smoke tests still need validation."
+          } >> "$GITHUB_STEP_SUMMARY"
