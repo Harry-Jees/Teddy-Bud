@@ -110,8 +110,8 @@ function makeEnv() {
         if (options.stream) return new ReadableStream({
           start(controller) {
             const encoder = new TextEncoder();
-            controller.enqueue(encoder.encode('data: ' + JSON.stringify({ response: 'Test reply.' }) + '\\n\\n'));
-            controller.enqueue(encoder.encode('data: [DONE]\\n\\n'));
+            controller.enqueue(encoder.encode('data: ' + JSON.stringify({ response: 'Test reply.' }) + '\n\n'));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
             controller.close();
           },
         });
