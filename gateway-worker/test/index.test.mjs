@@ -345,6 +345,45 @@ test('image requests are routed to Cloudflare Qwen and charge one credit', async
   assert.equal(result.body.teddyBudCredits.used, 1);
 });
 
+test('background title tasks do not consume chat credits and have their own daily cap', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => ({ response: 'Short title.' });
+  const accessToken = await createSession(env, 'background-task-user');
+  let firstResult;
+  for (let i = 0; i < 10; i += 1) {
+    const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+      model: '@cf/zai-org/glm-4.7-flash',
+      metadata: { teddyBudTask: 'title' },
+      messages: [{ role: 'user', content: 'Create a title.' }],
+      max_tokens: 16,
+      stream: false,
+    }, { Authorization: `Bearer ${accessToken}` }), env);
+    const result = await jsonResponse(response);
+    assert.equal(result.status, 200);
+    if (i === 0) firstResult = result.body;
+  }
+  assert.equal(firstResult.teddyBudCredits.charged, 0);
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 0);
+
+  const blocked = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    metadata: { teddyBudTask: 'title' },
+    messages: [{ role: 'user', content: 'One more title.' }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.body.error.code, 'DAILY_BACKGROUND_TASKS_EXHAUSTED');
+
+  const chat = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'A normal chat message.' }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.teddyBudCredits.charged, 1);
+});
+
 test('daily unified credit limit rejects a request that would exceed 40 credits', async () => {
   const env = makeEnv();
   env.AI.run = async () => ({ response: 'Test reply.' });
