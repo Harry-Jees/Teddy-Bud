@@ -814,7 +814,7 @@ export class GatewayStateStore {
     if (pathname === '/credits/read' && request.method === 'GET') {
       const day = new Date().toISOString().slice(0, 10);
       const state = await this.ctx.storage.get('daily-credits');
-      const current = state?.day === day ? state : { day, used: 0, reservations: {} };
+      const current = state?.day === day ? state : { day, used: 0, backgroundUsed: 0, reservations: {} };
       return json(200, { day, used: current.used, remaining: Math.max(0, 40 - current.used), limit: 40, resetAt: dailyResetAt(day) });
     }
 
@@ -825,28 +825,38 @@ export class GatewayStateStore {
       let responseBody;
       await this.ctx.storage.transaction(async txn => {
         const stored = await txn.get('daily-credits');
-        const state = stored?.day === day ? stored : { day, used: 0, reservations: {} };
+        const state = stored?.day === day ? stored : { day, used: 0, backgroundUsed: 0, reservations: {} };
+        state.backgroundUsed ??= 0;
         state.reservations ??= {};
         if (action === 'reserve') {
           const cost = body.cost;
-          if (!Number.isInteger(cost) || cost !== 1 || typeof body.reservationId !== 'string') {
+          const background = body.background === true;
+          if (typeof body.reservationId !== 'string' || (background ? cost !== 0 : cost !== 1)) {
             responseBody = { allowed: false, error: 'Invalid credit reservation.' };
             return;
           }
-          if (state.used + cost > 40) {
+          if (background && state.backgroundUsed >= (Number.isInteger(body.backgroundDailyLimit) ? Math.min(body.backgroundDailyLimit, 10) : 10)) {
+            responseBody = { allowed: false, backgroundLimit: true, used: state.used, remaining: Math.max(0, 40 - state.used), resetAt: dailyResetAt(day) };
+            return;
+          }
+          if (!background && state.used + cost > 40) {
             responseBody = { allowed: false, used: state.used, remaining: Math.max(0, 40 - state.used), resetAt: dailyResetAt(day) };
             return;
           }
+          if (background) state.backgroundUsed += 1;
           state.used += cost;
-          state.reservations[body.reservationId] = { cost, status: 'reserved' };
+          state.reservations[body.reservationId] = { cost, background, status: 'reserved' };
           await txn.put('daily-credits', state);
-          responseBody = { allowed: true, used: state.used, remaining: 40 - state.used, resetAt: dailyResetAt(day) };
+          responseBody = { allowed: true, used: state.used, remaining: 40 - state.used, resetAt: dailyResetAt(day), backgroundRemaining: Math.max(0, 10 - state.backgroundUsed) };
           return;
         }
         if (action === 'commit' || action === 'refund') {
           const reservation = state.reservations[body.reservationId];
           if (reservation?.status === 'reserved') {
-            if (action === 'refund') state.used = Math.max(0, state.used - reservation.cost);
+            if (action === 'refund') {
+              state.used = Math.max(0, state.used - reservation.cost);
+              if (reservation.background) state.backgroundUsed = Math.max(0, (state.backgroundUsed ?? 0) - 1);
+            }
             reservation.status = action === 'refund' ? 'refunded' : 'committed';
             await txn.put('daily-credits', state);
           }
