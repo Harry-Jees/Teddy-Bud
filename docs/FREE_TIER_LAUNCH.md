@@ -4,30 +4,34 @@
 
 Teddy Bud launches with one plan: **Free**. Do not add checkout, payment-provider SDKs, subscription screens, upgrade prompts, paid entitlements, or payment secrets to the launch build. Pro and other paid tiers are deferred until real usage and inference costs are measured.
 
-This does not mean AI inference is cost-free to operate. Cloudflare Workers AI may charge the project account beyond any applicable free allowance. The product's free plan must therefore have server-enforced limits.
+## Implemented Free-tier policy
 
-## Free tier safeguards
+- One unified allowance of **40 credits per user per UTC day**.
+- Text requests cost **1 credit**.
+- Image-containing requests cost **5 credits**.
+- The gateway detects image content and selects the model server-side: GLM-4.7 Flash for text, Qwen 3.8 27B for images.
+- Durable Object storage reserves credits atomically before inference, refunds reservations on inference errors before a response is returned, and commits successful requests.
+- Authenticated `GET /v1/credits` returns the current balance and reset time.
+- The app's client cannot supply a user ID, plan, or credit cost to change its allowance.
+- Existing burst rate limiting, context size limits, and output-token caps remain in place.
 
-- Keep authentication and the existing gateway-side burst rate limit.
-- Enforce per-user usage limits in the gateway, never only in the client.
-- Prefer accounting by actual provider usage/cost when available; message counts are only a temporary abuse guard, not a cost ledger.
-- Bound input context and output tokens; reject oversized requests before inference.
-- Keep image/vision requests on the more expensive vision model only when an image is present.
-- Add a clear, friendly limit-reached response and a reset time where the configured quota supports one.
-- Never let a client-provided user ID, plan name, model ID, usage amount, or price grant extra quota.
-- Keep limits configurable and conservative until production-like usage and Cloudflare billing data have been reviewed.
+Credits are a product-level usage guard, not an exact billing ledger. Cloudflare Workers AI may charge the project account beyond any applicable allowance. Monitor actual model usage and account spend independently.
 
-## Before enabling a public free quota
+## Deployment status and safety
 
-1. Confirm the exact Cloudflare Workers AI models enabled in the deployed account and verify their billing/availability.
-2. Implement durable per-user daily accounting and atomic reservation/reconciliation before exposing a quota as guaranteed.
-3. Add tests for quota exhaustion, UTC/day rollover, concurrent requests, provider failures, image requests, and attempts to spoof identity or plan.
-4. Set the initial quota based on the account's actual budget and expected active users; do not assume Cloudflare's account-level free allowance is a per-user allowance.
-5. Monitor spend and have a way to disable or reduce inference traffic if account spend exceeds the operating budget.
+The migration code is committed to `migration/cloudflare-workers-ai-phonepe`; it is **not yet live**. The connected Cloudflare account has both approved models, but the production Worker currently lacks the `AI` binding and still has the old OpenRouter configuration. Keep the current production version until the new version is tested and the required Supabase/auth secret bindings are confirmed.
+
+Before deployment:
+1. Run gateway tests and client type checks/build.
+2. Verify `AI` binding is present in the staged Worker version.
+3. Verify the required secret *names* are available to the new version without exposing secret values.
+4. Verify daily credit reservation/refund, UTC reset, concurrency, text/image routing, and quota exhaustion.
+5. Deploy via the protected workflow with automatic rollback; then perform authenticated text and image smoke tests.
+6. Monitor Cloudflare AI usage and keep an emergency way to disable inference if spending exceeds budget.
 
 ## Future paid tiers
 
-Keep the future plan/entitlement interface provider-independent, but do not collect payments yet. When the product is ready, compare and test providers such as Razorpay and Cashfree, confirm merchant eligibility and all-in recurring fees, then add checkout and signed webhook handling in a separate release. A paid plan must not be advertised or activated until payment verification, idempotency, refunds, cancellations, renewals, and durable entitlement updates are tested.
+Keep future plan/entitlement logic provider-independent, but do not collect payments yet. When the product is ready, compare and test providers such as Razorpay and Cashfree, confirm merchant eligibility and all-in recurring fees, then add checkout and signed webhook handling in a separate release. A paid plan must not be advertised or activated until payment verification, idempotency, refunds, cancellations, renewals, and durable entitlement updates are tested.
 
 ## Launch messaging
 
