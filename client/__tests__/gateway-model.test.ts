@@ -24,7 +24,7 @@ describe('GatewayService', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('https://gateway.test/v1/chat/completions');
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer test-token' }));
     const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(request.model).toBe('openai/gpt-oss-20b:free');
+    expect(request.model).toBe('@cf/zai-org/glm-4.7-flash');
     expect(request.max_tokens).toBe(4096);
     expect(request.messages[0].content).toContain('You are Pankaj');
     expect(request.messages[0].content).toContain('Do not disclose or guess the underlying model');
@@ -78,7 +78,7 @@ describe('GatewayService', () => {
     await expect(gateway.suggestMemory('My long-term goal is to become a teacher.', 'test-token')).resolves.toBe('I am working toward becoming a teacher.');
     await expect(gateway.suggestMemory('I had tea this morning.', 'test-token')).resolves.toBeNull();
     const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-    expect(request.model).toBe('openai/gpt-oss-20b:free');
+    expect(request.model).toBe('@cf/zai-org/glm-4.7-flash');
     expect(request.max_tokens).toBe(256);
     expect(request.tool_choice.function.name).toBe('emit_memory_suggestion');
   });
