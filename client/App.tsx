@@ -684,6 +684,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         }).finally(() => { void refreshCreditBalance(); });
       }
     } catch (error) {
+      void refreshCreditBalance();
       if (abortController.signal.aborted) {
         const partialReply = receivedReplyRef.current.trim();
         if (partialReply) {
