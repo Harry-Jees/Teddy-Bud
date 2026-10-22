@@ -1,49 +1,48 @@
-# OpenRouter migration and release runbook
+# Cloudflare Workers AI migration and release runbook
 
 ## Current migration state
 
-The client and Worker use OpenRouter. The Worker allowlist is the source of truth for models that may be advertised or requested. The model catalog must never expose models that the chat endpoint rejects.
+The migration branch routes ordinary text to Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash` and image-containing requests to `@cf/qwen/qwen3.8-27b`. Both models were verified in the connected Cloudflare account. `gateway-worker/wrangler.toml` declares the `AI` binding. The live Worker still has the older OpenRouter configuration; do not deploy the migration until the secret-binding checks below pass.
 
 ## Automated checks
 
-- gateway-worker tests cover approved model filtering, chat forwarding, auth, rate limits, token ceilings, and health reporting.
-- The regular CI workflow runs client tests/type checks and Worker tests.
-- .github/workflows/deploy-openrouter.yml provides a manual, production-gated deployment path. It checks required remote secret names before deployment, verifies /health and the unauthenticated model-catalog guard after deployment, and automatically rolls back to the prior active version if deployment verification fails.
+- Gateway tests cover Cloudflare model routing, daily credit accounting, auth, input limits, and health.
+- CI runs client tests/type checks and gateway tests.
+- `.github/workflows/deploy-cloudflare-ai.yml` is the manual, production-gated deployment path. It checks required secret names, records the active Worker version for rollback, runs regression tests, deploys through Wrangler, and checks health and authentication guards.
 - Never print, commit, or put provider credentials in client code or build artifacts.
 
 ## Required GitHub Actions configuration
 
-Add these repository Actions secrets before running the production deployment workflow:
+Add repository Actions secrets before running the production deployment workflow:
 
-- CLOUDFLARE_API_TOKEN — token with permission to deploy and inspect the teddy-bud-browser-gateway Worker and its versions/secrets.
-- CLOUDFLARE_ACCOUNT_ID — Cloudflare account ID containing the Worker.
+- `CLOUDFLARE_API_TOKEN` — token with permission to deploy and inspect the `teddy-bud-browser-gateway` Worker and its versions/secrets.
+- `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID containing the Worker.
 
-The following values must already exist as Cloudflare Worker secrets. The workflow checks their names only and never reads or prints their values:
+These existing Cloudflare Worker secrets must remain available:
 
-- OPENROUTER_API_KEY
-- JWT_SIGNING_SECRET
-- RECOVERY_KEY_SECRET
-- SUPABASE_URL
-- SUPABASE_ANON_KEY
-- SUPABASE_SERVICE_ROLE_KEY
+- `JWT_SIGNING_SECRET`
+- `RECOVERY_KEY_SECRET`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-Do not put the secret values in this file or the repository. If the remote secret check fails, stop and configure the missing binding in Cloudflare before retrying.
+The native Workers AI binding does not require an OpenRouter API key. Do not remove or overwrite existing secrets during deployment setup. The workflow checks names only and must never read or print values.
 
 ## Safe deployment procedure
 
-1. Merge the migration PR after all CI checks pass.
-2. Configure the GitHub Actions production environment with required reviewers if approval is desired.
-3. Open Actions → Deploy OpenRouter Worker → Run workflow on main.
-4. The workflow checks the required secret names, records the currently active Worker version, deploys through Wrangler, and verifies the health endpoint and auth guard.
-5. If verification fails, the workflow rolls back to the recorded prior active version and verifies health again.
-6. Treat the release as complete only when the workflow succeeds and the app completes a real authenticated chat and vision smoke test.
-
-The production workflow intentionally does not create or modify Cloudflare secret values. The secret values remain managed in Cloudflare; the deploy workflow requires only the Cloudflare API token and account ID in GitHub Actions.
+1. Keep production on its current healthy version until CI passes and the staged migration version is confirmed to include all required secret bindings.
+2. Confirm GitHub Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are configured.
+3. Open Actions → Deploy Cloudflare AI Worker → Run workflow on the migration branch only after the preflight is ready.
+4. The workflow checks secret names, records the active version, runs Worker tests, deploys, and verifies health plus the unauthenticated model-catalog guard.
+5. If deployment verification fails, automatically roll back to the previously active version and verify health again.
+6. Consider release complete only after a real authenticated text and vision request succeeds and the daily-credit balance behaves correctly.
 
 ## Operational checks
 
-- Health must return HTTP 200 with status: ready and provider_configured: true.
-- /v1/models must reject requests without a valid Teddy Bud session.
-- Authenticated model discovery should list only the allowlisted free models.
-- A real client test must confirm normal chat, vision, memory extraction, streaming on browser preview, and clear error handling.
-- OpenRouter web search is optional and may incur separate upstream charges. Keep it disabled unless the user explicitly enables it and the feature is intentionally tested.
+- `GET /health` must return HTTP 200 with `status: ready`, `provider_configured: true`, and `provider: cloudflare-workers-ai`.
+- `GET /v1/models` must reject unauthenticated requests with HTTP 401.
+- Authenticated model discovery must list only the two approved Cloudflare model IDs.
+- `GET /v1/credits` must return the signed-in user's daily balance.
+- Text requests cost 1 credit; image requests cost 5; daily cap is 40 credits, resetting at 00:00 UTC.
+- Run authenticated client smoke tests for normal chat, image analysis, memory extraction, browser streaming, and clear quota/error handling.
+- Cloudflare Workers AI is billable beyond any applicable allowance. Credits are a product limit, not an exact cost ledger; monitor account usage and spend separately.
