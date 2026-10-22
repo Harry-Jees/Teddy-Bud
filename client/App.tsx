@@ -40,6 +40,7 @@ type Memory = LocalMemory;
 type MemorySuggestion = { conversationId: string; messageId: number; fact: string };
 type Message = LocalMessage;
 type Conversation = LocalConversation;
+type CreditBalance = { day: string; used: number; remaining: number; limit: number; resetAt: string };
 
 const C = {
   canvas: '#F8F8F6', paper: '#FFFFFF', paperAlt: '#F2F2EF', ink: '#272724',
@@ -302,6 +303,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [retryConversationId, setRetryConversationId] = useState<string | null>(null);
   const [streamingReply, setStreamingReply] = useState('');
   const [streamingConversationId, setStreamingConversationId] = useState<string | null>(null);
+  const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
   const streamBufferRef = useRef('');
   const streamUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const receivedReplyRef = useRef('');
@@ -309,6 +311,14 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
+  const refreshCreditBalance = useCallback(async () => {
+    try {
+      setCreditBalance(await gatewayService.getCreditBalance(sessionToken));
+    } catch {
+      setCreditBalance(null);
+    }
+  }, [sessionToken]);
+  useEffect(() => { void refreshCreditBalance(); }, [refreshCreditBalance]);
   const activeConversation = conversations.find(conversation => conversation.id === activeConversationId) ?? null;
   const messages = activeConversation?.messages ?? [];
   const deviceLocale = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -645,6 +655,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       };
 
       appendConversationMessage(conversationId, assistantMessage);
+      void refreshCreditBalance();
       if (shouldGenerateTitle) {
         gatewayService.generateChatTitle(text, responseText, sessionToken).then(generatedTitle => {
           if (!generatedTitle) return;
@@ -653,7 +664,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             : conversation));
         }).catch(() => {
           // Title generation is optional; keep the first-message fallback if it fails.
-        });
+        }).finally(() => { void refreshCreditBalance(); });
       }
       streamBufferRef.current = '';
       if (streamUpdateTimerRef.current) clearTimeout(streamUpdateTimerRef.current);
@@ -670,7 +681,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
           if (!duplicate) setMemorySuggestion({ conversationId, messageId: assistantMessage.id, fact: suggestion });
         }).catch(() => {
           // Memory suggestions are optional background work; provider errors must not interrupt chat.
-        });
+        }).finally(() => { void refreshCreditBalance(); });
       }
     } catch (error) {
       if (abortController.signal.aborted) {
@@ -807,7 +818,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
           />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} />}
           {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
-          {page === 'settings' && <SettingsPage wide={wide} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
+          {page === 'settings' && <SettingsPage wide={wide} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
             const savedName = name.trim().slice(0, 32);
             if (!savedName) return;
             setAssistantCharacterId(id);
@@ -1433,8 +1444,10 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
   </ScrollView>;
 }
 
-function SettingsPage({ wide, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
+function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
   wide: boolean;
+  creditBalance: CreditBalance | null;
+  onRefreshCredits: () => Promise<void>;
   aboutMe: string;
   assistantName: string;
   assistantCharacterId: AssistantCharacterId;
@@ -1489,6 +1502,22 @@ function SettingsPage({ wide, aboutMe, assistantName, assistantCharacterId, assi
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text><Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
+    <Text style={styles.settingsSectionLabel}>FREE PLAN</Text>
+    <View style={styles.settingsCardForm}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.settingTitle}>Daily AI credits</Text>
+          <Text style={styles.settingDescription}>40 credits shared between text and image requests.</Text>
+        </View>
+        <Text style={{ color: C.cocoaDark, fontSize: 22, fontWeight: '700' }}>{creditBalance ? creditBalance.remaining : '—'}<Text style={{ color: C.muted, fontSize: 12, fontWeight: '500' }}> / 40</Text></Text>
+      </View>
+      <View accessibilityRole="progressbar" accessibilityLabel="Daily AI credits remaining" accessibilityValue={{ min: 0, max: 40, now: creditBalance?.remaining ?? 0 }} style={{ height: 7, borderRadius: 4, overflow: 'hidden', backgroundColor: C.paperAlt }}>
+        <View style={{ height: '100%', width: `${Math.min(100, Math.max(0, (creditBalance?.remaining ?? 0) / 40 * 100))}%`, backgroundColor: C.cocoa, borderRadius: 4 }} />
+      </View>
+      <Text style={styles.settingDescription}>Text: 1 credit · Image analysis: 5 credits · Resets daily at 00:00 UTC.</Text>
+      <Pressable accessibilityRole="button" onPress={() => { void onRefreshCredits(); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
+      {!creditBalance && <Text style={styles.settingDescription}>Balance unavailable right now. Connect to the gateway and refresh.</Text>}
+    </View>
     <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
     <View style={styles.settingsCardForm}>
       <Text style={styles.formLabel}>What should your assistant know about you?</Text>
