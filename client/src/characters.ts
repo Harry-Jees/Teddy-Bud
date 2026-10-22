@@ -31,7 +31,7 @@ export const ASSISTANT_CHARACTERS = [
     tagline: 'Soft & patient',
     style: 'Be soft-spoken, patient, and reassuring without relying on generic reassurance. Give the user room to talk.',
   },
-  ,{
+  {
     id: 'sage',
     tier: 'pro',
     name: 'Sage',
