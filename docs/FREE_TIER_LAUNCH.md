@@ -13,6 +13,7 @@ Teddy Bud launches with one plan: **Free**. Do not add checkout, payment-provide
 - Durable Object storage reserves credits atomically before inference, refunds reservations on inference errors before a response is returned, and commits successful requests.
 - Authenticated `GET /v1/credits` returns the current balance and reset time.
 - The app's client cannot supply a user ID, plan, or credit cost to change its allowance.
+- Automatic title and memory-suggestion tasks do not consume chat credits, but have a separate server-enforced cap of 10 background tasks per account per UTC day.
 - Existing burst rate limiting, context size limits, and output-token caps remain in place.
 
 Credits are a product-level usage guard, not an exact billing ledger. Cloudflare Workers AI may charge the project account beyond any applicable allowance. Monitor actual model usage and account spend independently.
