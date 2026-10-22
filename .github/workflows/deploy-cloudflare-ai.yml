@@ -75,23 +75,65 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler versions upload --name "$WORKER_NAME" --message "Staged Cloudflare Workers AI migration with unified daily credits"
+          cat > "$RUNNER_TEMP/worker-metadata.json" <<'JSON'
+          {
+            "main_module": "index.mjs",
+            "compatibility_date": "2026-10-12",
+            "compatibility_flags": [],
+            "keep_bindings": ["secret_text"],
+            "annotations": {
+              "workers/message": "Staged Cloudflare Workers AI migration with unified daily credits"
+            },
+            "bindings": [
+              {
+                "type": "plain_text",
+                "name": "AUTH_REDIRECT_ORIGINS",
+                "text": "https://teddybud.vercel.app,http://localhost:5173,http://127.0.0.1:5173"
+              },
+              {
+                "type": "kv_namespace",
+                "name": "DEVICE_KEYS",
+                "namespace_id": "b321b1407bec4816917e38b967abcced"
+              },
+              {
+                "type": "durable_object_namespace",
+                "name": "SESSIONS",
+                "class_name": "GatewayStateStore",
+                "namespace_id": "a55c4e84bf7748009f1fce18a0543db5"
+              },
+              { "type": "ai", "name": "AI" }
+            ]
+          }
+          JSON
+          curl --silent --show-error --fail \
+            -X POST \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -F "metadata=@$RUNNER_TEMP/worker-metadata.json;type=application/json" \
+            -F "index.mjs=@src/index.mjs;type=application/javascript+module" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME/versions" \
+            -o "$RUNNER_TEMP/upload.json"
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import fs from 'node:fs';
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/upload.json', 'utf8'));
+          if (payload.success !== true || typeof payload.result?.id !== 'string') {
+            throw new Error('Cloudflare could not stage the migration version: ' + JSON.stringify(payload.errors ?? []));
+          }
+          process.stdout.write('version_id=' + payload.result.id + '\\n');
+          console.error('Migration version staged without changing production traffic.');
+          NODE
       - name: Verify staged version bindings before production deployment
         id: bindings
         shell: bash
+        env:
+          VERSION_ID: ${{ steps.upload.outputs.version_id }}
         run: |
           set -euo pipefail
-          curl --silent --show-error --fail \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME/versions" \
-            -o "$RUNNER_TEMP/versions.json"
-          VERSION_ID="$(node --input-type=module -e "import fs from 'node:fs'; const p=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/versions.json','utf8')); if(p.success!==true) throw new Error('Could not list staged Worker versions'); const items=p.result?.items??[]; const v=items[0]; process.stdout.write(v?.id??'')")"
-          test -n "$VERSION_ID" || { echo "::error::Could not identify the staged Worker version."; exit 1; }
+          test -n "$VERSION_ID" || { echo "::error::No staged version ID."; exit 1; }
           curl --silent --show-error --fail \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$WORKER_NAME/versions/$VERSION_ID" \
             -o "$RUNNER_TEMP/version.json"
-          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/version.json', 'utf8'));
           if (payload.success !== true) throw new Error('Cloudflare did not return staged version metadata.');
@@ -100,10 +142,8 @@ jobs:
           const required = ['AI', 'SESSIONS', 'DEVICE_KEYS', 'JWT_SIGNING_SECRET', 'RECOVERY_KEY_SECRET', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'];
           const missing = required.filter(name => !names.has(name));
           if (missing.length) throw new Error('Staged version is missing required bindings; production was not changed: ' + missing.join(', '));
-          const ai = bindings.find(binding => binding.name === 'AI');
-          if (ai?.type !== 'ai') throw new Error('Staged AI binding has the wrong type; production was not changed.');
-          process.stdout.write('version_id=' + payload.result.id + '\n');
-          console.error('Verified staged binding names; secret values were not read.');
+          if (bindings.find(binding => binding.name === 'AI')?.type !== 'ai') throw new Error('Staged AI binding has the wrong type; production was not changed.');
+          console.log('Verified staged binding names; secret values were not read.');
           NODE
       - name: Deploy verified staged version
         id: deploy
