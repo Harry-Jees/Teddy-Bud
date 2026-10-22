@@ -1508,18 +1508,18 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Text style={styles.settingTitle}>Daily AI credits</Text>
-          <Text style={styles.settingDescription}>40 credits shared between text and image requests.</Text>
+          <Text style={styles.settingDescription}>40 credits each day. Text and image messages each use 1 credit.</Text>
         </View>
         <Text style={{ color: C.cocoaDark, fontSize: 22, fontWeight: '700' }}>{creditBalance ? creditBalance.remaining : '—'}<Text style={{ color: C.muted, fontSize: 12, fontWeight: '500' }}> / 40</Text></Text>
       </View>
       <View accessibilityRole="progressbar" accessibilityLabel="Daily AI credits remaining" accessibilityValue={{ min: 0, max: 40, now: creditBalance?.remaining ?? 0 }} style={{ height: 7, borderRadius: 4, overflow: 'hidden', backgroundColor: C.paperAlt }}>
         <View style={{ height: '100%', width: `${Math.min(100, Math.max(0, (creditBalance?.remaining ?? 0) / 40 * 100))}%`, backgroundColor: C.cocoa, borderRadius: 4 }} />
       </View>
-      <Text style={styles.settingDescription}>Text: 1 credit · Image analysis: 5 credits · Resets daily at 00:00 UTC.</Text>
+      <Text style={styles.settingDescription}>Text: 1 credit · Image analysis: 1 credit · Resets daily at 00:00 UTC.</Text>
       <Pressable accessibilityRole="button" onPress={() => { void onRefreshCredits(); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
       {!creditBalance && <Text style={styles.settingDescription}>Balance unavailable right now. Connect to the gateway and refresh.</Text>}
     </View>
-    <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
+    <View style={styles.settingsCardForm}>\n      <Text style={styles.settingTitle}>More ways to connect are coming</Text>\n      <Text style={styles.settingDescription}>Pro will include 7 companion personalities, and Premium will include 10, with access to more capable models and larger credit allowances. Paid plans are coming soon; no payment is required for Free.</Text>\n    </View>\n    <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
     <View style={styles.settingsCardForm}>
       <Text style={styles.formLabel}>What should your assistant know about you?</Text>
       <TextInput value={aboutMe} onChangeText={value => onAboutMeChange(value.slice(0, 2_000))} placeholder="Share your name, goals, preferences, or helpful context…" placeholderTextColor={C.muted} multiline maxLength={2_000} textAlignVertical="top" style={styles.aboutMeInput} accessibilityLabel="About me profile notes" />
