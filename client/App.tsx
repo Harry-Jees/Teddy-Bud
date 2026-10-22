@@ -1526,7 +1526,22 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
       <Pressable accessibilityRole="button" onPress={() => { void onRefreshCredits(); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
       {!creditBalance && <Text style={styles.settingDescription}>Balance unavailable right now. Connect to the gateway and refresh.</Text>}
     </View>
-    <View style={styles.settingsCardForm}>\n      <Text style={styles.settingTitle}>More ways to connect are coming</Text>\n      <Text style={styles.settingDescription}>Pro will include 7 companion personalities, and Premium will include 10, with access to more capable models and larger credit allowances. Paid plans are coming soon; no payment is required for Free.</Text>\n    </View>\n    <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
+    <View style={styles.settingsCardForm}>
+      <Text style={styles.settingTitle}>More ways to connect are coming</Text>
+      <Text style={styles.settingDescription}>Pro will include 7 companion personalities, and Premium will include 10, with access to more capable models and larger credit allowances. Paid plans are coming soon; no payment is required for Free.</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+        <View style={{ flex: 1, borderRadius: 13, borderWidth: 1, borderColor: C.line, padding: 12, backgroundColor: '#FDFBF8' }}>
+          <Text style={styles.settingTitle}>Pro · Coming soon</Text>
+          <Text style={styles.settingDescription}>7 personalities · Better models</Text>
+        </View>
+        <View style={{ flex: 1, borderRadius: 13, borderWidth: 1, borderColor: C.line, padding: 12, backgroundColor: '#FDFBF8' }}>
+          <Text style={styles.settingTitle}>Premium · Coming soon</Text>
+          <Text style={styles.settingDescription}>10 personalities · Best models</Text>
+        </View>
+      </View>
+      <Text style={styles.settingDescription}>Enterprise deployments with locally hosted models are planned separately.</Text>
+    </View>
+    <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
     <View style={styles.settingsCardForm}>
       <Text style={styles.formLabel}>What should your assistant know about you?</Text>
       <TextInput value={aboutMe} onChangeText={value => onAboutMeChange(value.slice(0, 2_000))} placeholder="Share your name, goals, preferences, or helpful context…" placeholderTextColor={C.muted} multiline maxLength={2_000} textAlignVertical="top" style={styles.aboutMeInput} accessibilityLabel="About me profile notes" />
