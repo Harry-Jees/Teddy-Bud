@@ -358,7 +358,7 @@ export class GatewayService {
   }
 
   async getCreditBalance(accessToken: string): Promise<{ day: string; used: number; remaining: number; limit: number; resetAt: string }> {
-    return this.requestWithToken('/v1/credits', {}, accessToken);
+    return this.requestWithToken<{ day: string; used: number; remaining: number; limit: number; resetAt: string }>('/v1/credits', {}, accessToken);
   }
 
   async getModelCatalog(accessToken: string): Promise<GatewayModel[]> {
