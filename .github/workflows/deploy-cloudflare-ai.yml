@@ -118,7 +118,7 @@ jobs:
           if (payload.success !== true || typeof payload.result?.id !== 'string') {
             throw new Error('Cloudflare could not stage the migration version: ' + JSON.stringify(payload.errors ?? []));
           }
-          process.stdout.write('version_id=' + payload.result.id + '\\n');
+          process.stdout.write('version_id=' + payload.result.id + '\n');
           console.error('Migration version staged without changing production traffic.');
           NODE
       - name: Verify staged version bindings before production deployment
