@@ -102,7 +102,7 @@ jobs:
           if (missing.length) throw new Error('Staged version is missing required bindings; production was not changed: ' + missing.join(', '));
           const ai = bindings.find(binding => binding.name === 'AI');
           if (ai?.type !== 'ai') throw new Error('Staged AI binding has the wrong type; production was not changed.');
-          process.stdout.write('version_id=' + payload.result.id + '\\n');
+          process.stdout.write('version_id=' + payload.result.id + '\n');
           console.log('Verified staged binding names; secret values were not read.');
           NODE
       - name: Deploy verified staged version
