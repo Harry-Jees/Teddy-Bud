@@ -588,14 +588,29 @@ async function completions(request, env) {
     const firstUserIndex = filteredMessages.findIndex(message => message?.role === 'user');
     filteredMessages.splice(firstUserIndex < 0 ? filteredMessages.length : firstUserIndex, 0, { role: 'system', content: CRISIS_GUIDANCE });
   }
-  const hasImage = input.messages.some(message =>
-    message?.role === 'user' && Array.isArray(message.content) && message.content.some(part =>
-      part && (part.type === 'image_url' || part.type === 'image' || part.image_url || part.image)
-    )
-  );
+  const imageParts = input.messages
+    .filter(message => message?.role === 'user' && Array.isArray(message.content))
+    .flatMap(message => message.content)
+    .filter(part => part && (part.type === 'image_url' || part.type === 'image' || part.image_url || part.image));
+  const hasImage = imageParts.length > 0;
+  if (hasImage) {
+    for (const part of imageParts) {
+      const imageUrl = typeof part.image_url === 'object' && part.image_url !== null
+        ? part.image_url.url
+        : typeof part.image_url === 'string' ? part.image_url
+          : typeof part.image === 'string' ? part.image : null;
+      if (typeof imageUrl !== 'string' || !/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+=*$/.test(imageUrl)) {
+        return json(400, { error: { message: 'Images must be uploaded as JPEG, PNG, WebP, or GIF files.' } });
+      }
+      if (imageUrl.length > 11_200_000) {
+        return json(413, { error: { message: 'Images must be 8 MB or smaller.' } });
+      }
+    }
+  }
   // Enforce model routing at the gateway so clients cannot send images to a text-only model
   // or deliberately select the more expensive vision model for ordinary text requests.
   const effectiveModel = hasImage ? PRIMARY_MODEL : FALLBACK_MODEL;
+  // The launch policy intentionally charges one credit for either message type.
   const costCredits = 1;
   const reservationId = crypto.randomUUID();
   const reservation = await dailyCreditsRequest(env, claims.sub, '/credits/reserve', {
