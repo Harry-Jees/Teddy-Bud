@@ -386,6 +386,15 @@ function stateStub(env, name) {
   return env.SESSIONS.get(env.SESSIONS.idFromName(name));
 }
 
+async function dailyCreditsRequest(env, userId, path, body) {
+  const id = env.SESSIONS.idFromName(`credits:${await hash(userId)}`);
+  return env.SESSIONS.get(id).fetch(`https://state${path}`, {
+    method: path === '/credits/read' ? 'GET' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    ...(path === '/credits/read' ? {} : { body: JSON.stringify(body) }),
+  });
+}
+
 function tokenClaims(userId, kind, sessionId, now, refreshUntil) {
   return {
     sub: userId,
@@ -587,23 +596,45 @@ async function completions(request, env) {
     const firstUserIndex = filteredMessages.findIndex(message => message?.role === 'user');
     filteredMessages.splice(firstUserIndex < 0 ? filteredMessages.length : firstUserIndex, 0, { role: 'system', content: CRISIS_GUIDANCE });
   }
+  const lastUserMessage = [...input.messages].reverse().find(message => message?.role === 'user');
+  const hasImage = Array.isArray(lastUserMessage?.content) && lastUserMessage.content.some(part =>
+    part && (part.type === 'image_url' || part.type === 'image' || part.image_url || part.image)
+  );
+  // Enforce model routing at the gateway so clients cannot send images to a text-only model
+  // or deliberately select the more expensive vision model for ordinary text requests.
+  const effectiveModel = hasImage ? PRIMARY_MODEL : FALLBACK_MODEL;
+  const costCredits = hasImage ? 5 : 1;
+  const reservationId = crypto.randomUUID();
+  const reservation = await dailyCreditsRequest(env, claims.sub, '/credits/reserve', {
+    reservationId, cost: costCredits, dailyLimit: 40,
+  });
+  if (!reservation.ok) {
+    return json(503, { error: { message: 'Usage limits are temporarily unavailable. Please try again shortly.' } });
+  }
+  const quota = await reservation.json();
+  if (quota.allowed !== true) {
+    return json(429, { error: { message: 'You have used today’s 40 credits. Your credits reset at 00:00 UTC.', code: 'DAILY_CREDITS_EXHAUSTED', used: quota.used, limit: 40, remaining: 0, resetAt: quota.resetAt } });
+  }
   const options = {
     messages: filteredMessages,
-    max_tokens: Number.isInteger(input.max_tokens) && input.max_tokens > 0 ? Math.min(input.max_tokens, 1536) : 768,
+    max_tokens: Number.isInteger(input.max_tokens) && input.max_tokens > 0 ? Math.min(input.max_tokens, hasImage ? 512 : 1536) : 768,
     temperature: typeof input.temperature === 'number' ? Math.max(0, Math.min(input.temperature, 1.2)) : 0.7,
     stream: input.stream === true,
   };
   let result;
   try {
-    result = await env.AI.run(input.model, options);
+    result = await env.AI.run(effectiveModel, options);
   } catch (error) {
+    await dailyCreditsRequest(env, claims.sub, '/credits/refund', { reservationId }).catch(() => {});
     console.error('Workers AI inference failed:', error instanceof Error ? error.message : 'Unknown error');
-    return json(502, { error: { message: 'The AI service could not complete this reply. Please try again.' } });
+    return json(502, { error: { message: 'The AI service could not complete this reply. Your credits were returned. Please try again.' } });
   }
   if (input.stream === true) {
     if (!(result instanceof ReadableStream)) {
-      return json(502, { error: { message: 'The AI provider returned an unsupported stream.' } });
+      await dailyCreditsRequest(env, claims.sub, '/credits/refund', { reservationId }).catch(() => {});
+      return json(502, { error: { message: 'The AI provider returned an unsupported stream. Your credits were returned.' } });
     }
+    await dailyCreditsRequest(env, claims.sub, '/credits/commit', { reservationId }).catch(() => {});
     // Normalize Workers AI's native {response: "..."} stream into the OpenAI-style
     // delta format already consumed by desktop, Android, and web clients.
     const reader = result.getReader();
@@ -645,11 +676,17 @@ async function completions(request, env) {
   }
   const content = typeof result?.response === 'string' ? result.response
     : typeof result?.choices?.[0]?.message?.content === 'string' ? result.choices[0].message.content : '';
-  if (!content) return json(502, { error: { message: 'The AI provider returned an empty reply. Please try again.' } });
+  if (!content) {
+    await dailyCreditsRequest(env, claims.sub, '/credits/refund', { reservationId }).catch(() => {});
+    return json(502, { error: { message: 'The AI provider returned an empty reply. Your credits were returned. Please try again.' } });
+  }
+  await dailyCreditsRequest(env, claims.sub, '/credits/commit', { reservationId }).catch(() => {});
+  const creditState = await dailyCreditsRequest(env, claims.sub, '/credits/read', {}).then(response => response.ok ? response.json() : null).catch(() => null);
   return json(200, {
     id: 'teddybud-' + crypto.randomUUID(),
     object: 'chat.completion',
-    model: input.model,
+    model: effectiveModel,
+    teddyBudCredits: creditState ? { used: creditState.used, limit: 40, remaining: Math.max(0, 40 - creditState.used), resetAt: creditState.resetAt, charged: costCredits } : { charged: costCredits },
     choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
     usage: result?.usage ?? undefined,
   });
@@ -755,6 +792,53 @@ export class GatewayStateStore {
         return true;
       });
       return created ? new Response(null, { status: 201 }) : json(409, { error: 'Account already exists.' });
+    }
+
+    if (pathname === '/credits/read' && request.method === 'GET') {
+      const day = new Date().toISOString().slice(0, 10);
+      const state = await this.ctx.storage.get('daily-credits');
+      const current = state?.day === day ? state : { day, used: 0, reservations: {} };
+      return json(200, { day, used: current.used, remaining: Math.max(0, 40 - current.used), limit: 40, resetAt: new Date(Date.UTC(...day.split('-').map((part, index) => Number(part) + (index === 2 ? 1 : 0)))).toISOString() });
+    }
+
+    if (pathname.startsWith('/credits/') && request.method === 'POST') {
+      const action = pathname.slice('/credits/'.length);
+      const body = await request.json();
+      const day = new Date().toISOString().slice(0, 10);
+      let responseBody;
+      await this.ctx.storage.transaction(async txn => {
+        const stored = await txn.get('daily-credits');
+        const state = stored?.day === day ? stored : { day, used: 0, reservations: {} };
+        state.reservations ??= {};
+        if (action === 'reserve') {
+          const cost = body.cost;
+          if (!Number.isInteger(cost) || ![1, 5].includes(cost) || typeof body.reservationId !== 'string') {
+            responseBody = { allowed: false, error: 'Invalid credit reservation.' };
+            return;
+          }
+          if (state.used + cost > 40) {
+            responseBody = { allowed: false, used: state.used, remaining: Math.max(0, 40 - state.used), resetAt: new Date(Date.UTC(...day.split('-').map((part, index) => Number(part) + (index === 2 ? 1 : 0)))).toISOString() };
+            return;
+          }
+          state.used += cost;
+          state.reservations[body.reservationId] = { cost, status: 'reserved' };
+          await txn.put('daily-credits', state);
+          responseBody = { allowed: true, used: state.used, remaining: 40 - state.used, resetAt: new Date(Date.UTC(...day.split('-').map((part, index) => Number(part) + (index === 2 ? 1 : 0)))).toISOString() };
+          return;
+        }
+        if (action === 'commit' || action === 'refund') {
+          const reservation = state.reservations[body.reservationId];
+          if (reservation?.status === 'reserved') {
+            if (action === 'refund') state.used = Math.max(0, state.used - reservation.cost);
+            reservation.status = action === 'refund' ? 'refunded' : 'committed';
+            await txn.put('daily-credits', state);
+          }
+          responseBody = { success: true, used: state.used, remaining: Math.max(0, 40 - state.used) };
+          return;
+        }
+        responseBody = { error: 'Unknown credit action.' };
+      });
+      return json(responseBody?.error ? 400 : 200, responseBody);
     }
 
     if (pathname === '/rate' && request.method === 'POST') {
