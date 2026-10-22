@@ -422,94 +422,74 @@ test('signup attempts are rate-limited and CORS is restricted to app origins', a
   assert.equal(blockedOrigin.headers.get('Access-Control-Allow-Origin'), null);
 });
 
-test('model catalog only advertises models approved by the chat proxy', async () => {
+test('model catalog advertises only configured Cloudflare Workers AI models', async () => {
   const env = makeEnv();
-  env.OPENROUTER_API_KEY = 'test-openrouter-key';
   const accessToken = await createSession(env, 'model-catalog-test-user');
-  const oldFetch = globalThis.fetch;
-  globalThis.fetch = async (input) => {
-    assert.equal(new URL(input).pathname, '/api/v1/models');
-    return new Response(JSON.stringify({
-      data: [
-        { id: 'openai/gpt-oss-20b:free', name: 'Approved chat model' },
-        { id: 'qwen/qwen3.8-27b:free', name: 'Approved vision model' },
-        { id: 'vendor/paid-model', name: 'Not approved' },
-      ],
-      object: 'list',
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-  };
-
-  try {
-    const result = await jsonResponse(await worker.fetch(request(
-      '/v1/models',
-      'GET',
-      undefined,
-      { Authorization: 'Bearer ' + accessToken },
-    ), env));
-    assert.equal(result.status, 200);
-    assert.deepEqual(result.body.data.map(model => model.id), [
-      'openai/gpt-oss-20b:free',
-      'qwen/qwen3.8-27b:free',
-      'openrouter/free',
-    ]);
-    assert.deepEqual(result.body.data[2].capabilities, ['coding', 'vision', 'web_search']);
-  } finally {
-    globalThis.fetch = oldFetch;
-  }
+  const result = await jsonResponse(await worker.fetch(request('/v1/models', 'GET', undefined, {
+    Authorization: 'Bearer ' + accessToken,
+  }), env));
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.data.map(model => model.id), [
+    '@cf/qwen/qwen3.8-27b',
+    '@cf/zai-org/glm-4.7-flash',
+  ]);
+  assert.ok(result.body.data[0].capabilities.includes('vision'));
+  assert.ok(!result.body.data[1].capabilities.includes('vision'));
 });
 
-test('public health is cheap and never calls the upstream provider', async () => {
+test('public health reports Cloudflare Workers AI binding status without inference', async () => {
   const env = makeEnv();
-  env.OPENROUTER_API_KEY = 'test-openrouter-key';
-  const oldFetch = globalThis.fetch;
-  globalThis.fetch = async () => { throw new Error('health must not call upstream'); };
-  try {
-    const ready = await jsonResponse(await worker.fetch(request('/health'), env));
-    assert.equal(ready.status, 200);
-    assert.deepEqual(ready.body, { status: 'ready', provider_configured: true });
-    delete env.OPENROUTER_API_KEY;
-    const degraded = await jsonResponse(await worker.fetch(request('/health'), env));
-    assert.equal(degraded.status, 503);
-    assert.deepEqual(degraded.body, { status: 'degraded', provider_configured: false });
-  } finally {
-    globalThis.fetch = oldFetch;
-  }
+  const ready = await jsonResponse(await worker.fetch(request('/health'), env));
+  assert.equal(ready.status, 200);
+  assert.deepEqual(ready.body, { status: 'ready', provider_configured: true, provider: 'cloudflare-workers-ai' });
+  delete env.AI;
+  const degraded = await jsonResponse(await worker.fetch(request('/health'), env));
+  assert.equal(degraded.status, 503);
+  assert.deepEqual(degraded.body, { status: 'degraded', provider_configured: false, provider: 'cloudflare-workers-ai' });
 });
 
 test('chat proxy caps output tokens and rejects oversized text context', async () => {
   const env = makeEnv();
-  env.OPENROUTER_API_KEY = 'test-openrouter-key';
   const accessToken = await createSession(env, 'budget-test-user');
-  const oldFetch = globalThis.fetch;
-  let forwardedBody;
-  globalThis.fetch = async (_input, init) => {
-    forwardedBody = JSON.parse(init.body);
-    return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  let forwardedOptions;
+  env.AI.run = async (_model, options) => {
+    forwardedOptions = options;
+    return { response: 'ok' };
   };
-  try {
-    const response = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
-      model: 'openai/gpt-oss-20b:free',
-      messages: [{ role: 'user', content: 'hello' }],
-      max_tokens: 50_000,
-    }, { Authorization: 'Bearer ' + accessToken }), env));
-    assert.equal(response.status, 200);
-    assert.equal(forwardedBody.max_tokens, 2048);
+  const response = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 50_000,
+  }, { Authorization: 'Bearer ' + accessToken }), env));
+  assert.equal(response.status, 200);
+  assert.equal(forwardedOptions.max_tokens, 1536);
 
-    const oversized = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
-      model: 'openai/gpt-oss-20b:free',
-      messages: [{ role: 'user', content: 'x'.repeat(80_001) }],
-      max_tokens: 1024,
-    }, { Authorization: 'Bearer ' + accessToken }), env));
-    assert.equal(oversized.status, 413);
-  } finally {
-    globalThis.fetch = oldFetch;
-  }
+  const oversized = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'x'.repeat(80_001) }],
+    max_tokens: 1024,
+  }, { Authorization: 'Bearer ' + accessToken }), env));
+  assert.equal(oversized.status, 413);
 });
 
-test('chat requests are rate-limited per authenticated account', async () => {
+test('credit exhaustion remains enforced even when clients request a different model', async () => {
+  const env = makeEnv();
+  const accessToken = await createSession(env, 'credit-limit-test-user');
+  const body = { model: '@cf/zai-org/glm-4.7-flash', messages: [{ role: 'user', content: 'hello' }], max_tokens: 10 };
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const response = await worker.fetch(request('/v1/chat/completions', 'POST', body, {
+      Authorization: 'Bearer ' + accessToken,
+    }), env);
+    assert.equal(response.status, 200);
+  }
+  const limited = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', body, {
+    Authorization: 'Bearer ' + accessToken,
+  }), env));
+  assert.equal(limited.status, 429);
+  assert.equal(limited.body.error.code, 'DAILY_CREDITS_EXHAUSTED');
+});
+
+est('chat requests are rate-limited per authenticated account', async () => {
   const env = makeEnv();
   env.OPENROUTER_API_KEY = 'test-openrouter-key';
   const accessToken = await createSession(env, 'rate-limit-test-user');
