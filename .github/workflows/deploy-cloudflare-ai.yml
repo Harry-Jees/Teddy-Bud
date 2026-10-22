@@ -103,7 +103,7 @@ jobs:
           const ai = bindings.find(binding => binding.name === 'AI');
           if (ai?.type !== 'ai') throw new Error('Staged AI binding has the wrong type; production was not changed.');
           process.stdout.write('version_id=' + payload.result.id + '\n');
-          console.log('Verified staged binding names; secret values were not read.');
+          console.error('Verified staged binding names; secret values were not read.');
           NODE
       - name: Deploy verified staged version
         id: deploy
