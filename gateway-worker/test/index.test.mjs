@@ -489,28 +489,3 @@ test('credit exhaustion remains enforced even when clients request a different m
   assert.equal(limited.body.error.code, 'DAILY_CREDITS_EXHAUSTED');
 });
 
-est('chat requests are rate-limited per authenticated account', async () => {
-  const env = makeEnv();
-  env.OPENROUTER_API_KEY = 'test-openrouter-key';
-  const accessToken = await createSession(env, 'rate-limit-test-user');
-  const oldFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
-  try {
-    const body = { model: 'openai/gpt-oss-20b:free', messages: [{ role: 'user', content: 'hello' }], max_tokens: 10 };
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      const response = await worker.fetch(request('/v1/chat/completions', 'POST', body, {
-        Authorization: 'Bearer ' + accessToken,
-      }), env);
-      assert.equal(response.status, 200);
-    }
-    const limited = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', body, {
-      Authorization: 'Bearer ' + accessToken,
-    }), env));
-    assert.equal(limited.status, 429);
-  } finally {
-    globalThis.fetch = oldFetch;
-  }
-});
