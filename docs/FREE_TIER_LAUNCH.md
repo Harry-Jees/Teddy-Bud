@@ -19,7 +19,7 @@ Credits are a product-level usage guard, not an exact billing ledger. Cloudflare
 
 ## Deployment status and safety
 
-The migration code is committed to `migration/cloudflare-workers-ai-phonepe`; it is **not yet live**. A staged version (`6ceee0eb-cc75-4cfc-b6cf-a6cb42ea7765`) was uploaded and verified to contain the `AI` binding plus the existing Supabase/auth secret binding names. The active production deployment is still the previous OpenRouter version. Keep it active until CI and the staged code are validated; the staged version has not been deployed.
+The migration was merged to `main` and deployed on 2026-10-22 as Worker version `6ceee0eb-cc75-4cfc-b6cf-a6cb42ea7765` (deployment `5bfec88c-f20e-4e57-aae1-687395e81179`). The deployed version has the `AI` binding plus the existing Supabase/auth secret binding names. Direct Cloudflare API smoke requests to both GLM-4.7 Flash and Qwen 3.8 27B returned HTTP 200. A full authenticated request through the public Worker, including daily-credit exhaustion and refund behavior, still needs a live end-to-end smoke test.
 
 Before deployment:
 1. Run gateway tests and client type checks/build.
