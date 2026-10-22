@@ -386,6 +386,12 @@ function stateStub(env, name) {
   return env.SESSIONS.get(env.SESSIONS.idFromName(name));
 }
 
+function dailyResetAt(day) {
+  const reset = new Date(`${day}T00:00:00.000Z`);
+  reset.setUTCDate(reset.getUTCDate() + 1);
+  return reset.toISOString();
+}
+
 async function dailyCreditsRequest(env, userId, path, body) {
   const id = env.SESSIONS.idFromName(`credits:${await hash(userId)}`);
   return env.SESSIONS.get(id).fetch(`https://state${path}`, {
@@ -710,6 +716,13 @@ async function route(request, env) {
   if (url.pathname === '/auth/session' && request.method === 'GET') return validateSession(request, env);
   if (url.pathname === '/auth/refresh' && request.method === 'POST') return refresh(request, env);
   if (url.pathname === '/auth/logout' && request.method === 'POST') return logout(request, env);
+  if (url.pathname === '/v1/credits' && request.method === 'GET') {
+    const claims = await bearerClaims(request, env);
+    if (!claims) return json(401, { error: { message: 'Unauthorized.' } });
+    const response = await dailyCreditsRequest(env, claims.sub, '/credits/read', {});
+    if (!response.ok) return json(503, { error: { message: 'Usage limits are temporarily unavailable.' } });
+    return json(200, await response.json());
+  }
   if (url.pathname === '/v1/models' && request.method === 'GET') return models(request, env);
   if (url.pathname === '/v1/chat/completions' && request.method === 'POST') return completions(request, env);
   return json(404, { error: { message: 'Unknown endpoint.', type: 'Not Found', code: 404 } });
@@ -798,7 +811,7 @@ export class GatewayStateStore {
       const day = new Date().toISOString().slice(0, 10);
       const state = await this.ctx.storage.get('daily-credits');
       const current = state?.day === day ? state : { day, used: 0, reservations: {} };
-      return json(200, { day, used: current.used, remaining: Math.max(0, 40 - current.used), limit: 40, resetAt: new Date(Date.UTC(...day.split('-').map((part, index) => Number(part) + (index === 2 ? 1 : 0)))).toISOString() });
+      return json(200, { day, used: current.used, remaining: Math.max(0, 40 - current.used), limit: 40, resetAt: dailyResetAt(day) });
     }
 
     if (pathname.startsWith('/credits/') && request.method === 'POST') {
@@ -817,13 +830,13 @@ export class GatewayStateStore {
             return;
           }
           if (state.used + cost > 40) {
-            responseBody = { allowed: false, used: state.used, remaining: Math.max(0, 40 - state.used), resetAt: new Date(Date.UTC(...day.split('-').map((part, index) => Number(part) + (index === 2 ? 1 : 0)))).toISOString() };
+            responseBody = { allowed: false, used: state.used, remaining: Math.max(0, 40 - state.used), resetAt: dailyResetAt(day) };
             return;
           }
           state.used += cost;
           state.reservations[body.reservationId] = { cost, status: 'reserved' };
           await txn.put('daily-credits', state);
-          responseBody = { allowed: true, used: state.used, remaining: 40 - state.used, resetAt: new Date(Date.UTC(...day.split('-').map((part, index) => Number(part) + (index === 2 ? 1 : 0)))).toISOString() };
+          responseBody = { allowed: true, used: state.used, remaining: 40 - state.used, resetAt: dailyResetAt(day) };
           return;
         }
         if (action === 'commit' || action === 'refund') {
