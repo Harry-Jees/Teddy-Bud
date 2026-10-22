@@ -357,6 +357,10 @@ export class GatewayService {
     throw Object.assign(new Error('Your sign-in session could not be refreshed.'), { status: 401 });
   }
 
+  async getCreditBalance(accessToken: string): Promise<{ day: string; used: number; remaining: number; limit: number; resetAt: string }> {
+    return this.requestWithToken('/v1/credits', {}, accessToken);
+  }
+
   async getModelCatalog(accessToken: string): Promise<GatewayModel[]> {
     const body = await this.requestWithToken<{ data?: any[] }>('/v1/models', {}, accessToken);
     return (body.data ?? []).map(normalizeModel).filter((model): model is GatewayModel => Boolean(model));
