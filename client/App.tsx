@@ -1539,7 +1539,7 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
           <Text style={styles.settingDescription}>10 personalities · Best models</Text>
         </View>
       </View>
-      <Text style={styles.settingDescription}>Enterprise deployments with locally hosted models are planned separately.</Text>
+      <Text style={styles.settingDescription}>Industrial / Enterprise deployments with locally hosted models are planned separately.</Text>
     </View>
     <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
     <View style={styles.settingsCardForm}>
