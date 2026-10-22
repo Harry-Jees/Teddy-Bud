@@ -623,7 +623,7 @@ async function completions(request, env) {
   }
   const options = {
     messages: filteredMessages,
-    max_tokens: Number.isInteger(input.max_tokens) && input.max_tokens > 0 ? Math.min(input.max_tokens, hasImage ? 512 : 1536) : 768,
+    max_tokens: Number.isInteger(input.max_tokens) && input.max_tokens > 0 ? Math.min(input.max_tokens, hasImage ? 512 : 1536) : (hasImage ? 512 : 768),
     temperature: typeof input.temperature === 'number' ? Math.max(0, Math.min(input.temperature, 1.2)) : 0.7,
     stream: input.stream === true,
   };
