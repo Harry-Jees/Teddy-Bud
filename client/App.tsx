@@ -30,6 +30,7 @@ import { findRelevantChatHistory, localDataService, ownerFromToken } from './src
 import type { LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, readEncryptedBackup } from './src/services/backup';
 import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
+import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
@@ -585,9 +586,9 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     return true;
   };
 
-  const sendMessage = async (messageToRetry?: string) => {
-    const text = messageToRetry ?? draft.trim();
-    if (!text || isSending || !localDataReady) return;
+  const sendMessage = async (messageToRetry?: string, imageDataUrl?: string) => {
+    const text = messageToRetry ?? (draft.trim() || (imageDataUrl ? 'Please describe this image.' : ''));
+    if ((!text && !imageDataUrl) || isSending || !localDataReady) return;
     const conversationId = activeConversationId ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     if (!activeConversationId) setActiveConversationId(conversationId);
 
@@ -624,6 +625,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         content: message.text,
       })), sessionToken, {
         task: 'conversation',
+        imageDataUrl,
         memories: shareMemories ? memories.map(memory => memory.text) : [],
         aboutMe: shareAboutMe ? aboutMe : '',
         assistantName,
@@ -808,7 +810,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
                 : [{ id: Date.now(), text: fact, date: 'Added just now' }, ...current]);
             }
             setMemorySuggestion(null);
-          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={sendMessage} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
+          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => sendMessage(undefined, imageDataUrl)} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
           {page === 'history' && <ChatHistoryPage
             conversations={conversations}
             activeConversationId={activeConversationId}
@@ -1118,8 +1120,9 @@ function BottomNav({ page, onNavigate, bottomInset }: { page: Page; onNavigate: 
   </Pressable>)}</View>;
 }
 
-export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, onStop, onRetry, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: () => void; onStop: () => void; onRetry: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
-  const canSend = !!draft.trim() && !isSending;
+export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, onStop, onRetry, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; onStop: () => void; onRetry: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
+  const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
+  const canSend = (!!draft.trim() || !!selectedImage) && !isSending;
   const [composerFocused, setComposerFocused] = useState(false);
   const [manualCrisisSupport, setManualCrisisSupport] = useState(false);
   const [occasionOpen, setOccasionOpen] = useState(false);
@@ -1171,6 +1174,9 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
     </ScrollView>
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
       <View style={styles.chatTools}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Attach an image" onPress={async () => { try { setSelectedImage(await pickChatImage()); } catch (error) { Alert.alert('Could not add image', error instanceof Error ? error.message : 'Please try again.'); } }} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
+          <Text style={styles.chatToolIcon}>＋</Text><Text style={styles.chatToolLabel}>Add image · 1 credit</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Open crisis support" onPress={() => setManualCrisisSupport(true)} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
           <Text style={styles.chatToolIcon}>♡</Text><Text style={styles.chatToolLabel}>Crisis support</Text>
         </Pressable>
@@ -1178,11 +1184,12 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
           <Text style={styles.chatToolIcon}>✳</Text><Text style={styles.chatToolLabel}>Save an occasion</Text>
         </Pressable>}
       </View>
+      {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={{ width: 42, height: 42, borderRadius: 9, marginRight: 8 }} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={() => onSend()} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         {isSending
           ? <Pressable accessibilityRole="button" accessibilityLabel="Stop response" onPress={onStop} style={({ pressed }) => [styles.sendButton, styles.stopButton, pressed && styles.pressed]}><View style={styles.stopIcon} /></Pressable>
-          : <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={() => onSend()} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, !canSend && styles.sendButtonDisabled, pressed && styles.pressed]}><PaperPlaneIcon /></Pressable>}
+          : <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={() => { onSend(selectedImage?.dataUrl); setSelectedImage(null); }} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, !canSend && styles.sendButtonDisabled, pressed && styles.pressed]}><PaperPlaneIcon /></Pressable>}
       </View>
       {wide && <Text style={styles.composerFootnote}>{isSending ? 'Sending to the companion service…' : 'Your conversation is saved on this device.'}</Text>}
     </View>
