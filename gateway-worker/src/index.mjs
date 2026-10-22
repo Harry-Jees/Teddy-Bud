@@ -588,9 +588,10 @@ async function completions(request, env) {
     const firstUserIndex = filteredMessages.findIndex(message => message?.role === 'user');
     filteredMessages.splice(firstUserIndex < 0 ? filteredMessages.length : firstUserIndex, 0, { role: 'system', content: CRISIS_GUIDANCE });
   }
-  const lastUserMessage = [...input.messages].reverse().find(message => message?.role === 'user');
-  const hasImage = Array.isArray(lastUserMessage?.content) && lastUserMessage.content.some(part =>
-    part && (part.type === 'image_url' || part.type === 'image' || part.image_url || part.image)
+  const hasImage = input.messages.some(message =>
+    message?.role === 'user' && Array.isArray(message.content) && message.content.some(part =>
+      part && (part.type === 'image_url' || part.type === 'image' || part.image_url || part.image)
+    )
   );
   // Enforce model routing at the gateway so clients cannot send images to a text-only model
   // or deliberately select the more expensive vision model for ordinary text requests.
