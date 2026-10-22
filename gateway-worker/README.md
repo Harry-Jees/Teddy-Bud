@@ -20,14 +20,14 @@ The recovery table has RLS enabled and grants no access to `anon` or `authentica
    ```powershell
    npx wrangler secret put JWT_SIGNING_SECRET
    npx wrangler secret put RECOVERY_KEY_SECRET
-      npx wrangler secret put SUPABASE_URL
+   npx wrangler secret put SUPABASE_URL
    npx wrangler secret put SUPABASE_ANON_KEY
    npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
    ```
 
    Generate `JWT_SIGNING_SECRET` and `RECOVERY_KEY_SECRET` independently using a cryptographically secure random generator with at least 32 bytes. `SUPABASE_SERVICE_ROLE_KEY` is highly privileged: keep it only in the Worker secret store. Never use it in the app. The anon/publishable key is not a secret.
 5. Set the non-secret `AUTH_REDIRECT_ORIGINS` Worker variable to the exact browser origins allowed to call the gateway, comma-separated. Include local development, for example `http://localhost:5173,http://127.0.0.1:5173`, and the deployed app origin. The Worker does not return CORS access to arbitrary origins. Native clients do not send a browser Origin header.
-6. Deploy with `npm run deploy`.
+6. For production, use the protected GitHub Actions workflow `.github/workflows/deploy-cloudflare-ai.yml`. It stages a Worker version and checks that the `AI`, Durable Object, KV, and required secret binding names are present before directing production traffic to it. Do not use a direct production deploy until the staged bindings have been verified.
 
 ## Account and recovery flow
 
