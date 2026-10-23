@@ -590,7 +590,8 @@ async function completions(request, env) {
     return json(400, { error: { message: 'A model and messages array are required.' } });
   }
   const allowedModels = configuredModels(env);
-  const allowed = allowedModels.some(model => model.id === input.model);
+  const enterpriseAlias = enterpriseModeEnabled(env) && [PRIMARY_MODEL, FALLBACK_MODEL].includes(input.model);
+  const allowed = allowedModels.some(model => model.id === input.model) || enterpriseAlias;
   if (!allowed) return json(400, { error: { message: 'The requested model is not enabled for Teddy Bud.' } });
   if (
     input.messages.length === 0 || input.messages.length > 100
