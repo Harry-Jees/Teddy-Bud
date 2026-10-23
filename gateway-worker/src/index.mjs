@@ -514,16 +514,32 @@ const APPROVED_MODELS = [
   { id: FALLBACK_MODEL, name: 'GLM-4.7 Flash', capabilities: ['coding', 'reasoning', 'function_calling', 'multilingual'], architecture: { input_modalities: ['text'] } },
 ];
 
+function enterpriseProviderConfigured(env) {
+  return typeof env.ENTERPRISE_MODEL_BASE_URL === 'string'
+    && /^https:\/\//i.test(env.ENTERPRISE_MODEL_BASE_URL)
+    && typeof env.ENTERPRISE_TEXT_MODEL_ID === 'string'
+    && env.ENTERPRISE_TEXT_MODEL_ID.trim().length > 0;
+}
+
+function configuredModels(env) {
+  if (!enterpriseProviderConfigured(env)) return APPROVED_MODELS;
+  const textId = env.ENTERPRISE_TEXT_MODEL_ID.trim();
+  const visionId = typeof env.ENTERPRISE_VISION_MODEL_ID === 'string' ? env.ENTERPRISE_VISION_MODEL_ID.trim() : '';
+  const models = [{ id: textId, name: 'Company-managed text model', capabilities: ['coding', 'reasoning', 'function_calling', 'multilingual'], architecture: { input_modalities: ['text'] } }];
+  if (visionId) models.unshift({ id: visionId, name: 'Company-managed vision model', capabilities: ['vision', 'reasoning', 'function_calling', 'multilingual'], architecture: { input_modalities: ['text', 'image'] } });
+  return models;
+}
+
 async function models(request, env) {
   const claims = await bearerClaims(request, env);
   if (!claims) return json(401, { error: { message: 'Unauthorized.' } });
   if (!await rateLimit(request, env, 'models-user', 120, claims.sub)) {
     return json(429, { error: { message: 'Too many model-catalog requests. Try again shortly.' } });
   }
-  if (!env.AI || typeof env.AI.run !== 'function') {
-    return json(503, { error: { message: 'Cloudflare Workers AI is not configured. Add the AI binding and enable paid AI access.' } });
+  if (!enterpriseProviderConfigured(env) && (!env.AI || typeof env.AI.run !== 'function')) {
+    return json(503, { error: { message: 'No AI provider is configured. Configure Workers AI or the enterprise model endpoint.' } });
   }
-  return json(200, { data: APPROVED_MODELS });
+  return json(200, { data: configuredModels(env) });
 }
 
 function textFromContent(content) {
@@ -558,8 +574,8 @@ async function completions(request, env) {
   if (!await rateLimit(request, env, 'chat-user', 60, claims.sub)) {
     return json(429, { error: { message: 'You have sent too many messages recently. Please wait a little and try again.' } });
   }
-  if (!env.AI || typeof env.AI.run !== 'function') {
-    return json(503, { error: { message: 'Cloudflare Workers AI is not configured. Add the AI binding and enable paid AI access.' } });
+  if (!enterpriseProviderConfigured(env) && (!env.AI || typeof env.AI.run !== 'function')) {
+    return json(503, { error: { message: 'No AI provider is configured. Configure Workers AI or the enterprise model endpoint.' } });
   }
   const parsed = await readJson(request);
   if (parsed.error) return parsed.error;
@@ -567,7 +583,8 @@ async function completions(request, env) {
   if (!input || typeof input.model !== 'string' || !Array.isArray(input.messages)) {
     return json(400, { error: { message: 'A model and messages array are required.' } });
   }
-  const allowed = APPROVED_MODELS.some(model => model.id === input.model);
+  const allowedModels = configuredModels(env);
+  const allowed = allowedModels.some(model => model.id === input.model);
   if (!allowed) return json(400, { error: { message: 'The requested model is not enabled for Teddy Bud.' } });
   if (
     input.messages.length === 0 || input.messages.length > 100
@@ -608,7 +625,14 @@ async function completions(request, env) {
     }
   }
   // Enforce model routing at the gateway so clients cannot send images to a text-only model.
-  const effectiveModel = hasImage ? PRIMARY_MODEL : FALLBACK_MODEL;
+  const enterpriseMode = enterpriseProviderConfigured(env);
+  const enterpriseVisionModel = typeof env.ENTERPRISE_VISION_MODEL_ID === 'string' ? env.ENTERPRISE_VISION_MODEL_ID.trim() : '';
+  if (enterpriseMode && hasImage && !enterpriseVisionModel) {
+    return json(400, { error: { message: 'Image analysis is not enabled for this company-managed model. Ask your administrator to configure a vision model.' } });
+  }
+  const effectiveModel = enterpriseMode
+    ? (hasImage ? enterpriseVisionModel : env.ENTERPRISE_TEXT_MODEL_ID.trim())
+    : (hasImage ? PRIMARY_MODEL : FALLBACK_MODEL);
   // User messages cost one credit regardless of text/image. Small auxiliary tasks
   // use a separate strict daily cap so auto-titles and memory suggestions don't
   // silently consume a user's 40 chat credits.
@@ -631,12 +655,31 @@ async function completions(request, env) {
     temperature: typeof input.temperature === 'number' ? Math.max(0, Math.min(input.temperature, 1.2)) : 0.7,
     stream: input.stream === true,
   };
+  if (Array.isArray(input.tools) && input.tools.length <= 8) options.tools = input.tools;
+  if (input.tool_choice && typeof input.tool_choice === 'object') options.tool_choice = input.tool_choice;
   let result;
   try {
-    result = await env.AI.run(effectiveModel, options);
+    if (enterpriseMode) {
+      const baseUrl = env.ENTERPRISE_MODEL_BASE_URL.replace(/\/+$/, '');
+      const headers = { 'Content-Type': 'application/json' };
+      if (typeof env.ENTERPRISE_MODEL_API_KEY === 'string' && env.ENTERPRISE_MODEL_API_KEY.length > 0) {
+        headers.Authorization = 'Bearer ' + env.ENTERPRISE_MODEL_API_KEY;
+      }
+      const upstream = await fetch(baseUrl + '/chat/completions', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ model: effectiveModel, ...options }),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (!upstream.ok) throw new Error('Enterprise model endpoint returned HTTP ' + upstream.status);
+      result = options.stream ? upstream.body : await upstream.json();
+      if (options.stream && !result) throw new Error('Enterprise model endpoint returned no stream.');
+    } else {
+      result = await env.AI.run(effectiveModel, options);
+    }
   } catch (error) {
     await dailyCreditsRequest(env, claims.sub, '/credits/refund', { reservationId }).catch(() => {});
-    console.error('Workers AI inference failed:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('AI inference failed:', error instanceof Error ? error.message : 'Unknown error');
     return json(502, { error: { message: 'The AI service could not complete this reply. Your credits were returned. Please try again.' } });
   }
   if (input.stream === true) {
@@ -722,8 +765,13 @@ async function completions(request, env) {
 async function health(env) {
   // This unauthenticated liveness endpoint must not make billable upstream calls.
   // Provider reachability is exercised by authenticated model/chat requests and CI.
-  const providerConfigured = Boolean(env.AI && typeof env.AI.run === 'function');
-  return json(providerConfigured ? 200 : 503, { status: providerConfigured ? 'ready' : 'degraded', provider_configured: providerConfigured, provider: 'cloudflare-workers-ai' });
+  const enterpriseConfigured = enterpriseProviderConfigured(env);
+  const providerConfigured = enterpriseConfigured || Boolean(env.AI && typeof env.AI.run === 'function');
+  return json(providerConfigured ? 200 : 503, {
+    status: providerConfigured ? 'ready' : 'degraded',
+    provider_configured: providerConfigured,
+    provider: enterpriseConfigured ? 'enterprise-openai-compatible' : 'cloudflare-workers-ai',
+  });
 }
 
 async function route(request, env) {
