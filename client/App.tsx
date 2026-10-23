@@ -27,7 +27,7 @@ import { GatewayService } from './src/services/gateway';
 import { browserAuthService } from './src/services/browserAuth';
 import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
-import type { EmotionCheckIn, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
+import type { EmotionCheckIn, JournalEntry, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, readEncryptedBackup } from './src/services/backup';
 import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
@@ -37,7 +37,7 @@ import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/c
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
 
-type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions';
+type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio';
 type Memory = LocalMemory;
 type MemorySuggestion = { conversationId: string; messageId: number; fact: string };
 type Message = LocalMessage;
@@ -53,7 +53,7 @@ const C = {
 
 const navItems: { id: Page; icon: string; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Your space' },
-  { id: 'memories', icon: '✳', label: 'Memories' },\n  { id: 'emotions', icon: '◉', label: 'Emotions' },
+  { id: 'memories', icon: '✳', label: 'Memories' },\n  { id: 'emotions', icon: '◉', label: 'Emotions' },\n  { id: 'journal', icon: '▤', label: 'Journal' },\n  { id: 'studio', icon: '☼', label: 'Wellbeing' },
   { id: 'privacy', icon: '⌑', label: 'Privacy' },
 ];
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
@@ -274,7 +274,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [memories, setMemories] = useState<Memory[]>([]);\n  const [emotionCheckIns, setEmotionCheckIns] = useState<EmotionCheckIn[]>([]);
+  const [memories, setMemories] = useState<Memory[]>([]);\n  const [emotionCheckIns, setEmotionCheckIns] = useState<EmotionCheckIn[]>([]);\n  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [draft, setDraft] = useState('');
   const [memoryModal, setMemoryModal] = useState(false);
   const [renameConversationId, setRenameConversationId] = useState<string | null>(null);
@@ -311,7 +311,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const receivedReplyRef = useRef('');
   const responseAbortControllerRef = useRef<AbortController | null>(null);
 
-  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
+  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
   const refreshCreditBalance = useCallback(async () => {
     try {
@@ -340,7 +340,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         (latest, conversation) => conversation.messages.reduce((messageId, message) => Math.max(messageId, message.id), latest),
         nextMessageId.current,
       );
-      setMemories(data.memories);\n      setEmotionCheckIns(data.emotionCheckIns ?? []);
+      setMemories(data.memories);\n      setEmotionCheckIns(data.emotionCheckIns ?? []);\n      setJournalEntries(data.journalEntries ?? []);
       setRememberInSession(data.rememberInSession);
       rememberPreferenceRef.current = data.rememberInSession;
       setShareMemories(data.shareMemories);
@@ -377,7 +377,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     }).catch(error => {
       setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
     });
-  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns]);
+  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries]);
 
   const appendConversationMessage = (conversationId: string, message: Message) => {
     const updatedAt = new Date().toISOString();
@@ -820,6 +820,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             onSelect={selectConversation}
             onNewConversation={startNewConversation}
           />}
+          {page === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={entry => setJournalEntries(current => [entry, ...current].slice(0, 1000))} onDelete={id => setJournalEntries(current => current.filter(entry => entry.id !== id))} />}
+          {page === 'studio' && <WellbeingStudio wide={wide} />}
           {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={entry => setEmotionCheckIns(current => [entry, ...current].slice(0, 500))} onDelete={id => setEmotionCheckIns(current => current.filter(entry => entry.id !== id))} />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} />}
           {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
@@ -1415,6 +1417,31 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete }
 }
 
 
+
+function JournalPage({wide,entries,onSave,onDelete}:{wide:boolean;entries:JournalEntry[];onSave:(entry:JournalEntry)=>void;onDelete:(id:string)=>void}) {
+  const [title,setTitle]=useState(''); const [body,setBody]=useState(''); const [prompt,setPrompt]=useState('Free reflection'); const [editing,setEditing]=useState(false); const [search,setSearch]=useState('');
+  const prompts=['Free reflection','What felt heavy today?','What is one small thing I appreciate?','What do I need more of right now?','What would I tell a friend in this situation?'];
+  const save=()=>{if(!body.trim())return;onSave({id:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),createdAt:new Date().toISOString(),title:title.trim().slice(0,160)||prompt,body:body.trim().slice(0,30000),prompt});setTitle('');setBody('');setEditing(false);};
+  const visible=entries.filter(e=>(e.title+' '+e.body+' '+e.prompt).toLowerCase().includes(search.toLowerCase()));
+  return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36}}>
+    <Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A page just for you</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>Your journal stays in this device's local app storage. It is never added to Teddy's context unless you deliberately copy and share text yourself.</Text>
+    <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:18}}>
+      <Text style={{fontSize:18,fontWeight:'700',color:C.cocoaDark}}>Write a little</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginVertical:10}}>{prompts.map(p=><Pressable key={p} onPress={()=>setPrompt(p)} style={{backgroundColor:prompt===p?'#E7D0C2':'#F5ECE5',padding:10,borderRadius:12,marginRight:7}}><Text style={{fontSize:12,color:C.cocoaDark}}>{p}</Text></Pressable>)}</ScrollView>
+      <TextInput value={title} onChangeText={setTitle} placeholder="Title (optional)" placeholderTextColor={C.muted} style={{borderWidth:1,borderColor:C.line,borderRadius:12,padding:12,color:C.cocoaDark,marginBottom:9}} />
+      <TextInput value={body} onChangeText={setBody} multiline placeholder="Start wherever you are…" placeholderTextColor={C.muted} style={{minHeight:140,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,textAlignVertical:'top'}} />
+      <Pressable onPress={save} style={{backgroundColor:C.cocoaDark,borderRadius:14,padding:13,alignItems:'center',marginTop:12}}><Text style={{color:'#FFF',fontWeight:'700'}}>Save privately</Text></Pressable>
+    </View>
+    <TextInput value={search} onChangeText={setSearch} placeholder="Search journal entries" placeholderTextColor={C.muted} style={{borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:18}} />
+    {visible.map(entry=><View key={entry.id} style={{padding:15,borderWidth:1,borderColor:C.line,borderRadius:17,marginTop:10,backgroundColor:C.paper}}><Text style={{fontWeight:'700',color:C.cocoaDark,fontSize:16}}>{entry.title}</Text><Text style={{fontSize:12,color:C.muted,marginTop:4}}>{new Date(entry.createdAt).toLocaleString()} · {entry.prompt}</Text><Text selectable style={{color:C.cocoaDark,lineHeight:21,marginTop:9}}>{entry.body}</Text><Pressable onPress={()=>Alert.alert('Delete journal entry?','This cannot be undone.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>onDelete(entry.id)}])} style={{alignSelf:'flex-end',padding:8}}><Text style={{color:'#98594B',fontWeight:'600'}}>Delete</Text></Pressable></View>)}
+    {visible.length===0?<Text style={{color:C.muted,marginTop:18}}>No matching entries yet.</Text>:null}
+  </ScrollView>;
+}
+function WellbeingStudio({wide}:{wide:boolean}) {
+ const [mode,setMode]=useState<'breathe'|'ground'|'focus'|'rest'>('breathe'); const [step,setStep]=useState(0);
+ const content={breathe:{title:'Gentle breathing',description:'Try a comfortable pace. Stop whenever you want.',steps:['Breathe in gently','Breathe out slowly','Relax your shoulders']},ground:{title:'Grounding pause',description:'Notice what is around you, without needing to change anything.',steps:['Name 5 things you can see','Notice 4 things you can feel','Listen for 3 sounds','Notice 2 scents','Name 1 kind thing you can tell yourself']},focus:{title:'Small focus break',description:'A short reset, not another task to complete.',steps:['Put both feet somewhere comfortable','Choose one small next step','Give yourself permission to pause']},rest:{title:'Bedtime wind-down',description:'A quiet offline routine. No streaks, pressure, or score.',steps:['Lower the brightness if comfortable','Let your jaw and shoulders soften','Put tomorrow’s first thought on paper']}} as const;
+ return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36}}><Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A softer moment</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>These gentle exercises work offline. They are optional wellbeing tools, not medical treatment.</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:18}}>{([{id:'breathe',label:'Breathe'},{id:'ground',label:'Grounding'},{id:'focus',label:'Focus break'},{id:'rest',label:'Wind down'}] as const).map(item=><Pressable key={item.id} onPress={()=>{setMode(item.id);setStep(0)}} style={{padding:12,borderRadius:14,backgroundColor:mode===item.id?'#E7D0C2':C.paper,borderWidth:1,borderColor:C.line}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{item.label}</Text></Pressable>)}</View><View style={{backgroundColor:C.paper,borderRadius:24,borderWidth:1,borderColor:C.line,padding:22,marginTop:14,alignItems:'center'}}><View style={{width:120,height:120,borderRadius:60,backgroundColor:'#E7D0C2',alignItems:'center',justifyContent:'center',marginBottom:18}}><Text style={{fontSize:34,color:C.cocoaDark}}>{mode==='breathe'?'◌':mode==='ground'?'⌂':mode==='focus'?'✳':'☾'}</Text></View><Text style={{fontSize:21,fontWeight:'700',color:C.cocoaDark}}>{content[mode].title}</Text><Text style={{textAlign:'center',color:C.muted,lineHeight:21,marginTop:8}}>{content[mode].description}</Text><Text style={{fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',marginTop:24,minHeight:54}}>{content[mode].steps[step]}</Text><View style={{flexDirection:'row',gap:10,marginTop:18}}><Pressable onPress={()=>setStep(s=>Math.max(0,s-1))} style={{padding:13,borderRadius:13,backgroundColor:'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>Previous</Text></Pressable><Pressable onPress={()=>setStep(s=>(s+1)%content[mode].steps.length)} style={{padding:13,borderRadius:13,backgroundColor:C.cocoaDark}}><Text style={{color:'#FFF',fontWeight:'700'}}>{step===content[mode].steps.length-1?'Start again':'Next step'}</Text></Pressable></View></View></ScrollView>;
+}
 function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entries: EmotionCheckIn[]; onSave: (entry: EmotionCheckIn) => void; onDelete: (id: string) => void }) {
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [energy, setEnergy] = useState(3);
