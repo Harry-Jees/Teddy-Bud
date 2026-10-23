@@ -16,6 +16,12 @@ Use a radar/web chart inspired by the supplied S/B/I/R/T/A/F chart. It is a desc
 - Trends compare only user-entered check-ins and require enough entries; show dates and missing-data gaps honestly.
 - All chart values are computed locally and can be edited/deleted with the source entry.
 
+## Implementation status (branch: `migration/cloudflare-workers-ai-phonepe`)
+
+- **Implemented in this branch:** local emotion check-ins with validated ratings, spider-web/radar-style chart geometry, local trend averages, entry deletion, private journal prompts/search/save/delete, offline wellbeing exercises, local persistence and inclusion in the encrypted backup payload.
+- **Still requires verification:** TypeScript/lint/unit tests, web build, native builds, device testing, accessibility review, and encrypted backup round-trip tests on each platform.
+- **Not yet implemented:** true account-level single-device enforcement, journal editing, journal export, conversation controls, voice, notifications, and end-to-end encryption. Do not describe these as shipped.
+
 ## Phased delivery
 
 ### Phase 0 — safety and data contracts
