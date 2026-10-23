@@ -1,6 +1,13 @@
 name: Deploy Cloudflare AI Worker
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'gateway-worker/**'
+      - '.github/workflows/deploy-cloudflare-ai.yml'
+      - '.github/required-worker-secrets.txt'
   workflow_dispatch:
 
 permissions:
@@ -13,7 +20,7 @@ concurrency:
 jobs:
   deploy:
     name: Verify, deploy, and smoke-test Worker
-    if: github.ref == 'refs/heads/migration/cloudflare-workers-ai-phonepe'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/migration/cloudflare-workers-ai-phonepe'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: production
