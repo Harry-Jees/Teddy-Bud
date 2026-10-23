@@ -644,13 +644,22 @@ async function completions(request, env) {
       await dailyCreditsRequest(env, claims.sub, '/credits/refund', { reservationId }).catch(() => {});
       return json(502, { error: { message: 'The AI provider returned an unsupported stream. Your credits were returned.' } });
     }
-    await dailyCreditsRequest(env, claims.sub, '/credits/commit', { reservationId }).catch(() => {});
     // Normalize Workers AI's native {response: "..."} stream into the OpenAI-style
-    // delta format already consumed by desktop, Android, and web clients.
+    // delta format already consumed by desktop, Android, and web clients. Keep the
+    // credit reservation open until the stream finishes so early inference failures
+    // can be refunded; once content was delivered, a partial reply is still billable.
     const reader = result.getReader();
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let buffer = '';
+    let emittedAny = false;
+    let reservationFinalized = false;
+    const finalizeReservation = async () => {
+      if (reservationFinalized) return;
+      reservationFinalized = true;
+      const action = emittedAny ? '/credits/commit' : '/credits/refund';
+      await dailyCreditsRequest(env, claims.sub, action, { reservationId }).catch(() => {});
+    };
     const stream = new ReadableStream({
       async pull(controller) {
         try {
@@ -667,9 +676,13 @@ async function completions(request, env) {
               try { event = JSON.parse(data); } catch { continue; }
               const chunk = typeof event.response === 'string' ? event.response
                 : typeof event.choices?.[0]?.delta?.content === 'string' ? event.choices[0].delta.content : '';
-              if (chunk) controller.enqueue(encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: chunk } }] }) + '\n\n'));
+              if (chunk) {
+                emittedAny = true;
+                controller.enqueue(encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: chunk } }] }) + '\n\n'));
+              }
             }
             if (done) {
+              await finalizeReservation();
               controller.enqueue(encoder.encode('data: [DONE]\n\n'));
               controller.close();
               return;
@@ -677,10 +690,14 @@ async function completions(request, env) {
             if (lines.length) return;
           }
         } catch (error) {
+          await finalizeReservation();
           controller.error(error);
         }
       },
-      cancel(reason) { return reader.cancel(reason); },
+      async cancel(reason) {
+        await finalizeReservation();
+        return reader.cancel(reason);
+      },
     });
     return new Response(stream, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform' } });
   }
