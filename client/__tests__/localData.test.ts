@@ -30,7 +30,7 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 function emptyData(): LocalAppData {
-  return { conversations: [], activeConversationId: null, memories: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy' } };
+  return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' } };
 }
 
 describe('LocalDataService', () => {
@@ -59,7 +59,8 @@ describe('LocalDataService', () => {
       aboutMe: '',
       assistantName: 'Teddy',
       assistantCharacterId: 'teddy-bud',
-      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
+      emotionCheckIns: [], journalEntries: [],
+      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' },
     };
     await service.save('account-a', accountData);
 
@@ -70,7 +71,7 @@ describe('LocalDataService', () => {
     await service.clear('account-a');
 
     expect(await service.load('account-a')).toEqual(emptyData());
-    expect(await service.load('account-b')).toEqual({ ...emptyData(), shareMemories: true, assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' } });
+    expect(await service.load('account-b')).toEqual({ ...emptyData(), shareMemories: true, assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' }, emotionCheckIns: [], journalEntries: [] });
   });
 
   test('persists all chats, messages, and memories without application count limits', async () => {
