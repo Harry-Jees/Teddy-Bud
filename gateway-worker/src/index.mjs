@@ -580,7 +580,7 @@ async function completions(request, env) {
   if (!await rateLimit(request, env, 'chat-user', 60, claims.sub)) {
     return json(429, { error: { message: 'You have sent too many messages recently. Please wait a little and try again.' } });
   }
-  if (!enterpriseProviderConfigured(env) && (!env.AI || typeof env.AI.run !== 'function')) {
+  if (enterpriseModeEnabled(env) ? !enterpriseProviderConfigured(env) : (!env.AI || typeof env.AI.run !== 'function')) {
     return json(503, { error: { message: 'No AI provider is configured. Configure Workers AI or the enterprise model endpoint.' } });
   }
   const parsed = await readJson(request);
