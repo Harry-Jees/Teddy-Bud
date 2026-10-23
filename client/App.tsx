@@ -12,6 +12,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StatusBar,
   StyleSheet,
   Text,
@@ -1441,6 +1442,7 @@ function JournalPage({wide,entries,onSave,onDelete}:{wide:boolean;entries:Journa
       <TextInput value={body} onChangeText={setBody} multiline placeholder="Start wherever you are…" placeholderTextColor={C.muted} style={{minHeight:140,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,textAlignVertical:'top'}} />
       <Pressable onPress={save} style={{backgroundColor:C.cocoaDark,borderRadius:14,padding:13,alignItems:'center',marginTop:12}}><Text style={{color:'#FFF',fontWeight:'700'}}>{editing?'Save changes':'Save privately'}</Text></Pressable>{editing?<Pressable onPress={()=>{setEditing(null);setTitle('');setBody('');setPrompt('Free reflection')}} style={{alignItems:'center',padding:10}}><Text style={{color:C.muted}}>Cancel editing</Text></Pressable>:null}
     </View>
+    <Pressable onPress={()=>{if(!entries.length){Alert.alert('Journal is empty','Write an entry before exporting.');return;}const content=entries.map(entry=>'# '+entry.title+'\n'+new Date(entry.createdAt).toLocaleString()+' · '+entry.prompt+'\n\n'+entry.body).join('\n\n---\n\n');void Share.share({title:'Teddy Bud private journal export',message:content});}} style={{alignSelf:'flex-start',paddingVertical:12,paddingHorizontal:14,backgroundColor:'#E7D0C2',borderRadius:12,marginTop:12}}><Text style={{color:C.cocoaDark,fontWeight:'700'}}>Export journal text</Text></Pressable>
     <TextInput value={search} onChangeText={setSearch} placeholder="Search journal entries" placeholderTextColor={C.muted} style={{borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:18}} />
     {visible.map(entry=><View key={entry.id} style={{padding:15,borderWidth:1,borderColor:C.line,borderRadius:17,marginTop:10,backgroundColor:C.paper}}><Text style={{fontWeight:'700',color:C.cocoaDark,fontSize:16}}>{entry.title}</Text><Text style={{fontSize:12,color:C.muted,marginTop:4}}>{new Date(entry.createdAt).toLocaleString()} · {entry.prompt}</Text><Pressable onPress={()=>{setTitle(entry.title);setBody(entry.body);setPrompt(entry.prompt);setEditing(entry.id);}} style={{alignSelf:'flex-start',paddingVertical:8}}><Text style={{color:'#895B43',fontWeight:'700'}}>Edit entry</Text></Pressable><Text selectable style={{color:C.cocoaDark,lineHeight:21,marginTop:9}}>{entry.body}</Text><Pressable onPress={()=>Alert.alert('Delete journal entry?','This cannot be undone.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>onDelete(entry.id)}])} style={{alignSelf:'flex-end',padding:8}}><Text style={{color:'#98594B',fontWeight:'600'}}>Delete</Text></Pressable></View>)}
     {visible.length===0?<Text style={{color:C.muted,marginTop:18}}>No matching entries yet.</Text>:null}
