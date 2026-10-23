@@ -135,8 +135,10 @@ function preferredChatModels(catalog: GatewayModel[]): GatewayModel[] {
     .map(id => catalog.find(model => model.id.toLowerCase() === id))
     .filter((model): model is GatewayModel => Boolean(model));
   if (preferred.length) return preferred;
-  const freeRouter = catalog.find(model => model.id === 'openrouter/free');
-  return freeRouter ? [freeRouter] : [];
+  // Enterprise deployments advertise company-owned model IDs instead of the
+  // public Cloudflare IDs. Prefer a text-capable entry, then any catalog model.
+  const companyTextModels = catalog.filter(model => !model.capabilities.includes('vision'));
+  return companyTextModels.length ? companyTextModels : catalog.slice(0, 1);
 }
 
 function needsAppGuide(message: string, history: GatewayMessage[]): boolean {
@@ -381,6 +383,7 @@ export class GatewayService {
           content: JSON.stringify({ userMessage: userMessage.trim().slice(0, 2_000), assistantReply: assistantReply.trim().slice(0, 2_000) }),
         },
       ],
+      metadata: { teddyBudTask: 'title' },
       stream: false,
       max_tokens: 16,
       temperature: 0.2,
@@ -401,14 +404,18 @@ export class GatewayService {
   async sendChatMessage(message: string, history: GatewayMessage[], sessionToken?: string, options: SendChatOptions = {}): Promise<string> {
     const accessToken = await this.token(sessionToken);
     const requiredCapability = options.enableWebBrowsing ? 'web_search' : options.imageDataUrl ? 'vision' : options.task === 'coding' ? 'coding' : undefined;
+    // Only fetch the model catalog for model-specific tasks. The gateway accepts
+    // the standard IDs as routing aliases in enterprise mode and replaces them
+    // server-side, avoiding an extra network round-trip for ordinary chat.
     const catalog = options.modelId || requiredCapability === 'vision' || requiredCapability === 'web_search'
       ? await this.getModelCatalog(accessToken)
       : [];
     const chatModels = preferredChatModels(catalog);
-    // Image requests always use the vision-capable Qwen model, even if a text model
-    // was selected elsewhere. GLM-4.7 Flash must never receive image content.
+    // Prefer the standard vision model when available, otherwise use the model
+    // the enterprise gateway advertises for image input.
     const selected = requiredCapability === 'vision'
       ? catalog.find(model => model.id.toLowerCase() === PREFERRED_VISION_MODEL && model.capabilities.includes('vision'))
+        ?? catalog.find(model => model.capabilities.includes('vision'))
       : options.modelId
         ? catalog.find(model => model.id === options.modelId)
         : requiredCapability === 'web_search'
@@ -473,9 +480,7 @@ export class GatewayService {
       max_tokens: options.task === 'coding' || options.task === 'vision' ? 220 : 4096,
       temperature: 0.65,
       top_p: 0.9,
-      provider: { sort: 'latency', data_collection: 'deny' },
     };
-    if (options.enableWebBrowsing) body.tools = [{ type: 'openrouter:web_search' }];
     let content: string | undefined;
     if (body.stream) {
       let chunksReceived = 0;
@@ -553,6 +558,7 @@ export class GatewayService {
         },
       }],
       tool_choice: { type: 'function', function: { name: 'emit_memory_suggestion' } },
+      metadata: { teddyBudTask: 'memory' },
       stream: false,
       max_tokens: 256,
       temperature: 0,

@@ -35,7 +35,8 @@ class MemorySessions {
         }
         if (pathname.startsWith('/credits/') && (method === 'POST' || method === 'GET')) {
           const day = new Date().toISOString().slice(0, 10);
-          state.credits = state.credits?.day === day ? state.credits : { day, used: 0, reservations: {} };
+          state.credits = state.credits?.day === day ? state.credits : { day, used: 0, backgroundUsed: 0, reservations: {} };
+          state.credits.backgroundUsed ??= 0;
           const reset = new Date(`${day}T00:00:00.000Z`);
           reset.setUTCDate(reset.getUTCDate() + 1);
           const resetAt = reset.toISOString();
@@ -45,15 +46,23 @@ class MemorySessions {
           }
           const body = JSON.parse(init.body ?? (input instanceof Request ? await input.text() : '{}'));
           if (pathname === '/credits/reserve') {
-            if (state.credits.used + body.cost > 40) return new Response(JSON.stringify({ allowed: false, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
+            const background = body.background === true;
+            if (background && state.credits.backgroundUsed >= Math.min(body.backgroundDailyLimit ?? 10, 10)) {
+              return new Response(JSON.stringify({ allowed: false, backgroundLimit: true, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
+            }
+            if (!background && state.credits.used + body.cost > 40) return new Response(JSON.stringify({ allowed: false, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
+            if (background) state.credits.backgroundUsed += 1;
             state.credits.used += body.cost;
-            state.credits.reservations[body.reservationId] = { cost: body.cost, status: 'reserved' };
+            state.credits.reservations[body.reservationId] = { cost: body.cost, background, status: 'reserved' };
             this.values.set(id, state);
             return new Response(JSON.stringify({ allowed: true, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
           }
           const reservation = state.credits.reservations[body.reservationId];
           if (reservation?.status === 'reserved') {
-            if (pathname === '/credits/refund') state.credits.used -= reservation.cost;
+            if (pathname === '/credits/refund') {
+              state.credits.used -= reservation.cost;
+              if (reservation.background) state.credits.backgroundUsed = Math.max(0, state.credits.backgroundUsed - 1);
+            }
             reservation.status = pathname === '/credits/refund' ? 'refunded' : 'committed';
           }
           this.values.set(id, state);
@@ -313,7 +322,41 @@ test('authenticated text chat uses Cloudflare GLM and charges one unified credit
   assert.equal(result.body.teddyBudCredits.used, 1);
 });
 
-test('image requests are routed to Cloudflare Qwen and charge five credits', async () => {
+test('streaming chat commits one credit after a successful stream', async () => {
+  const env = makeEnv();
+  const accessToken = await createSession(env, 'streaming-credit-user');
+  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello.' }],
+    stream: true,
+  }, { Authorization: `Bearer ${accessToken}` }), env);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /text\/event-stream/i);
+  const body = await response.text();
+  assert.match(body, /Test reply\./);
+  assert.match(body, /\[DONE\]/);
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 1);
+});
+
+test('streaming inference failure before any text refunds the reserved credit', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => new ReadableStream({
+    start(controller) { controller.error(new Error('simulated stream failure')); },
+  });
+  const accessToken = await createSession(env, 'streaming-refund-user');
+  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello.' }],
+    stream: true,
+  }, { Authorization: `Bearer ${accessToken}` }), env);
+  assert.equal(response.status, 200);
+  await assert.rejects(response.text());
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 0);
+});
+
+test('image requests are routed to Cloudflare Qwen and charge one credit', async () => {
   const env = makeEnv();
   let selectedModel;
   env.AI.run = async model => {
@@ -332,15 +375,54 @@ test('image requests are routed to Cloudflare Qwen and charge five credits', asy
   const result = await jsonResponse(response);
   assert.equal(result.status, 200);
   assert.equal(selectedModel, '@cf/qwen/qwen3.8-27b');
-  assert.equal(result.body.teddyBudCredits.charged, 5);
-  assert.equal(result.body.teddyBudCredits.used, 5);
+  assert.equal(result.body.teddyBudCredits.charged, 1);
+  assert.equal(result.body.teddyBudCredits.used, 1);
+});
+
+test('background title tasks do not consume chat credits and have their own daily cap', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => ({ response: 'Short title.' });
+  const accessToken = await createSession(env, 'background-task-user');
+  let firstResult;
+  for (let i = 0; i < 10; i += 1) {
+    const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+      model: '@cf/zai-org/glm-4.7-flash',
+      metadata: { teddyBudTask: 'title' },
+      messages: [{ role: 'user', content: 'Create a title.' }],
+      max_tokens: 16,
+      stream: false,
+    }, { Authorization: `Bearer ${accessToken}` }), env);
+    const result = await jsonResponse(response);
+    assert.equal(result.status, 200);
+    if (i === 0) firstResult = result.body;
+  }
+  assert.equal(firstResult.teddyBudCredits.charged, 0);
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 0);
+
+  const blocked = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    metadata: { teddyBudTask: 'title' },
+    messages: [{ role: 'user', content: 'One more title.' }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.body.error.code, 'DAILY_BACKGROUND_TASKS_EXHAUSTED');
+
+  const chat = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'A normal chat message.' }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.teddyBudCredits.charged, 1);
 });
 
 test('daily unified credit limit rejects a request that would exceed 40 credits', async () => {
   const env = makeEnv();
   env.AI.run = async () => ({ response: 'Test reply.' });
   const accessToken = await createSession(env, 'daily-credit-user');
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; i < 40; i += 1) {
     const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
       model: '@cf/qwen/qwen3.8-27b',
       messages: [{ role: 'user', content: [{ type: 'text', text: 'Describe this.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }],
@@ -422,6 +504,76 @@ test('signup attempts are rate-limited and CORS is restricted to app origins', a
   assert.equal(blockedOrigin.headers.get('Access-Control-Allow-Origin'), null);
 });
 
+test('enterprise deployment routes text and images to company-managed models', async () => {
+  const env = makeEnv();
+  env.ENTERPRISE_MODE = 'true';
+  env.ENTERPRISE_MODEL_BASE_URL = 'https://inference.company.example/v1';
+  env.ENTERPRISE_MODEL_API_KEY = 'company-secret-for-test';
+  env.ENTERPRISE_TEXT_MODEL_ID = 'company/text-model';
+  env.ENTERPRISE_VISION_MODEL_ID = 'company/vision-model';
+  env.AI.run = async () => { throw new Error('Cloudflare AI must not be called in enterprise mode'); };
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init) => {
+    upstreamCalls.push({ url: String(url), headers: new Headers(init.headers), body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Company-managed reply.' } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  try {
+    const accessToken = await createSession(env, 'enterprise-routing-user');
+    const catalog = await jsonResponse(await worker.fetch(request('/v1/models', 'GET', undefined, {
+      Authorization: 'Bearer ' + accessToken,
+    }), env));
+    assert.deepEqual(catalog.body.data.map(model => model.id), ['company/vision-model', 'company/text-model']);
+
+    const textReply = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+      model: 'company/text-model',
+      messages: [{ role: 'user', content: 'Hello.' }],
+      stream: false,
+    }, { Authorization: 'Bearer ' + accessToken }), env));
+    assert.equal(textReply.status, 200);
+    assert.equal(upstreamCalls[0].url, 'https://inference.company.example/v1/chat/completions');
+    assert.equal(upstreamCalls[0].body.model, 'company/text-model');
+    assert.equal(upstreamCalls[0].headers.get('Authorization'), 'Bearer company-secret-for-test');
+
+    const imageReply = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+      model: 'company/text-model',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe this image.' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } },
+      ] }],
+      stream: false,
+    }, { Authorization: 'Bearer ' + accessToken }), env));
+    assert.equal(imageReply.status, 200);
+    assert.equal(upstreamCalls[1].body.model, 'company/vision-model');
+    assert.equal(textReply.body.choices[0].message.content, 'Company-managed reply.');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('enterprise mode fails closed when its local model endpoint is incomplete', async () => {
+  const env = makeEnv();
+  env.ENTERPRISE_MODE = 'true';
+  delete env.ENTERPRISE_MODEL_BASE_URL;
+  let hostedInferenceCalled = false;
+  env.AI.run = async () => { hostedInferenceCalled = true; return { response: 'must not run' }; };
+  const health = await jsonResponse(await worker.fetch(request('/health'), env));
+  assert.equal(health.status, 503);
+  assert.equal(health.body.provider_configured, false);
+  assert.equal(health.body.provider, 'enterprise-openai-compatible');
+
+  const accessToken = await createSession(env, 'enterprise-incomplete-user');
+  const completion = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello.' }],
+  }, { Authorization: 'Bearer ' + accessToken }), env));
+  assert.equal(completion.status, 503);
+  assert.equal(hostedInferenceCalled, false);
+});
+
 test('model catalog advertises only configured Cloudflare Workers AI models', async () => {
   const env = makeEnv();
   const accessToken = await createSession(env, 'model-catalog-test-user');
@@ -489,45 +641,3 @@ test('credit exhaustion remains enforced even when clients request a different m
   assert.equal(limited.body.error.code, 'DAILY_CREDITS_EXHAUSTED');
 });
 
-
-
-test('non-streaming inference failures refund the reserved credit', async () => {
-  const env = makeEnv();
-  env.AI.run = async () => { throw new Error('synthetic inference failure'); };
-  const accessToken = await createSession(env, 'refund-text-user');
-  const response = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
-    model: '@cf/zai-org/glm-4.7-flash',
-    messages: [{ role: 'user', content: 'Hello.' }],
-    stream: false,
-  }, { Authorization: 'Bearer ' + accessToken }), env));
-  assert.equal(response.status, 502);
-  assert.match(response.body.error.message, /credits were returned/i);
-  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, {
-    Authorization: 'Bearer ' + accessToken,
-  }), env));
-  assert.equal(balance.body.used, 0);
-  assert.equal(balance.body.remaining, 40);
-});
-
-test('streaming inference failures before the first token refund the reserved credit', async () => {
-  const env = makeEnv();
-  env.AI.run = async (_model, options) => {
-    assert.equal(options.stream, true);
-    return new ReadableStream({
-      start(controller) { controller.error(new Error('synthetic stream failure')); },
-    });
-  };
-  const accessToken = await createSession(env, 'refund-stream-user');
-  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
-    model: '@cf/zai-org/glm-4.7-flash',
-    messages: [{ role: 'user', content: 'Hello.' }],
-    stream: true,
-  }, { Authorization: 'Bearer ' + accessToken }), env);
-  assert.equal(response.status, 200);
-  await assert.rejects(() => response.text());
-  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, {
-    Authorization: 'Bearer ' + accessToken,
-  }), env));
-  assert.equal(balance.body.used, 0);
-  assert.equal(balance.body.remaining, 40);
-});

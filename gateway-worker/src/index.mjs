@@ -514,16 +514,47 @@ const APPROVED_MODELS = [
   { id: FALLBACK_MODEL, name: 'GLM-4.7 Flash', capabilities: ['coding', 'reasoning', 'function_calling', 'multilingual'], architecture: { input_modalities: ['text'] } },
 ];
 
+function enterpriseModeEnabled(env) {
+  return env.ENTERPRISE_MODE === 'true'
+    || (typeof env.ENTERPRISE_MODEL_BASE_URL === 'string' && env.ENTERPRISE_MODEL_BASE_URL.trim().length > 0)
+    || (typeof env.ENTERPRISE_TEXT_MODEL_ID === 'string' && env.ENTERPRISE_TEXT_MODEL_ID.trim().length > 0);
+}
+
+function enterpriseProviderConfigured(env) {
+  if (typeof env.ENTERPRISE_MODEL_BASE_URL !== 'string' || typeof env.ENTERPRISE_TEXT_MODEL_ID !== 'string' || !env.ENTERPRISE_TEXT_MODEL_ID.trim()) {
+    return false;
+  }
+  try {
+    const endpoint = new URL(env.ENTERPRISE_MODEL_BASE_URL);
+    return endpoint.protocol === 'https:'
+      && Boolean(endpoint.hostname)
+      && !endpoint.username
+      && !endpoint.password
+      && !endpoint.hash;
+  } catch {
+    return false;
+  }
+}
+
+function configuredModels(env) {
+  if (!enterpriseProviderConfigured(env)) return APPROVED_MODELS;
+  const textId = env.ENTERPRISE_TEXT_MODEL_ID.trim();
+  const visionId = typeof env.ENTERPRISE_VISION_MODEL_ID === 'string' ? env.ENTERPRISE_VISION_MODEL_ID.trim() : '';
+  const models = [{ id: textId, name: 'Company-managed text model', capabilities: ['coding', 'reasoning', 'function_calling', 'multilingual'], architecture: { input_modalities: ['text'] } }];
+  if (visionId) models.unshift({ id: visionId, name: 'Company-managed vision model', capabilities: ['vision', 'reasoning', 'function_calling', 'multilingual'], architecture: { input_modalities: ['text', 'image'] } });
+  return models;
+}
+
 async function models(request, env) {
   const claims = await bearerClaims(request, env);
   if (!claims) return json(401, { error: { message: 'Unauthorized.' } });
   if (!await rateLimit(request, env, 'models-user', 120, claims.sub)) {
     return json(429, { error: { message: 'Too many model-catalog requests. Try again shortly.' } });
   }
-  if (!env.AI || typeof env.AI.run !== 'function') {
-    return json(503, { error: { message: 'Cloudflare Workers AI is not configured. Add the AI binding and enable paid AI access.' } });
+  if (enterpriseModeEnabled(env) ? !enterpriseProviderConfigured(env) : (!env.AI || typeof env.AI.run !== 'function')) {
+    return json(503, { error: { message: 'No AI provider is configured. Configure Workers AI or the enterprise model endpoint.' } });
   }
-  return json(200, { data: APPROVED_MODELS });
+  return json(200, { data: configuredModels(env) });
 }
 
 function textFromContent(content) {
@@ -558,8 +589,8 @@ async function completions(request, env) {
   if (!await rateLimit(request, env, 'chat-user', 60, claims.sub)) {
     return json(429, { error: { message: 'You have sent too many messages recently. Please wait a little and try again.' } });
   }
-  if (!env.AI || typeof env.AI.run !== 'function') {
-    return json(503, { error: { message: 'Cloudflare Workers AI is not configured. Add the AI binding and enable paid AI access.' } });
+  if (enterpriseModeEnabled(env) ? !enterpriseProviderConfigured(env) : (!env.AI || typeof env.AI.run !== 'function')) {
+    return json(503, { error: { message: 'No AI provider is configured. Configure Workers AI or the enterprise model endpoint.' } });
   }
   const parsed = await readJson(request);
   if (parsed.error) return parsed.error;
@@ -567,7 +598,9 @@ async function completions(request, env) {
   if (!input || typeof input.model !== 'string' || !Array.isArray(input.messages)) {
     return json(400, { error: { message: 'A model and messages array are required.' } });
   }
-  const allowed = APPROVED_MODELS.some(model => model.id === input.model);
+  const allowedModels = configuredModels(env);
+  const enterpriseAlias = enterpriseModeEnabled(env) && [PRIMARY_MODEL, FALLBACK_MODEL].includes(input.model);
+  const allowed = allowedModels.some(model => model.id === input.model) || enterpriseAlias;
   if (!allowed) return json(400, { error: { message: 'The requested model is not enabled for Teddy Bud.' } });
   if (
     input.messages.length === 0 || input.messages.length > 100
@@ -588,38 +621,81 @@ async function completions(request, env) {
     const firstUserIndex = filteredMessages.findIndex(message => message?.role === 'user');
     filteredMessages.splice(firstUserIndex < 0 ? filteredMessages.length : firstUserIndex, 0, { role: 'system', content: CRISIS_GUIDANCE });
   }
-  const hasImage = input.messages.some(message =>
-    message?.role === 'user' && Array.isArray(message.content) && message.content.some(part =>
-      part && (part.type === 'image_url' || part.type === 'image' || part.image_url || part.image)
-    )
-  );
-  // Enforce model routing at the gateway so clients cannot send images to a text-only model
-  // or deliberately select the more expensive vision model for ordinary text requests.
-  const effectiveModel = hasImage ? PRIMARY_MODEL : FALLBACK_MODEL;
-  const costCredits = hasImage ? 5 : 1;
+  const imageParts = input.messages
+    .filter(message => message?.role === 'user' && Array.isArray(message.content))
+    .flatMap(message => message.content)
+    .filter(part => part && (part.type === 'image_url' || part.type === 'image' || part.image_url || part.image));
+  const hasImage = imageParts.length > 0;
+  if (hasImage) {
+    for (const part of imageParts) {
+      const imageUrl = typeof part.image_url === 'object' && part.image_url !== null
+        ? part.image_url.url
+        : typeof part.image_url === 'string' ? part.image_url
+          : typeof part.image === 'string' ? part.image : null;
+      if (typeof imageUrl !== 'string' || !/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+=*$/.test(imageUrl)) {
+        return json(400, { error: { message: 'Images must be uploaded as JPEG, PNG, WebP, or GIF files.' } });
+      }
+      if (imageUrl.length > 11_200_000) {
+        return json(413, { error: { message: 'Images must be 8 MB or smaller.' } });
+      }
+    }
+  }
+  // Enforce model routing at the gateway so clients cannot send images to a text-only model.
+  const enterpriseMode = enterpriseProviderConfigured(env);
+  const enterpriseVisionModel = typeof env.ENTERPRISE_VISION_MODEL_ID === 'string' ? env.ENTERPRISE_VISION_MODEL_ID.trim() : '';
+  if (enterpriseMode && hasImage && !enterpriseVisionModel) {
+    return json(400, { error: { message: 'Image analysis is not enabled for this company-managed model. Ask your administrator to configure a vision model.' } });
+  }
+  const effectiveModel = enterpriseMode
+    ? (hasImage ? enterpriseVisionModel : env.ENTERPRISE_TEXT_MODEL_ID.trim())
+    : (hasImage ? PRIMARY_MODEL : FALLBACK_MODEL);
+  // User messages cost one credit regardless of text/image. Small auxiliary tasks
+  // use a separate strict daily cap so auto-titles and memory suggestions don't
+  // silently consume a user's 40 chat credits.
+  const backgroundTask = ['title', 'memory'].includes(input.metadata?.teddyBudTask) ? input.metadata.teddyBudTask : null;
+  const costCredits = backgroundTask ? 0 : 1;
   const reservationId = crypto.randomUUID();
   const reservation = await dailyCreditsRequest(env, claims.sub, '/credits/reserve', {
-    reservationId, cost: costCredits, dailyLimit: 40,
+    reservationId, cost: costCredits, background: Boolean(backgroundTask), dailyLimit: 40, backgroundDailyLimit: 10,
   });
   if (!reservation.ok) {
     return json(503, { error: { message: 'Usage limits are temporarily unavailable. Please try again shortly.' } });
   }
   const quota = await reservation.json();
   if (quota.allowed !== true) {
-    return json(429, { error: { message: 'You have used today’s 40 credits. Your credits reset at 00:00 UTC.', code: 'DAILY_CREDITS_EXHAUSTED', used: quota.used, limit: 40, remaining: 0, resetAt: quota.resetAt } });
+    return json(429, { error: { message: quota.backgroundLimit ? 'The daily limit for background tasks has been reached. Please try again tomorrow.' : 'You have used today’s 40 credits. Your credits reset at 00:00 UTC.', code: quota.backgroundLimit ? 'DAILY_BACKGROUND_TASKS_EXHAUSTED' : 'DAILY_CREDITS_EXHAUSTED', used: quota.used, limit: 40, remaining: Math.max(0, 40 - (quota.used ?? 40)), resetAt: quota.resetAt } });
   }
   const options = {
     messages: filteredMessages,
-    max_tokens: Number.isInteger(input.max_tokens) && input.max_tokens > 0 ? Math.min(input.max_tokens, hasImage ? 512 : 1536) : (hasImage ? 512 : 768),
+    max_tokens: Number.isInteger(input.max_tokens) && input.max_tokens > 0 ? Math.min(input.max_tokens, backgroundTask ? 256 : hasImage ? 512 : 1536) : (backgroundTask ? 128 : hasImage ? 512 : 768),
     temperature: typeof input.temperature === 'number' ? Math.max(0, Math.min(input.temperature, 1.2)) : 0.7,
     stream: input.stream === true,
   };
+  if (Array.isArray(input.tools) && input.tools.length <= 8) options.tools = input.tools;
+  if (input.tool_choice && typeof input.tool_choice === 'object') options.tool_choice = input.tool_choice;
   let result;
   try {
-    result = await env.AI.run(effectiveModel, options);
+    if (enterpriseMode) {
+      const baseUrl = env.ENTERPRISE_MODEL_BASE_URL.replace(/\/+$/, '');
+      const headers = { 'Content-Type': 'application/json' };
+      if (typeof env.ENTERPRISE_MODEL_API_KEY === 'string' && env.ENTERPRISE_MODEL_API_KEY.length > 0) {
+        headers.Authorization = 'Bearer ' + env.ENTERPRISE_MODEL_API_KEY;
+      }
+      const upstream = await fetch(baseUrl + '/chat/completions', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ model: effectiveModel, ...options }),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (!upstream.ok) throw new Error('Enterprise model endpoint returned HTTP ' + upstream.status);
+      result = options.stream ? upstream.body : await upstream.json();
+      if (options.stream && !result) throw new Error('Enterprise model endpoint returned no stream.');
+    } else {
+      result = await env.AI.run(effectiveModel, options);
+    }
   } catch (error) {
     await dailyCreditsRequest(env, claims.sub, '/credits/refund', { reservationId }).catch(() => {});
-    console.error('Workers AI inference failed:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('AI inference failed:', error instanceof Error ? error.message : 'Unknown error');
     return json(502, { error: { message: 'The AI service could not complete this reply. Your credits were returned. Please try again.' } });
   }
   if (input.stream === true) {
@@ -628,19 +704,20 @@ async function completions(request, env) {
       return json(502, { error: { message: 'The AI provider returned an unsupported stream. Your credits were returned.' } });
     }
     // Normalize Workers AI's native {response: "..."} stream into the OpenAI-style
-    // delta format already consumed by desktop, Android, and web clients. A stream
-    // can fail after env.AI.run resolves, so keep the reservation refundable until
-    // the first usable token reaches the client.
+    // delta format already consumed by desktop, Android, and web clients. Keep the
+    // credit reservation open until the stream finishes so early inference failures
+    // can be refunded; once content was delivered, a partial reply is still billable.
     const reader = result.getReader();
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let buffer = '';
-    let charged = false;
-    let settled = false;
-    const settleCredits = async action => {
-      if (settled) return;
-      settled = true;
-      await dailyCreditsRequest(env, claims.sub, `/credits/${action}`, { reservationId }).catch(() => {});
+    let emittedAny = false;
+    let reservationFinalized = false;
+    const finalizeReservation = async () => {
+      if (reservationFinalized) return;
+      reservationFinalized = true;
+      const action = emittedAny ? '/credits/commit' : '/credits/refund';
+      await dailyCreditsRequest(env, claims.sub, action, { reservationId }).catch(() => {});
     };
     const stream = new ReadableStream({
       async pull(controller) {
@@ -659,15 +736,12 @@ async function completions(request, env) {
               const chunk = typeof event.response === 'string' ? event.response
                 : typeof event.choices?.[0]?.delta?.content === 'string' ? event.choices[0].delta.content : '';
               if (chunk) {
-                if (!charged) {
-                  charged = true;
-                  await settleCredits('commit');
-                }
+                emittedAny = true;
                 controller.enqueue(encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: chunk } }] }) + '\n\n'));
               }
             }
             if (done) {
-              if (!charged) await settleCredits('refund');
+              await finalizeReservation();
               controller.enqueue(encoder.encode('data: [DONE]\n\n'));
               controller.close();
               return;
@@ -675,12 +749,12 @@ async function completions(request, env) {
             if (lines.length) return;
           }
         } catch (error) {
-          if (!charged) await settleCredits('refund');
+          await finalizeReservation();
           controller.error(error);
         }
       },
       async cancel(reason) {
-        if (!charged) await settleCredits('refund');
+        await finalizeReservation();
         return reader.cancel(reason);
       },
     });
@@ -707,8 +781,16 @@ async function completions(request, env) {
 async function health(env) {
   // This unauthenticated liveness endpoint must not make billable upstream calls.
   // Provider reachability is exercised by authenticated model/chat requests and CI.
-  const providerConfigured = Boolean(env.AI && typeof env.AI.run === 'function');
-  return json(providerConfigured ? 200 : 503, { status: providerConfigured ? 'ready' : 'degraded', provider_configured: providerConfigured, provider: 'cloudflare-workers-ai' });
+  const enterpriseMode = enterpriseModeEnabled(env);
+  const enterpriseConfigured = enterpriseProviderConfigured(env);
+  const providerConfigured = enterpriseMode
+    ? enterpriseConfigured
+    : Boolean(env.AI && typeof env.AI.run === 'function');
+  return json(providerConfigured ? 200 : 503, {
+    status: providerConfigured ? 'ready' : 'degraded',
+    provider_configured: providerConfigured,
+    provider: enterpriseMode ? 'enterprise-openai-compatible' : 'cloudflare-workers-ai',
+  });
 }
 
 async function route(request, env) {
@@ -816,7 +898,7 @@ export class GatewayStateStore {
     if (pathname === '/credits/read' && request.method === 'GET') {
       const day = new Date().toISOString().slice(0, 10);
       const state = await this.ctx.storage.get('daily-credits');
-      const current = state?.day === day ? state : { day, used: 0, reservations: {} };
+      const current = state?.day === day ? state : { day, used: 0, backgroundUsed: 0, reservations: {} };
       return json(200, { day, used: current.used, remaining: Math.max(0, 40 - current.used), limit: 40, resetAt: dailyResetAt(day) });
     }
 
@@ -827,28 +909,38 @@ export class GatewayStateStore {
       let responseBody;
       await this.ctx.storage.transaction(async txn => {
         const stored = await txn.get('daily-credits');
-        const state = stored?.day === day ? stored : { day, used: 0, reservations: {} };
+        const state = stored?.day === day ? stored : { day, used: 0, backgroundUsed: 0, reservations: {} };
+        state.backgroundUsed ??= 0;
         state.reservations ??= {};
         if (action === 'reserve') {
           const cost = body.cost;
-          if (!Number.isInteger(cost) || ![1, 5].includes(cost) || typeof body.reservationId !== 'string') {
+          const background = body.background === true;
+          if (typeof body.reservationId !== 'string' || (background ? cost !== 0 : cost !== 1)) {
             responseBody = { allowed: false, error: 'Invalid credit reservation.' };
             return;
           }
-          if (state.used + cost > 40) {
+          if (background && state.backgroundUsed >= (Number.isInteger(body.backgroundDailyLimit) ? Math.min(body.backgroundDailyLimit, 10) : 10)) {
+            responseBody = { allowed: false, backgroundLimit: true, used: state.used, remaining: Math.max(0, 40 - state.used), resetAt: dailyResetAt(day) };
+            return;
+          }
+          if (!background && state.used + cost > 40) {
             responseBody = { allowed: false, used: state.used, remaining: Math.max(0, 40 - state.used), resetAt: dailyResetAt(day) };
             return;
           }
+          if (background) state.backgroundUsed += 1;
           state.used += cost;
-          state.reservations[body.reservationId] = { cost, status: 'reserved' };
+          state.reservations[body.reservationId] = { cost, background, status: 'reserved' };
           await txn.put('daily-credits', state);
-          responseBody = { allowed: true, used: state.used, remaining: 40 - state.used, resetAt: dailyResetAt(day) };
+          responseBody = { allowed: true, used: state.used, remaining: 40 - state.used, resetAt: dailyResetAt(day), backgroundRemaining: Math.max(0, 10 - state.backgroundUsed) };
           return;
         }
         if (action === 'commit' || action === 'refund') {
           const reservation = state.reservations[body.reservationId];
           if (reservation?.status === 'reserved') {
-            if (action === 'refund') state.used = Math.max(0, state.used - reservation.cost);
+            if (action === 'refund') {
+              state.used = Math.max(0, state.used - reservation.cost);
+              if (reservation.background) state.backgroundUsed = Math.max(0, (state.backgroundUsed ?? 0) - 1);
+            }
             reservation.status = action === 'refund' ? 'refunded' : 'committed';
             await txn.put('daily-credits', state);
           }

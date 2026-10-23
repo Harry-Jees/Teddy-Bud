@@ -101,23 +101,11 @@ After enabling SQLCipher in the native SQLite build configuration, reinstall nat
 
 ## Conversation model behavior
 
-The client prefers the free OpenRouter model `openai/gpt-oss-20b:free` for
-normal chat, titles, and memory suggestions, and `qwen/qwen3.8-27b:free` for
-image requests. These free endpoints are rate-limited and may be unavailable;
-OpenRouter may return an error rather than switch to a paid model. The Worker
-also requests the lowest-latency provider endpoint available for the selected
-model. Web search uses OpenRouter's `openrouter:web_search` server tool and may
-incur a separate per-search charge. Normal conversation requests ask for up to
-4,096 output tokens, while coding and image requests ask for 220. The Worker
-applies a server-side maximum of 2,048 output tokens. The client includes at most
-80,000 characters of recent chat history in a request.
+The client routes ordinary text to Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash` and image-containing messages to `@cf/qwen/qwen3.8-27b`. The gateway enforces this routing server-side so an image cannot be sent to the text-only model. The chat composer supports attaching JPEG, PNG, WebP, and GIF images up to 8 MB. Each text or image message costs one credit from the unified 40-credit daily Free allowance. Automatic title and memory-suggestion tasks have a separate server-enforced limit of 10 per day and do not consume chat credits. The gateway enforces the allowance and resets it at 00:00 UTC. The allowance is a product limit, not an exact measure of inference cost; monitor Cloudflare AI spend separately. Pro (7 personalities) and Premium (10 personalities) are coming soon; their checkout is not enabled. Enterprise local-model routing is a planned deployment mode, not a currently available feature.
 
 The client prompt asks the assistant to be warm, compassionate, natural, and
 multilingual, and to answer in the language the user uses. Prompt instructions
-cannot guarantee perfect fluency or understanding. Model availability, rate
-limits, output quality, and provider data practices vary across OpenRouter's
-upstream providers; review the selected model and provider terms before sending
-sensitive content.
+cannot guarantee perfect fluency or understanding. Model availability, rate limits, output quality, and Cloudflare Workers AI data practices may vary by model; review the applicable provider terms before sending sensitive content.
 
 Chat history is organized into separate conversations and saved locally on
 the device without an application-defined chat or message count limit. Device
@@ -174,3 +162,8 @@ Run `npm run android` with an Android emulator or device attached. The repositor
 For macOS desktop development, use `npm run desktop:run` after building the relative-path web bundle with `npm run build:web -- --base=./`. Desktop packaging commands and the current output locations are listed in the [repository README](../README.md) and the [distribution verification record](../guide/DISTRIBUTION_VERIFICATION.md).
 
 For React Native platform setup, see the official [environment setup guide](https://reactnative.dev/docs/set-up-your-environment). For iOS dependency setup, install CocoaPods and run `bundle exec pod install` from `client/ios/` or `client/macos/` as appropriate.
+
+
+## Enterprise deployments
+
+The client reads the authenticated model catalog when a model-specific capability is needed and supports company-managed model IDs advertised by a dedicated Teddy Bud gateway. See [TeddyBuddy White Label](../docs/ENTERPRISE_WHITE_LABEL.md) for the server-side endpoint configuration and security requirements. Never place a company inference API key in client settings or app configuration.

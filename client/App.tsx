@@ -12,6 +12,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StatusBar,
   StyleSheet,
   Text,
@@ -27,15 +28,17 @@ import { GatewayService } from './src/services/gateway';
 import { browserAuthService } from './src/services/browserAuth';
 import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
-import type { LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
+import type { EmotionCheckIn, JournalEntry, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
+import { EMOTION_AXES } from './src/services/localData';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, readEncryptedBackup } from './src/services/backup';
 import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
+import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
 
-type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings';
+type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio';
 type Memory = LocalMemory;
 type MemorySuggestion = { conversationId: string; messageId: number; fact: string };
 type Message = LocalMessage;
@@ -52,6 +55,9 @@ const C = {
 const navItems: { id: Page; icon: string; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Your space' },
   { id: 'memories', icon: '✳', label: 'Memories' },
+  { id: 'emotions', icon: '◉', label: 'Emotions' },
+  { id: 'journal', icon: '▤', label: 'Journal' },
+  { id: 'studio', icon: '☼', label: 'Wellbeing' },
   { id: 'privacy', icon: '⌑', label: 'Privacy' },
 ];
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
@@ -273,6 +279,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [emotionCheckIns, setEmotionCheckIns] = useState<EmotionCheckIn[]>([]);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [draft, setDraft] = useState('');
   const [memoryModal, setMemoryModal] = useState(false);
   const [renameConversationId, setRenameConversationId] = useState<string | null>(null);
@@ -309,7 +317,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const receivedReplyRef = useRef('');
   const responseAbortControllerRef = useRef<AbortController | null>(null);
 
-  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
+  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
   const refreshCreditBalance = useCallback(async () => {
     try {
@@ -339,6 +347,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         nextMessageId.current,
       );
       setMemories(data.memories);
+      setEmotionCheckIns(data.emotionCheckIns ?? []);
+      setJournalEntries(data.journalEntries ?? []);
       setRememberInSession(data.rememberInSession);
       rememberPreferenceRef.current = data.rememberInSession;
       setShareMemories(data.shareMemories);
@@ -362,6 +372,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       conversations,
       activeConversationId,
       memories,
+      emotionCheckIns,
+      journalEntries,
       rememberInSession,
       shareMemories,
       shareChatHistory,
@@ -375,7 +387,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     }).catch(error => {
       setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
     });
-  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries]);
 
   const appendConversationMessage = (conversationId: string, message: Message) => {
     const updatedAt = new Date().toISOString();
@@ -484,7 +496,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const confirmClear = () => confirmAction(
     'Clear local data?',
-    'This removes all chats and memories saved on this device.',
+    'This removes all chats, memories, emotion check-ins, and journal entries saved on this device.',
     () => {
       localDataService.clear(owner).then(() => {
         memorySuggestionRequestId.current += 1;
@@ -492,6 +504,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         setConversations([]);
         setActiveConversationId(null);
         setMemories([]);
+        setEmotionCheckIns([]);
+        setJournalEntries([]);
         setRememberInSession(true);
         rememberPreferenceRef.current = true;
         setShareMemories(false);
@@ -515,7 +529,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const clearUnavailableLocalData = () => confirmAction(
     'Clear local data and start over?',
-    'This permanently removes all saved chats and memories for this account from this device.',
+    'This permanently removes all chats, memories, emotion check-ins, and journal entries saved for this account on this device.',
     () => {
       localDataService.clear(owner).then(() => {
         memorySuggestionRequestId.current += 1;
@@ -561,8 +575,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     const imported = await readEncryptedBackup(fileContents, owner, passphrase);
     const confirmed = Platform.OS === 'web'
       // eslint-disable-next-line no-alert -- confirm before replacing the current account's local data.
-      ? typeof window !== 'undefined' && window.confirm("Replace this account's saved chats, memories, and settings with the backup?")
-      : await new Promise<boolean>(resolve => Alert.alert('Replace saved data?', 'This replaces chats, memories, and settings for the currently signed-in account on this device.', [
+      ? typeof window !== 'undefined' && window.confirm("Replace this account's saved chats, memories, emotion check-ins, journal entries, and settings with the backup?")
+      : await new Promise<boolean>(resolve => Alert.alert('Replace saved data?', 'This replaces chats, memories, emotion check-ins, journal entries, and settings for the currently signed-in account on this device.', [
         { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
         { text: 'Replace', style: 'destructive', onPress: () => resolve(true) },
       ]));
@@ -571,6 +585,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     setConversations(imported.conversations);
     setActiveConversationId(imported.activeConversationId);
     setMemories(imported.memories);
+    setEmotionCheckIns(imported.emotionCheckIns ?? []);
+    setJournalEntries(imported.journalEntries ?? []);
     setRememberInSession(imported.rememberInSession);
     rememberPreferenceRef.current = imported.rememberInSession;
     setShareMemories(imported.shareMemories);
@@ -585,9 +601,9 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     return true;
   };
 
-  const sendMessage = async (messageToRetry?: string) => {
-    const text = messageToRetry ?? draft.trim();
-    if (!text || isSending || !localDataReady) return;
+  const sendMessage = async (messageToRetry?: string, imageDataUrl?: string) => {
+    const text = messageToRetry ?? (draft.trim() || (imageDataUrl ? 'Please describe this image.' : ''));
+    if ((!text && !imageDataUrl) || isSending || !localDataReady) return;
     const conversationId = activeConversationId ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     if (!activeConversationId) setActiveConversationId(conversationId);
 
@@ -624,6 +640,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         content: message.text,
       })), sessionToken, {
         task: 'conversation',
+        imageDataUrl,
         memories: shareMemories ? memories.map(memory => memory.text) : [],
         aboutMe: shareAboutMe ? aboutMe : '',
         assistantName,
@@ -808,7 +825,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
                 : [{ id: Date.now(), text: fact, date: 'Added just now' }, ...current]);
             }
             setMemorySuggestion(null);
-          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={sendMessage} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
+          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => sendMessage(undefined, imageDataUrl)} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
           {page === 'history' && <ChatHistoryPage
             conversations={conversations}
             activeConversationId={activeConversationId}
@@ -817,6 +834,9 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             onSelect={selectConversation}
             onNewConversation={startNewConversation}
           />}
+          {page === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={entry => setJournalEntries(current => [entry, ...current.filter(existing => existing.id !== entry.id)].slice(0, 1000))} onDelete={id => setJournalEntries(current => current.filter(entry => entry.id !== id))} />}
+          {page === 'studio' && <WellbeingStudio wide={wide} />}
+          {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={entry => setEmotionCheckIns(current => [entry, ...current].slice(0, 500))} onDelete={id => setEmotionCheckIns(current => current.filter(entry => entry.id !== id))} />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} />}
           {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
           {page === 'settings' && <SettingsPage wide={wide} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
@@ -1118,8 +1138,9 @@ function BottomNav({ page, onNavigate, bottomInset }: { page: Page; onNavigate: 
   </Pressable>)}</View>;
 }
 
-export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, onStop, onRetry, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: () => void; onStop: () => void; onRetry: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
-  const canSend = !!draft.trim() && !isSending;
+export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, onStop, onRetry, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; onStop: () => void; onRetry: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
+  const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
+  const canSend = (!!draft.trim() || !!selectedImage) && !isSending;
   const [composerFocused, setComposerFocused] = useState(false);
   const [manualCrisisSupport, setManualCrisisSupport] = useState(false);
   const [occasionOpen, setOccasionOpen] = useState(false);
@@ -1127,6 +1148,7 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
   const scrollRef = useRef<ScrollView>(null);
   const hasSafetyConcern = messages.some(message => message.author === 'you' && hasCrisisSignal(message.text));
   useEffect(() => { scrollRef.current?.scrollToEnd({ animated: !streamingReply }); }, [messages.length, streamingReply, isSending]);
+  const submitMessage = () => { if (!canSend) return; onSend(selectedImage?.dataUrl); setSelectedImage(null); };
   return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={[styles.chatHeader, wide && styles.chatHeaderWide]}>
       <View style={styles.chatHeaderCopy}><Text style={styles.pageTitle} numberOfLines={1}>{conversationTitle}</Text></View>
@@ -1171,6 +1193,9 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
     </ScrollView>
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
       <View style={styles.chatTools}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Attach an image" onPress={async () => { try { setSelectedImage(await pickChatImage()); } catch (error) { Alert.alert('Could not add image', error instanceof Error ? error.message : 'Please try again.'); } }} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
+          <Text style={styles.chatToolIcon}>＋</Text><Text style={styles.chatToolLabel}>Add image · 1 credit</Text>
+        </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Open crisis support" onPress={() => setManualCrisisSupport(true)} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
           <Text style={styles.chatToolIcon}>♡</Text><Text style={styles.chatToolLabel}>Crisis support</Text>
         </Pressable>
@@ -1178,11 +1203,12 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
           <Text style={styles.chatToolIcon}>✳</Text><Text style={styles.chatToolLabel}>Save an occasion</Text>
         </Pressable>}
       </View>
+      {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={{ width: 42, height: 42, borderRadius: 9, marginRight: 8 }} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
-        <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={() => onSend()} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
+        <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         {isSending
           ? <Pressable accessibilityRole="button" accessibilityLabel="Stop response" onPress={onStop} style={({ pressed }) => [styles.sendButton, styles.stopButton, pressed && styles.pressed]}><View style={styles.stopIcon} /></Pressable>
-          : <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={() => onSend()} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, !canSend && styles.sendButtonDisabled, pressed && styles.pressed]}><PaperPlaneIcon /></Pressable>}
+          : <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={submitMessage} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, !canSend && styles.sendButtonDisabled, pressed && styles.pressed]}><PaperPlaneIcon /></Pressable>}
       </View>
       {wide && <Text style={styles.composerFootnote}>{isSending ? 'Sending to the companion service…' : 'Your conversation is saved on this device.'}</Text>}
     </View>
@@ -1404,6 +1430,111 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete }
   </ScrollView>;
 }
 
+
+
+function JournalPage({wide,entries,onSave,onDelete}:{wide:boolean;entries:JournalEntry[];onSave:(entry:JournalEntry)=>void;onDelete:(id:string)=>void}) {
+  const [title,setTitle]=useState(''); const [body,setBody]=useState(''); const [prompt,setPrompt]=useState('Free reflection'); const [editing,setEditing]=useState<string|null>(null); const [search,setSearch]=useState('');
+  const prompts=['Free reflection','What felt heavy today?','What is one small thing I appreciate?','What do I need more of right now?','What would I tell a friend in this situation?'];
+  const save=()=>{if(!body.trim())return;onSave({id:editing??(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),createdAt:editing?(entries.find(e=>e.id===editing)?.createdAt??new Date().toISOString()):new Date().toISOString(),title:title.trim().slice(0,160)||prompt,body:body.trim().slice(0,30000),prompt});setTitle('');setBody('');setEditing(null);};
+  const visible=entries.filter(e=>(e.title+' '+e.body+' '+e.prompt).toLowerCase().includes(search.toLowerCase()));
+  return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36}}>
+    <Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A page just for you</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>Your journal stays in this device's local app storage. It is never added to Teddy's context unless you deliberately copy and share text yourself.</Text>
+    <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:18}}>
+      <Text style={{fontSize:18,fontWeight:'700',color:C.cocoaDark}}>{editing?'Edit your entry':'Write a little'}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginVertical:10}}>{prompts.map(p=><Pressable key={p} onPress={()=>setPrompt(p)} style={{backgroundColor:prompt===p?'#E7D0C2':'#F5ECE5',padding:10,borderRadius:12,marginRight:7}}><Text style={{fontSize:12,color:C.cocoaDark}}>{p}</Text></Pressable>)}</ScrollView>
+      <TextInput value={title} onChangeText={setTitle} placeholder="Title (optional)" placeholderTextColor={C.muted} style={{borderWidth:1,borderColor:C.line,borderRadius:12,padding:12,color:C.cocoaDark,marginBottom:9}} />
+      <TextInput value={body} onChangeText={setBody} multiline placeholder="Start wherever you are…" placeholderTextColor={C.muted} style={{minHeight:140,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,textAlignVertical:'top'}} />
+      <Pressable onPress={save} style={{backgroundColor:C.cocoaDark,borderRadius:14,padding:13,alignItems:'center',marginTop:12}}><Text style={{color:'#FFF',fontWeight:'700'}}>{editing?'Save changes':'Save privately'}</Text></Pressable>{editing?<Pressable onPress={()=>{setEditing(null);setTitle('');setBody('');setPrompt('Free reflection')}} style={{alignItems:'center',padding:10}}><Text style={{color:C.muted}}>Cancel editing</Text></Pressable>:null}
+    </View>
+    <Pressable onPress={()=>{if(!entries.length){Alert.alert('Journal is empty','Write an entry before exporting.');return;}const content=entries.map(entry=>'# '+entry.title+'\n'+new Date(entry.createdAt).toLocaleString()+' · '+entry.prompt+'\n\n'+entry.body).join('\n\n---\n\n');void Share.share({title:'Teddy Bud private journal export',message:content});}} style={{alignSelf:'flex-start',paddingVertical:12,paddingHorizontal:14,backgroundColor:'#E7D0C2',borderRadius:12,marginTop:12}}><Text style={{color:C.cocoaDark,fontWeight:'700'}}>Export journal text</Text></Pressable>
+    <TextInput value={search} onChangeText={setSearch} placeholder="Search journal entries" placeholderTextColor={C.muted} style={{borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:18}} />
+    {visible.map(entry=><View key={entry.id} style={{padding:15,borderWidth:1,borderColor:C.line,borderRadius:17,marginTop:10,backgroundColor:C.paper}}><Text style={{fontWeight:'700',color:C.cocoaDark,fontSize:16}}>{entry.title}</Text><Text style={{fontSize:12,color:C.muted,marginTop:4}}>{new Date(entry.createdAt).toLocaleString()} · {entry.prompt}</Text><Pressable onPress={()=>{setTitle(entry.title);setBody(entry.body);setPrompt(entry.prompt);setEditing(entry.id);}} style={{alignSelf:'flex-start',paddingVertical:8}}><Text style={{color:'#895B43',fontWeight:'700'}}>Edit entry</Text></Pressable><Text selectable style={{color:C.cocoaDark,lineHeight:21,marginTop:9}}>{entry.body}</Text><Pressable onPress={()=>Alert.alert('Delete journal entry?','This cannot be undone.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>onDelete(entry.id)}])} style={{alignSelf:'flex-end',padding:8}}><Text style={{color:'#98594B',fontWeight:'600'}}>Delete</Text></Pressable></View>)}
+    {visible.length===0?<Text style={{color:C.muted,marginTop:18}}>No matching entries yet.</Text>:null}
+  </ScrollView>;
+}
+function WellbeingStudio({wide}:{wide:boolean}) {
+ const [mode,setMode]=useState<'breathe'|'ground'|'focus'|'rest'>('breathe'); const [step,setStep]=useState(0);
+ const content={breathe:{title:'Gentle breathing',description:'Try a comfortable pace. Stop whenever you want.',steps:['Breathe in gently','Breathe out slowly','Relax your shoulders']},ground:{title:'Grounding pause',description:'Notice what is around you, without needing to change anything.',steps:['Name 5 things you can see','Notice 4 things you can feel','Listen for 3 sounds','Notice 2 scents','Name 1 kind thing you can tell yourself']},focus:{title:'Small focus break',description:'A short reset, not another task to complete.',steps:['Put both feet somewhere comfortable','Choose one small next step','Give yourself permission to pause']},rest:{title:'Bedtime wind-down',description:'A quiet offline routine. No streaks, pressure, or score.',steps:['Lower the brightness if comfortable','Let your jaw and shoulders soften','Put tomorrow’s first thought on paper']}} as const;
+ return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36}}><Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A softer moment</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>These gentle exercises work offline. They are optional wellbeing tools, not medical treatment.</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:18}}>{([{id:'breathe',label:'Breathe'},{id:'ground',label:'Grounding'},{id:'focus',label:'Focus break'},{id:'rest',label:'Wind down'}] as const).map(item=><Pressable key={item.id} onPress={()=>{setMode(item.id);setStep(0)}} style={{padding:12,borderRadius:14,backgroundColor:mode===item.id?'#E7D0C2':C.paper,borderWidth:1,borderColor:C.line}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{item.label}</Text></Pressable>)}</View><View style={{backgroundColor:C.paper,borderRadius:24,borderWidth:1,borderColor:C.line,padding:22,marginTop:14,alignItems:'center'}}><View style={{width:120,height:120,borderRadius:60,backgroundColor:'#E7D0C2',alignItems:'center',justifyContent:'center',marginBottom:18}}><Text style={{fontSize:34,color:C.cocoaDark}}>{mode==='breathe'?'◌':mode==='ground'?'⌂':mode==='focus'?'✳':'☾'}</Text></View><Text style={{fontSize:21,fontWeight:'700',color:C.cocoaDark}}>{content[mode].title}</Text><Text style={{textAlign:'center',color:C.muted,lineHeight:21,marginTop:8}}>{content[mode].description}</Text><Text style={{fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',marginTop:24,minHeight:54}}>{content[mode].steps[step]}</Text><View style={{flexDirection:'row',gap:10,marginTop:18}}><Pressable onPress={()=>setStep(s=>Math.max(0,s-1))} style={{padding:13,borderRadius:13,backgroundColor:'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>Previous</Text></Pressable><Pressable onPress={()=>setStep(s=>(s+1)%content[mode].steps.length)} style={{padding:13,borderRadius:13,backgroundColor:C.cocoaDark}}><Text style={{color:'#FFF',fontWeight:'700'}}>{step===content[mode].steps.length-1?'Start again':'Next step'}</Text></Pressable></View></View></ScrollView>;
+}
+function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entries: EmotionCheckIn[]; onSave: (entry: EmotionCheckIn) => void; onDelete: (id: string) => void }) {
+  const [ratings, setRatings] = useState<Record<string, number>>({});
+  const [energy, setEnergy] = useState(3);
+  const [support, setSupport] = useState<EmotionCheckIn['support']>('listen');
+  const [note, setNote] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const latest = entries[0];
+  const axisCount = EMOTION_AXES.length;
+  const size = wide ? 340 : 290;
+  const center = size / 2;
+  const radius = size * 0.34;
+  const point = (axis: number, value: number) => {
+    const angle = -Math.PI / 2 + axis * Math.PI * 2 / axisCount;
+    return { x: center + Math.cos(angle) * radius * value / 5, y: center + Math.sin(angle) * radius * value / 5 };
+  };
+  const line = (a: {x:number;y:number}, b: {x:number;y:number}, color: string, width = 1) => {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    return <View key={color + a.x + a.y + b.x + b.y} pointerEvents="none" style={{ position: 'absolute', left: (a.x+b.x)/2-Math.sqrt(dx*dx+dy*dy)/2, top: (a.y+b.y)/2-width/2, width: Math.sqrt(dx*dx+dy*dy), height: width, backgroundColor: color, transform: [{ rotate: Math.atan2(dy,dx)+'rad' }] }} />;
+  };
+  const renderWeb = (data?: Record<string, number>) => {
+    const values = EMOTION_AXES.map(axis => data?.[axis.id] ?? 0);
+    return <View accessibilityLabel="Spider web chart showing self-rated emotions from zero to five" style={{ width: size, height: size, alignSelf: 'center', position: 'relative' }}>
+      {[1,2,3,4,5].map(level => EMOTION_AXES.map((_, i) => line(point(i, level), point((i+1)%axisCount, level), '#E8DDD5', 1)))}
+      {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D8CBC2', 1))}
+      {EMOTION_AXES.map((axis,i) => {
+        const p = point(i,5), label = point(i,5.75);
+        return <React.Fragment key={axis.id}>
+          <Text style={{position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}}>{axis.label}</Text>
+          {data && values[i] > 0 ? <View style={{position:'absolute',left:point(i,values[i]).x-5,top:point(i,values[i]).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#B87862',borderWidth:2,borderColor:'#FFF9F4'}} /> : null}
+        </React.Fragment>;
+      })}
+      {data ? values.map((value,i) => line(point(i,value), point((i+1)%axisCount,values[(i+1)%axisCount]), '#B87862', 2.5)) : null}
+      <View style={{position:'absolute',left:center-4,top:center-4,width:8,height:8,borderRadius:4,backgroundColor:'#B87862'}} />
+    </View>;
+  };
+  return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36,alignItems:'stretch'}}>
+    <View style={{maxWidth:760,width:'100%',alignSelf:'center'}}>
+      <Text style={{fontSize:wide?30:25,fontWeight:'700',color:C.cocoaDark}}>Your emotional landscape</Text>
+      <Text style={{fontSize:14,lineHeight:21,color:C.muted,marginTop:8}}>A private snapshot of how you feel. Rate only what feels relevant; there is no good or bad shape.</Text>
+      <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:24,padding:16,marginTop:20}}>
+        <Text style={{fontSize:17,fontWeight:'700',color:C.cocoaDark}}>{latest ? 'Latest check-in' : 'Your emotion web'}</Text>
+        {renderWeb(latest?.emotions)}
+        <Text accessibilityRole="text" style={{textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}}>{latest ? 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString() : 'Your web appears after your first check-in.'}</Text>
+        {latest ? <Text style={{fontSize:13,lineHeight:20,color:C.cocoaDark,marginTop:8}}>Highest ratings: {EMOTION_AXES.filter(a=>(latest.emotions[a.id]??0)>0).sort((a,b)=>(latest.emotions[b.id]??0)-(latest.emotions[a.id]??0)).slice(0,3).map(a=>a.label+' '+latest.emotions[a.id]+'/5').join(' · ') || 'No emotions rated'} · Energy {latest.energy}/5</Text> : null}
+        <Pressable accessibilityRole="button" onPress={()=>setShowForm(v=>!v)} style={{backgroundColor:C.cocoaDark,borderRadius:15,padding:14,alignItems:'center',marginTop:16}}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
+      </View>
+      {showForm ? <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:14}}>
+        <Text style={{fontSize:19,fontWeight:'700',color:C.cocoaDark,marginBottom:6}}>How are you feeling?</Text>
+        <Text style={{fontSize:13,color:C.muted,marginBottom:12}}>Tap a number from 0 (not present) to 5 (very strong). You can leave any emotion unrated.</Text>
+        {EMOTION_AXES.map(axis=><View key={axis.id} style={{paddingVertical:9,borderBottomWidth:1,borderBottomColor:C.line}}>
+          <Text style={{color:C.cocoaDark,fontWeight:'600',marginBottom:8}}>{axis.label}</Text>
+          <View style={{flexDirection:'row',gap:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} accessibilityRole="button" accessibilityLabel={axis.label+' '+n+' out of 5'} onPress={()=>setRatings(current=>({...current,[axis.id]:n}))} style={{width:36,height:36,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:ratings[axis.id]===n?'#B87862':'#F5ECE5',borderWidth:ratings[axis.id]===n?2:0,borderColor:C.cocoaDark}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{n}</Text></Pressable>)}</View>
+        </View>)}
+        <Text style={{color:C.cocoaDark,fontWeight:'600',marginTop:14}}>Energy: {energy}/5</Text>
+        <View style={{flexDirection:'row',gap:8,marginTop:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} onPress={()=>setEnergy(n)} style={{width:36,height:36,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:energy===n?'#B87862':'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>{n}</Text></Pressable>)}</View>
+        <Text style={{color:C.cocoaDark,fontWeight:'600',marginTop:14,marginBottom:8}}>What would help right now?</Text>
+        <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{([{id:'listen',label:'Just listen'},{id:'advice',label:'Practical advice'},{id:'encouragement',label:'Encouragement'},{id:'unsure',label:'Not sure'}] as const).map(option=><Pressable key={option.id} onPress={()=>setSupport(option.id)} style={{paddingVertical:9,paddingHorizontal:12,borderRadius:14,backgroundColor:support===option.id?'#E7D0C2':'#F5ECE5',borderWidth:support===option.id?1:0,borderColor:'#B87862'}}><Text style={{color:C.cocoaDark}}>{option.label}</Text></Pressable>)}</View>
+        <Text style={{fontSize:12,color:C.muted,marginTop:12}}>Optional note (saved only on this device)</Text>
+        <TextInput value={note} onChangeText={setNote} multiline placeholder="Anything you want to remember about this moment…" placeholderTextColor={C.muted} style={{minHeight:76,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:7,textAlignVertical:'top'}} />
+        <Pressable onPress={()=>{onSave({id:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),createdAt:new Date().toISOString(),emotions:ratings,energy,support,note:note.trim()||undefined});setRatings({});setEnergy(3);setSupport('listen');setNote('');setShowForm(false);}} style={{backgroundColor:C.cocoaDark,borderRadius:15,padding:14,alignItems:'center',marginTop:14}}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>Save privately on this device</Text></Pressable>
+      </View> : null}
+      {entries.length >= 2 ? <View style={{backgroundColor:'#F4ECE6',borderRadius:18,padding:15,marginTop:18}}>
+        <Text style={{fontSize:16,fontWeight:'700',color:C.cocoaDark}}>Your recent pattern</Text>
+        <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
+        {EMOTION_AXES.map(axis=>{const sample=entries.slice(0,7).filter(entry=>typeof entry.emotions[axis.id]==='number');if(!sample.length)return null;const avg=sample.reduce((sum,entry)=>sum+(entry.emotions[axis.id]??0),0)/sample.length;return <View key={axis.id} style={{marginTop:9}}><View style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontSize:12,color:C.cocoaDark}}>{axis.label}</Text><Text style={{fontSize:12,color:C.cocoaDark}}>{avg.toFixed(1)}/5</Text></View><View style={{height:6,backgroundColor:'#E1D5CC',borderRadius:4,marginTop:4,overflow:'hidden'}}><View style={{height:6,width:`${(avg/5*100)}%` as `${number}%`,backgroundColor:'#B87862',borderRadius:4}} /></View></View>;})}
+      </View> : null}
+      <Text style={{fontSize:19,fontWeight:'700',color:C.cocoaDark,marginTop:24,marginBottom:10}}>Past check-ins</Text>
+      {entries.length===0 ? <Text style={{color:C.muted,paddingVertical:14}}>Nothing recorded yet. Your check-ins are optional and stay in local app storage.</Text> : entries.map(entry=><View key={entry.id} style={{backgroundColor:C.paper,borderWidth:1,borderColor:C.line,borderRadius:16,padding:14,marginBottom:9}}>
+        <Text style={{color:C.cocoaDark,fontWeight:'700'}}>{new Date(entry.createdAt).toLocaleString()}</Text>
+        <Text style={{color:C.muted,fontSize:13,marginTop:5}}>{EMOTION_AXES.filter(a=>entry.emotions[a.id]!==undefined).sort((a,b)=>(entry.emotions[b.id]??0)-(entry.emotions[a.id]??0)).slice(0,4).map(a=>a.label+' '+entry.emotions[a.id]+'/5').join(' · ') || 'No emotion ratings'} · Energy {entry.energy}/5</Text>
+        {entry.note ? <Text style={{color:C.cocoaDark,marginTop:6}}>{entry.note}</Text> : null}
+        <Pressable accessibilityRole="button" onPress={()=>Alert.alert('Delete check-in?','This removes this entry from this device.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>onDelete(entry.id)}])} style={{alignSelf:'flex-end',padding:8}}><Text style={{color:'#98594B',fontWeight:'600'}}>Delete</Text></Pressable>
+      </View>)}
+      <Text style={{fontSize:12,color:C.muted,lineHeight:18,marginTop:10}}>These ratings are self-reported reflections, not a clinical assessment. No emotions are inferred from your chats.</Text>
+    </View>
+  </ScrollView>;
+}
+
 function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, onRememberChange, onShareMemoriesChange, onShareChatHistoryChange, onShareAboutMeChange, onClear }: { wide: boolean; rememberInSession: boolean; shareMemories: boolean; shareChatHistory: boolean; shareAboutMe: boolean; onRememberChange: (value: boolean) => void; onShareMemoriesChange: (value: boolean) => void; onShareChatHistoryChange: (value: boolean) => void; onShareAboutMeChange: (value: boolean) => void; onClear: () => void }) {
   const [policyLinkError, setPolicyLinkError] = useState('');
   const isDesktopApp = Platform.OS === 'web' && typeof window !== 'undefined' && !!window.teddyBudDesktop?.isDesktop;
@@ -1508,16 +1639,31 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Text style={styles.settingTitle}>Daily AI credits</Text>
-          <Text style={styles.settingDescription}>40 credits shared between text and image requests.</Text>
+          <Text style={styles.settingDescription}>40 credits each day. Text and image messages each use 1 credit.</Text>
         </View>
         <Text style={{ color: C.cocoaDark, fontSize: 22, fontWeight: '700' }}>{creditBalance ? creditBalance.remaining : '—'}<Text style={{ color: C.muted, fontSize: 12, fontWeight: '500' }}> / 40</Text></Text>
       </View>
       <View accessibilityRole="progressbar" accessibilityLabel="Daily AI credits remaining" accessibilityValue={{ min: 0, max: 40, now: creditBalance?.remaining ?? 0 }} style={{ height: 7, borderRadius: 4, overflow: 'hidden', backgroundColor: C.paperAlt }}>
         <View style={{ height: '100%', width: `${Math.min(100, Math.max(0, (creditBalance?.remaining ?? 0) / 40 * 100))}%`, backgroundColor: C.cocoa, borderRadius: 4 }} />
       </View>
-      <Text style={styles.settingDescription}>Text: 1 credit · Image analysis: 5 credits · Resets daily at 00:00 UTC.</Text>
+      <Text style={styles.settingDescription}>Text: 1 credit · Image analysis: 1 credit · Resets daily at 00:00 UTC.</Text>
       <Pressable accessibilityRole="button" onPress={() => { void onRefreshCredits(); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
       {!creditBalance && <Text style={styles.settingDescription}>Balance unavailable right now. Connect to the gateway and refresh.</Text>}
+    </View>
+    <View style={styles.settingsCardForm}>
+      <Text style={styles.settingTitle}>More ways to connect are coming</Text>
+      <Text style={styles.settingDescription}>Pro will include 7 companion personalities, and Premium will include 10, with access to more capable models and larger credit allowances. Paid plans are coming soon; no payment is required for Free.</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+        <View style={{ flex: 1, borderRadius: 13, borderWidth: 1, borderColor: C.line, padding: 12, backgroundColor: '#FDFBF8' }}>
+          <Text style={styles.settingTitle}>Pro · Coming soon</Text>
+          <Text style={styles.settingDescription}>7 personalities · Better models</Text>
+        </View>
+        <View style={{ flex: 1, borderRadius: 13, borderWidth: 1, borderColor: C.line, padding: 12, backgroundColor: '#FDFBF8' }}>
+          <Text style={styles.settingTitle}>Premium · Coming soon</Text>
+          <Text style={styles.settingDescription}>10 personalities · Best models</Text>
+        </View>
+      </View>
+      <Text style={styles.settingDescription}>Industrial / Enterprise deployments with locally hosted models are planned separately.</Text>
     </View>
     <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
     <View style={styles.settingsCardForm}>
@@ -1534,9 +1680,9 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
           const selected = selectedCharacterId === character.id;
           const savedName = assistantCharacterNames?.[character.id] ?? character.name;
           const shownName = selected && characterNameDraft.trim() ? characterNameDraft.trim() : savedName;
-          return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}`} accessibilityState={{ selected }} onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected]}>
+          return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}${character.tier === 'free' ? '' : ', coming soon'}`} accessibilityState={{ selected, disabled: character.tier !== 'free' }} disabled={character.tier !== 'free'} onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected, character.tier !== 'free' && { opacity: 0.62 }]}>
             <Text style={styles.characterChoiceIcon}>{character.symbol}</Text>
-            <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text></View>
+            <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text>{character.tier !== 'free' && <Text style={styles.characterChoiceTagline}>{character.tier === 'pro' ? 'PRO' : 'PREMIUM'} · COMING SOON</Text>}</View>
             {selected && <Text style={styles.characterChoiceCheck}>✓</Text>}
           </Pressable>;
         })}

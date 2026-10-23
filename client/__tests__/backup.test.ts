@@ -33,6 +33,8 @@ const sampleData: LocalAppData = {
   }],
   activeConversationId: 'chat-1',
   memories: [{ id: 2, text: 'A private memory', date: 'Today' }],
+  emotionCheckIns: [],
+  journalEntries: [],
   rememberInSession: true,
   shareMemories: false,
   shareChatHistory: false,
@@ -40,7 +42,7 @@ const sampleData: LocalAppData = {
   aboutMe: 'Likes short answers',
   assistantName: 'Buddy',
   assistantCharacterId: 'teddy-bud',
-  assistantCharacterNames: { 'teddy-bud': 'Buddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
+  assistantCharacterNames: { 'teddy-bud': 'Buddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' },
 };
 
 describe('encrypted Teddy Bud backups', () => {

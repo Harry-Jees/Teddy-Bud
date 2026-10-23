@@ -46,12 +46,17 @@ Existing accounts are moved only when the device still has a valid legacy Teddy 
 
 Supabase's current Free plan includes 50,000 monthly active users for Auth. This is an Auth quota, not a promise that database, bandwidth, Worker, or model-provider costs remain free. Cloudflare's Free Worker tier currently stops serving requests when its daily quota is exceeded rather than billing overages; if you manually move the account to a paid plan, that billing model changes. The app sends no auth emails, so this flow does not require an SMTP provider or domain.
 
-Chat, coding, titles, and memory suggestions route to Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`; requests containing an image are routed server-side to `@cf/qwen/qwen3.8-27b`. The `AI` binding is declared in `wrangler.toml`; both model IDs were confirmed present in the connected Cloudflare account. The native Workers AI binding does not require a provider API key.
+By default, chat, coding, titles, and memory suggestions route to Cloudflare Workers AI `@cf/zai-org/glm-4.7-flash`; requests containing an image route server-side to `@cf/qwen/qwen3.8-27b`. For company-managed deployments, see [TeddyBuddy White Label](../docs/ENTERPRISE_WHITE_LABEL.md): a dedicated gateway can route to an operator-configured OpenAI-compatible model endpoint. Enterprise configuration is server-side, and incomplete enterprise mode fails closed instead of falling back to Workers AI.
 
-The Free plan has one shared balance of 40 credits per UTC day: text requests cost 1 credit and image requests cost 5. The gateway reserves credits atomically in Durable Objects, refunds them for inference errors before a response is returned, and exposes the balance through authenticated `GET /v1/credits`. Clients cannot choose their own user ID or credit cost. This is a product usage cap, not a precise billing ledger; monitor Cloudflare AI usage and account spend separately.
+The initial Free plan has one shared balance of 40 credits per UTC day: text requests and image requests each cost 1 credit. Automatic title and memory-suggestion tasks use a separate server-enforced limit of 10 per account per UTC day and do not consume chat credits. The gateway reserves credits atomically in Durable Objects, refunds them for inference errors before a response is returned, and exposes the balance through authenticated `GET /v1/credits`. Clients cannot choose their own user ID or credit cost. This is a product usage cap, not a precise billing ledger; monitor Cloudflare AI usage and account spend separately.
 
 Durable Objects store Teddy Bud sessions, per-user session indexes, burst limits, and daily credits. `/auth/refresh` rejects renewal after the one-hour session lifetime and `/auth/logout` revokes the current session. The Worker also adds crisis response guidance for selected direct phrases. This is best effort and is not a clinical screen or emergency service.
 
 ## Local checks
 
 Run `npm test`. Use `npm run dev` for local Worker development after configuring Wrangler secrets and Durable Objects.
+
+
+## TeddyBuddy White Label
+
+See [the enterprise deployment guide](../docs/ENTERPRISE_WHITE_LABEL.md) for dedicated deployments, company-managed model endpoints, required configuration, isolation, and validation requirements. The gateway adapter is an integration foundation; do not market an enterprise deployment as production-ready until the target model, private connectivity, streaming, tool calls, security review, and tenant-specific operational requirements have been tested.
