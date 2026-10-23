@@ -771,12 +771,15 @@ async function completions(request, env) {
 async function health(env) {
   // This unauthenticated liveness endpoint must not make billable upstream calls.
   // Provider reachability is exercised by authenticated model/chat requests and CI.
+  const enterpriseMode = enterpriseModeEnabled(env);
   const enterpriseConfigured = enterpriseProviderConfigured(env);
-  const providerConfigured = enterpriseConfigured || Boolean(env.AI && typeof env.AI.run === 'function');
+  const providerConfigured = enterpriseMode
+    ? enterpriseConfigured
+    : Boolean(env.AI && typeof env.AI.run === 'function');
   return json(providerConfigured ? 200 : 503, {
     status: providerConfigured ? 'ready' : 'degraded',
     provider_configured: providerConfigured,
-    provider: enterpriseConfigured ? 'enterprise-openai-compatible' : 'cloudflare-workers-ai',
+    provider: enterpriseMode ? 'enterprise-openai-compatible' : 'cloudflare-workers-ai',
   });
 }
 
