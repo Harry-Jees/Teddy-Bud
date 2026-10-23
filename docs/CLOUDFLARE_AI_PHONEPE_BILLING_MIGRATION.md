@@ -1,4 +1,4 @@
-# Cloudflare AI + PhonePe billing migration
+# Cloudflare Workers AI launch and future PhonePe billing migration
 
 ## Current migration target
 
@@ -6,7 +6,7 @@
 - Image understanding model: `@cf/qwen/qwen3.8-27b` (vision-capable).
 - Initial Free plan: 40 credits per user per UTC day; one text message or one image message costs one credit.
 - Pro (7 personalities) and Premium (10 personalities) are coming soon; no checkout is enabled in the initial release.
-- Industrial / Enterprise local inference is a planned deployment mode; see `docs/PLANS_AND_ENTERPRISE.md`.
+- TeddyBuddy White Label company-managed model routing is implemented; see [`ENTERPRISE_WHITE_LABEL.md`](./ENTERPRISE_WHITE_LABEL.md). The adapter supports a dedicated OpenAI-compatible company endpoint. A self-serve multi-tenant control plane and strict on-prem gateway are not implemented.
 - Inference is routed through the gateway's Cloudflare Workers AI binding; the client must never receive provider credentials.
 - PhonePe Payment Gateway is the intended checkout provider. Do not enable paid entitlements until merchant onboarding, signed webhook verification, idempotency, refunds and renewal events are implemented and tested.
 
@@ -15,7 +15,7 @@
 1. Confirm the account's Workers AI free allowance and model pricing before launch. Any free daily allocation is shared by the Cloudflare account, not per Teddy Bud user; inference above the allowance may incur charges.
 2. Configure the `AI` binding in `gateway-worker/wrangler.toml`.
 3. Monitor actual Workers AI model usage and account-level spend; the daily free allocation is shared by the Cloudflare account, not per Teddy Bud user.
-4. Deploy to a staging Worker first and run integration tests before production traffic is switched.
+4. For every future release, stage a Worker version, verify bindings, deploy with rollback protection, and run health/auth smoke checks. Production Worker version `53e016c3-395f-44ad-9e1e-5c206710c27e` is deployed; authenticated text/vision requests still need a real-account smoke test.
 
 ## Usage ledger and plans
 
@@ -49,12 +49,18 @@ Implementation requirements before launch:
 - Persist payment events and entitlement transitions in durable storage; do not use in-memory state.
 - Keep PhonePe calls behind a provider interface so another gateway can be added without changing plan/usage logic.
 
-## Rollout checklist
+## Initial launch validation
 
-- [ ] Replace all OpenRouter-specific model discovery and request assumptions.
-- [ ] Normalize Cloudflare streaming chunks into the chat protocol used by web, Android and desktop.
-- [ ] Add automated tests for normal replies, SSE streaming, image input, timeout/error handling and fallback.
-- [ ] Implement durable per-user usage ledger and budget reservation/reconciliation.
-- [ ] Implement PhonePe checkout + signed webhooks + subscription/mandate lifecycle.
+- [x] Replace OpenRouter-specific model discovery and request assumptions with server-side Cloudflare Workers AI routing.
+- [x] Normalize streaming chunks into the chat protocol used by web, Android and desktop.
+- [x] Cover normal replies, SSE streaming, image input, timeout/error handling and model routing in automated tests.
+- [x] Enforce a 40-credit daily quota with one credit per text/image request, atomic reservation, and failure refunds. This is a usage cap, not a precise provider-cost ledger.
+- [x] Run Worker tests and client typecheck; build the Android and desktop distributions; verify and commit the distribution set.
+- [x] Deploy the Worker with binding preflight, production health checks and authentication-guard smoke tests.
+- [ ] Run authenticated end-to-end text and vision smoke tests with a disposable test account before treating the full live chat path as verified.
+
+## Future paid billing work
+
+- [ ] Implement a detailed provider usage/cost ledger and budget reconciliation.
+- [ ] Implement PhonePe checkout, signed webhooks, refunds and subscription/mandate lifecycle.
 - [ ] Add migrations and tests for plans, payments, usage events and idempotency.
-- [ ] Run worker tests and client typecheck/build; deploy staging; smoke-test Android and web before production.
