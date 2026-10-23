@@ -504,6 +504,66 @@ test('signup attempts are rate-limited and CORS is restricted to app origins', a
   assert.equal(blockedOrigin.headers.get('Access-Control-Allow-Origin'), null);
 });
 
+test('enterprise deployment routes text and images to company-managed models', async () => {
+  const env = makeEnv();
+  env.ENTERPRISE_MODE = 'true';
+  env.ENTERPRISE_MODEL_BASE_URL = 'https://inference.company.example/v1';
+  env.ENTERPRISE_MODEL_API_KEY = 'company-secret-for-test';
+  env.ENTERPRISE_TEXT_MODEL_ID = 'company/text-model';
+  env.ENTERPRISE_VISION_MODEL_ID = 'company/vision-model';
+  env.AI.run = async () => { throw new Error('Cloudflare AI must not be called in enterprise mode'); };
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init) => {
+    upstreamCalls.push({ url: String(url), headers: new Headers(init.headers), body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Company-managed reply.' } }] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  try {
+    const accessToken = await createSession(env, 'enterprise-routing-user');
+    const catalog = await jsonResponse(await worker.fetch(request('/v1/models', 'GET', undefined, {
+      Authorization: 'Bearer ' + accessToken,
+    }), env));
+    assert.deepEqual(catalog.body.data.map(model => model.id), ['company/vision-model', 'company/text-model']);
+
+    const textReply = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+      model: 'company/text-model',
+      messages: [{ role: 'user', content: 'Hello.' }],
+      stream: false,
+    }, { Authorization: 'Bearer ' + accessToken }), env));
+    assert.equal(textReply.status, 200);
+    assert.equal(upstreamCalls[0].url, 'https://inference.company.example/v1/chat/completions');
+    assert.equal(upstreamCalls[0].body.model, 'company/text-model');
+    assert.equal(upstreamCalls[0].headers.get('Authorization'), 'Bearer company-secret-for-test');
+
+    const imageReply = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+      model: 'company/text-model',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: 'Describe this image.' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } },
+      ] }],
+      stream: false,
+    }, { Authorization: 'Bearer ' + accessToken }), env));
+    assert.equal(imageReply.status, 200);
+    assert.equal(upstreamCalls[1].body.model, 'company/vision-model');
+    assert.equal(textReply.body.choices[0].message.content, 'Company-managed reply.');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('enterprise mode fails closed when its local model endpoint is incomplete', async () => {
+  const env = makeEnv();
+  env.ENTERPRISE_MODE = 'true';
+  delete env.ENTERPRISE_MODEL_BASE_URL;
+  const response = await jsonResponse(await worker.fetch(request('/health'), env));
+  assert.equal(response.status, 503);
+  assert.equal(response.body.provider_configured, false);
+  assert.equal(response.body.provider, 'enterprise-openai-compatible');
+});
+
 test('model catalog advertises only configured Cloudflare Workers AI models', async () => {
   const env = makeEnv();
   const accessToken = await createSession(env, 'model-catalog-test-user');
