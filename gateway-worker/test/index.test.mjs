@@ -322,6 +322,40 @@ test('authenticated text chat uses Cloudflare GLM and charges one unified credit
   assert.equal(result.body.teddyBudCredits.used, 1);
 });
 
+test('streaming chat commits one credit after a successful stream', async () => {
+  const env = makeEnv();
+  const accessToken = await createSession(env, 'streaming-credit-user');
+  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello.' }],
+    stream: true,
+  }, { Authorization: `Bearer ${accessToken}` }), env);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /text\/event-stream/i);
+  const body = await response.text();
+  assert.match(body, /Test reply\./);
+  assert.match(body, /\[DONE\]/);
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 1);
+});
+
+test('streaming inference failure before any text refunds the reserved credit', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => new ReadableStream({
+    start(controller) { controller.error(new Error('simulated stream failure')); },
+  });
+  const accessToken = await createSession(env, 'streaming-refund-user');
+  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello.' }],
+    stream: true,
+  }, { Authorization: `Bearer ${accessToken}` }), env);
+  assert.equal(response.status, 200);
+  await assert.rejects(response.text());
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 0);
+});
+
 test('image requests are routed to Cloudflare Qwen and charge one credit', async () => {
   const env = makeEnv();
   let selectedModel;
