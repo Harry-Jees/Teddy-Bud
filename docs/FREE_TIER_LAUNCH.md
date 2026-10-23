@@ -9,7 +9,8 @@ Teddy Bud launches with one plan: **Free**. Do not add checkout, payment-provide
 - One unified allowance of **40 credits per user per UTC day**.
 - Text requests cost **1 credit**.
 - Image-containing requests cost **1 credit**, the same as a text request.
-- The gateway detects image content and selects the model server-side: GLM-4.7 Flash for text, Qwen 3.8 27B for images.\n- Free includes four personalities; Pro will offer seven and Premium ten when those plans launch.
+- The gateway detects image content and selects the model server-side: GLM-4.7 Flash for text, Qwen 3.8 27B for images.
+- Free includes four personalities; Pro will offer seven and Premium ten when those plans launch.
 - Durable Object storage reserves credits atomically before inference, refunds reservations on inference errors before a response is returned, and commits successful requests.
 - Authenticated `GET /v1/credits` returns the current balance and reset time.
 - The app's client cannot supply a user ID, plan, or credit cost to change its allowance.
