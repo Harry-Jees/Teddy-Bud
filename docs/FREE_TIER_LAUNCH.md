@@ -21,14 +21,14 @@ Credits are a product-level usage guard, not an exact billing ledger. Cloudflare
 
 ## Deployment status and safety
 
-The migration code is committed to `migration/cloudflare-workers-ai-phonepe`; it is **not yet live**. A staged version (`6ceee0eb-cc75-4cfc-b6cf-a6cb42ea7765`) was uploaded and verified to contain the `AI` binding plus the existing Supabase/auth secret binding names. The active production deployment is still the previous OpenRouter version. Keep it active until CI and the staged code are validated; the staged version has not been deployed.
+The Cloudflare Workers AI migration and enterprise model-routing adapter are under validation on `migration/cloudflare-workers-ai-phonepe`. Do not assume the branch is production-ready from a staged deployment or direct provider smoke test alone. Check the latest CI results and run authenticated end-to-end tests before directing production traffic.
 
 Before deployment:
 1. Run gateway tests and client type checks/build.
 2. Verify `AI` binding is present in the staged Worker version.
 3. Verify the required secret *names* are available to the new version without exposing secret values.
 4. Verify daily credit reservation/refund, UTC reset, concurrency, text/image routing, and quota exhaustion.
-5. Deploy via the protected workflow with automatic rollback; then perform authenticated text and image smoke tests.
+5. Deploy via the protected workflow with automatic rollback; then perform authenticated text and image smoke tests. For enterprise deployments, separately validate the dedicated company endpoint using [ENTERPRISE_WHITE_LABEL.md](./ENTERPRISE_WHITE_LABEL.md).
 6. Monitor Cloudflare AI usage and keep an emergency way to disable inference if spending exceeds budget.
 
 ## Future paid tiers
@@ -40,3 +40,7 @@ Keep future plan/entitlement logic provider-independent, but do not collect paym
 ## Launch messaging
 
 Use wording such as “Free during the initial launch, with usage limits to keep the service available.” Do not promise unlimited use or permanent free access. Pro and other paid plans may be introduced later, after costs and demand are understood.
+
+## Enterprise edition
+
+The consumer Free plan remains separate from **TeddyBuddy White Label**, the enterprise deployment offer. See [the enterprise guide](./ENTERPRISE_WHITE_LABEL.md). Do not add checkout or paid consumer entitlements to the first Free release.
