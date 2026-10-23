@@ -278,7 +278,9 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [memories, setMemories] = useState<Memory[]>([]);\n  const [emotionCheckIns, setEmotionCheckIns] = useState<EmotionCheckIn[]>([]);\n  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [emotionCheckIns, setEmotionCheckIns] = useState<EmotionCheckIn[]>([]);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [draft, setDraft] = useState('');
   const [memoryModal, setMemoryModal] = useState(false);
   const [renameConversationId, setRenameConversationId] = useState<string | null>(null);
@@ -344,7 +346,9 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         (latest, conversation) => conversation.messages.reduce((messageId, message) => Math.max(messageId, message.id), latest),
         nextMessageId.current,
       );
-      setMemories(data.memories);\n      setEmotionCheckIns(data.emotionCheckIns ?? []);\n      setJournalEntries(data.journalEntries ?? []);
+      setMemories(data.memories);
+      setEmotionCheckIns(data.emotionCheckIns ?? []);
+      setJournalEntries(data.journalEntries ?? []);
       setRememberInSession(data.rememberInSession);
       rememberPreferenceRef.current = data.rememberInSession;
       setShareMemories(data.shareMemories);
