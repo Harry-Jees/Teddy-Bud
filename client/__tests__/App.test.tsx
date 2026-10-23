@@ -86,7 +86,7 @@ test('chat composer sends on Enter and keeps the send button available after a f
     composer.props.onSubmitEditing(nativeEvent);
   });
   expect(onSend).toHaveBeenCalledTimes(1);
-  expect(onSend).toHaveBeenLastCalledWith();
+  expect(onSend).toHaveBeenLastCalledWith(undefined);
 
   const sendButton = renderer.root.findByProps({ accessibilityLabel: 'Send message' });
   expect(sendButton.props.disabled).toBe(false);
@@ -94,7 +94,7 @@ test('chat composer sends on Enter and keeps the send button available after a f
     sendButton.props.onPress(nativeEvent);
   });
   expect(onSend).toHaveBeenCalledTimes(2);
-  expect(onSend).toHaveBeenLastCalledWith();
+  expect(onSend).toHaveBeenLastCalledWith(undefined);
 
   const historyButton = renderer.root.findByProps({ accessibilityLabel: 'View chats' });
   await ReactTestRenderer.act(async () => {
