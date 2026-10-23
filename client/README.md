@@ -162,3 +162,8 @@ Run `npm run android` with an Android emulator or device attached. The repositor
 For macOS desktop development, use `npm run desktop:run` after building the relative-path web bundle with `npm run build:web -- --base=./`. Desktop packaging commands and the current output locations are listed in the [repository README](../README.md) and the [distribution verification record](../guide/DISTRIBUTION_VERIFICATION.md).
 
 For React Native platform setup, see the official [environment setup guide](https://reactnative.dev/docs/set-up-your-environment). For iOS dependency setup, install CocoaPods and run `bundle exec pod install` from `client/ios/` or `client/macos/` as appropriate.
+
+
+## Enterprise deployments
+
+The client reads the authenticated model catalog when a model-specific capability is needed and supports company-managed model IDs advertised by a dedicated Teddy Bud gateway. See [TeddyBuddy White Label](../docs/ENTERPRISE_WHITE_LABEL.md) for the server-side endpoint configuration and security requirements. Never place a company inference API key in client settings or app configuration.
