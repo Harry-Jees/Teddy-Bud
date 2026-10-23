@@ -46,3 +46,6 @@ The native Workers AI binding does not require an OpenRouter API key. Do not rem
 - Text requests cost 1 credit; image requests cost 1; daily cap is 40 credits, resetting at 00:00 UTC.
 - Run authenticated client smoke tests for normal chat, image upload/analysis, memory extraction, browser streaming, and clear quota/error handling. Pro has 7 personalities and Premium has 10, both labelled coming soon and unavailable for selection in the Free release. Enterprise local-model routing is documented as a future capability.
 - Cloudflare Workers AI is billable beyond any applicable allowance. Credits are a product limit, not an exact cost ledger; monitor account usage and spend separately.
+
+- Enterprise mode must route text and image requests only to the configured company-managed OpenAI-compatible endpoint; incomplete enterprise configuration must fail closed without falling back to Cloudflare Workers AI.
+- Never expose enterprise model API keys to client code, logs, or user-controlled request fields.
