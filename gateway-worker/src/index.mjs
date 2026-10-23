@@ -516,15 +516,24 @@ const APPROVED_MODELS = [
 
 function enterpriseModeEnabled(env) {
   return env.ENTERPRISE_MODE === 'true'
-    || typeof env.ENTERPRISE_MODEL_BASE_URL === 'string'
-    || typeof env.ENTERPRISE_TEXT_MODEL_ID === 'string';
+    || (typeof env.ENTERPRISE_MODEL_BASE_URL === 'string' && env.ENTERPRISE_MODEL_BASE_URL.trim().length > 0)
+    || (typeof env.ENTERPRISE_TEXT_MODEL_ID === 'string' && env.ENTERPRISE_TEXT_MODEL_ID.trim().length > 0);
 }
 
 function enterpriseProviderConfigured(env) {
-  return typeof env.ENTERPRISE_MODEL_BASE_URL === 'string'
-    && /^https:\/\//i.test(env.ENTERPRISE_MODEL_BASE_URL)
-    && typeof env.ENTERPRISE_TEXT_MODEL_ID === 'string'
-    && env.ENTERPRISE_TEXT_MODEL_ID.trim().length > 0;
+  if (typeof env.ENTERPRISE_MODEL_BASE_URL !== 'string' || typeof env.ENTERPRISE_TEXT_MODEL_ID !== 'string' || !env.ENTERPRISE_TEXT_MODEL_ID.trim()) {
+    return false;
+  }
+  try {
+    const endpoint = new URL(env.ENTERPRISE_MODEL_BASE_URL);
+    return endpoint.protocol === 'https:'
+      && Boolean(endpoint.hostname)
+      && !endpoint.username
+      && !endpoint.password
+      && !endpoint.hash;
+  } catch {
+    return false;
+  }
 }
 
 function configuredModels(env) {
