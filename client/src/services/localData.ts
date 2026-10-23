@@ -47,11 +47,14 @@ export type LocalMemory = {
   date: string;
 };
 
+export type JournalEntry = { id: string; createdAt: string; title: string; body: string; prompt: string; };
+
 export type LocalAppData = {
   conversations: LocalConversation[];
   activeConversationId: string | null;
   memories: LocalMemory[];
   emotionCheckIns?: EmotionCheckIn[];
+  journalEntries?: JournalEntry[];
   rememberInSession: boolean;
   shareMemories: boolean;
   shareChatHistory: boolean;
@@ -172,6 +175,7 @@ function normalize(value: unknown): LocalAppData {
     emotionCheckIns: Array.isArray(data.emotionCheckIns)
       ? data.emotionCheckIns.filter((entry): entry is EmotionCheckIn => Boolean(entry && typeof entry.id === 'string' && typeof entry.createdAt === 'string' && entry.emotions && typeof entry.emotions === 'object' && !Array.isArray(entry.emotions) && Object.entries(entry.emotions).every(([key, score]) => EMOTION_AXES.some(axis => axis.id === key) && typeof score === 'number' && Number.isInteger(score) && score >= 0 && score <= 5) && typeof entry.energy === 'number' && Number.isInteger(entry.energy) && entry.energy >= 0 && entry.energy <= 5 && ['listen', 'advice', 'encouragement', 'unsure'].includes(entry.support) && (entry.note === undefined || typeof entry.note === 'string'))).slice(0, 500)
       : [],
+    journalEntries: Array.isArray(data.journalEntries) ? data.journalEntries.filter((entry): entry is JournalEntry => Boolean(entry && typeof entry.id === 'string' && typeof entry.createdAt === 'string' && typeof entry.title === 'string' && entry.title.length <= 160 && typeof entry.body === 'string' && entry.body.length <= 30000 && typeof entry.prompt === 'string')).slice(0, 1000) : [],
     memories: Array.isArray(data.memories)
       ? data.memories.filter(memory => memory && typeof memory.id === 'number' && typeof memory.text === 'string' && typeof memory.date === 'string').map(memory => ({ ...memory, text: memory.text.slice(0, MAX_MEMORY_LENGTH) }))
       : [],
@@ -304,7 +308,7 @@ export class LocalDataService {
     if (!owner) throw new Error('A signed-in account is required to load local data.');
     await this.writeQueue;
     const saved = await (await getStorage()).getItem(key(owner));
-    if (!saved) return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: DEFAULT_ASSISTANT_CHARACTER_ID, assistantCharacterNames: { 'teddy-bud': 'Teddy' } };
+    if (!saved) return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: DEFAULT_ASSISTANT_CHARACTER_ID, assistantCharacterNames: { 'teddy-bud': 'Teddy' } };
     try {
       return normalize(JSON.parse(saved));
     } catch {
