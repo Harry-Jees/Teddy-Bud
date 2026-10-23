@@ -57,7 +57,7 @@ These protections reduce risk but do not mean that data is inaccessible to all s
 | Linux | x64 Debian package and AppImage in `dist/desktop/` |
 | iOS / iPhone | **Not currently available** |
 
-The supported distribution set is Android APK, Windows installer, Apple Silicon macOS DMG, and Linux DEB/AppImage. There is no standalone web app, no web download, and no iPhone/iPad installer. Downloads are development builds and may not be signed for trusted public distribution. See [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md) for the exact package set and validation limits.
+The supported distribution set is Android APK, Windows installer, Apple Silicon macOS DMG, and Linux DEB/AppImage. There is no standalone web app, no web download, and no iPhone/iPad installer. Downloads are development builds and may not be signed for trusted public distribution. See [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md) for the exact package set and validation limits. The launch and future product direction are documented in [the Free-tier launch plan](docs/FREE_TIER_LAUNCH.md) and [the 10-feature major upgrade roadmap](docs/MAJOR_UPGRADE_ROADMAP.md).
 
 For the product's public-facing presentation, visit the [Teddy Bud portfolio website](https://teddybud.vercel.app/). This is a portfolio/presentation site, not a web version of the Teddy Bud app.
 
