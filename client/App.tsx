@@ -53,7 +53,10 @@ const C = {
 
 const navItems: { id: Page; icon: string; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Your space' },
-  { id: 'memories', icon: '✳', label: 'Memories' },\n  { id: 'emotions', icon: '◉', label: 'Emotions' },\n  { id: 'journal', icon: '▤', label: 'Journal' },\n  { id: 'studio', icon: '☼', label: 'Wellbeing' },
+  { id: 'memories', icon: '✳', label: 'Memories' },
+  { id: 'emotions', icon: '◉', label: 'Emotions' },
+  { id: 'journal', icon: '▤', label: 'Journal' },
+  { id: 'studio', icon: '☼', label: 'Wellbeing' },
   { id: 'privacy', icon: '⌑', label: 'Privacy' },
 ];
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
