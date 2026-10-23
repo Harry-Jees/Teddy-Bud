@@ -558,10 +558,20 @@ test('enterprise mode fails closed when its local model endpoint is incomplete',
   const env = makeEnv();
   env.ENTERPRISE_MODE = 'true';
   delete env.ENTERPRISE_MODEL_BASE_URL;
-  const response = await jsonResponse(await worker.fetch(request('/health'), env));
-  assert.equal(response.status, 503);
-  assert.equal(response.body.provider_configured, false);
-  assert.equal(response.body.provider, 'enterprise-openai-compatible');
+  let hostedInferenceCalled = false;
+  env.AI.run = async () => { hostedInferenceCalled = true; return { response: 'must not run' }; };
+  const health = await jsonResponse(await worker.fetch(request('/health'), env));
+  assert.equal(health.status, 503);
+  assert.equal(health.body.provider_configured, false);
+  assert.equal(health.body.provider, 'enterprise-openai-compatible');
+
+  const accessToken = await createSession(env, 'enterprise-incomplete-user');
+  const completion = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello.' }],
+  }, { Authorization: 'Bearer ' + accessToken }), env));
+  assert.equal(completion.status, 503);
+  assert.equal(hostedInferenceCalled, false);
 });
 
 test('model catalog advertises only configured Cloudflare Workers AI models', async () => {
