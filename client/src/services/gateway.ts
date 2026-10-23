@@ -134,7 +134,11 @@ function preferredChatModels(catalog: GatewayModel[]): GatewayModel[] {
   const preferred = PREFERRED_CHAT_MODELS
     .map(id => catalog.find(model => model.id.toLowerCase() === id))
     .filter((model): model is GatewayModel => Boolean(model));
-  return preferred;
+  if (preferred.length) return preferred;
+  // Enterprise deployments advertise company-owned model IDs instead of the
+  // public Cloudflare IDs. Prefer a text-capable entry, then any catalog model.
+  const companyTextModels = catalog.filter(model => !model.capabilities.includes('vision'));
+  return companyTextModels.length ? companyTextModels : catalog.slice(0, 1);
 }
 
 function needsAppGuide(message: string, history: GatewayMessage[]): boolean {
@@ -400,14 +404,15 @@ export class GatewayService {
   async sendChatMessage(message: string, history: GatewayMessage[], sessionToken?: string, options: SendChatOptions = {}): Promise<string> {
     const accessToken = await this.token(sessionToken);
     const requiredCapability = options.enableWebBrowsing ? 'web_search' : options.imageDataUrl ? 'vision' : options.task === 'coding' ? 'coding' : undefined;
-    const catalog = options.modelId || requiredCapability === 'vision' || requiredCapability === 'web_search'
-      ? await this.getModelCatalog(accessToken)
-      : [];
+    // Always read the server-owned catalog: enterprise deployments can replace
+    // the default model IDs with company-managed IDs without changing the client.
+    const catalog = await this.getModelCatalog(accessToken);
     const chatModels = preferredChatModels(catalog);
-    // Image requests always use the vision-capable Qwen model, even if a text model
-    // was selected elsewhere. GLM-4.7 Flash must never receive image content.
+    // Prefer the standard vision model when available, otherwise use the model
+    // the enterprise gateway advertises for image input.
     const selected = requiredCapability === 'vision'
       ? catalog.find(model => model.id.toLowerCase() === PREFERRED_VISION_MODEL && model.capabilities.includes('vision'))
+        ?? catalog.find(model => model.capabilities.includes('vision'))
       : options.modelId
         ? catalog.find(model => model.id === options.modelId)
         : requiredCapability === 'web_search'
