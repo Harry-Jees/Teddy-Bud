@@ -214,7 +214,7 @@ jobs:
             echo "## Cloudflare Workers AI deployment"
             echo "- Worker: $WORKER_NAME"
             echo "- Models: GLM-4.7 Flash (text), Qwen 3.8 27B (images)"
-            echo "- Daily allowance: 40 credits (1 text, 5 image)"
+            echo "- Daily allowance: 40 credits (1 text, 1 image)"
             echo "- Health and auth guards: passed"
             echo "- Authenticated text and vision client smoke tests still need validation."
           } >> "$GITHUB_STEP_SUMMARY"
