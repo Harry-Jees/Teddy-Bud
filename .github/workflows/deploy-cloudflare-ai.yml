@@ -152,6 +152,7 @@ jobs:
           if (bindings.find(binding => binding.name === 'AI')?.type !== 'ai') throw new Error('Staged AI binding has the wrong type; production was not changed.');
           console.log('Verified staged binding names; secret values were not read.');
           NODE
+          echo "version_id=$VERSION_ID" >> "$GITHUB_OUTPUT"
       - name: Deploy verified staged version
         id: deploy
         shell: bash
