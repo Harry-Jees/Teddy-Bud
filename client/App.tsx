@@ -570,8 +570,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     const imported = await readEncryptedBackup(fileContents, owner, passphrase);
     const confirmed = Platform.OS === 'web'
       // eslint-disable-next-line no-alert -- confirm before replacing the current account's local data.
-      ? typeof window !== 'undefined' && window.confirm("Replace this account's saved chats, memories, and settings with the backup?")
-      : await new Promise<boolean>(resolve => Alert.alert('Replace saved data?', 'This replaces chats, memories, and settings for the currently signed-in account on this device.', [
+      ? typeof window !== 'undefined' && window.confirm("Replace this account's saved chats, memories, emotion check-ins, journal entries, and settings with the backup?")
+      : await new Promise<boolean>(resolve => Alert.alert('Replace saved data?', 'This replaces chats, memories, emotion check-ins, journal entries, and settings for the currently signed-in account on this device.', [
         { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
         { text: 'Replace', style: 'destructive', onPress: () => resolve(true) },
       ]));
@@ -580,6 +580,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     setConversations(imported.conversations);
     setActiveConversationId(imported.activeConversationId);
     setMemories(imported.memories);
+    setEmotionCheckIns(imported.emotionCheckIns ?? []);
+    setJournalEntries(imported.journalEntries ?? []);
     setRememberInSession(imported.rememberInSession);
     rememberPreferenceRef.current = imported.rememberInSession;
     setShareMemories(imported.shareMemories);
