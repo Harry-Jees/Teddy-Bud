@@ -97,6 +97,25 @@ describe('GatewayService', () => {
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer expired-token' }));
     expect(fetchMock.mock.calls[1][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer refreshed-token' }));
   });
+  it('selects a company-advertised vision model for image requests', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(response({ data: [
+        { id: 'company/vision-model', name: 'Company Vision', capabilities: ['vision'], architecture: { input_modalities: ['text', 'image'] } },
+        { id: 'company/text-model', name: 'Company Text', capabilities: ['coding'], architecture: { input_modalities: ['text'] } },
+      ] }))
+      .mockResolvedValueOnce(response({ choices: [{ message: { content: 'The picture shows a tree.' } }] }));
+    globalThis.fetch = fetchMock;
+    const image = 'data:image/png;base64,AA==';
+    await expect(new GatewayService('https://gateway.test', auth).sendChatMessage(
+      'What is in this picture?', [], 'test-token', { imageDataUrl: image },
+    )).resolves.toBe('The picture shows a tree.');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://gateway.test/v1/models');
+    const request = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(request.model).toBe('company/vision-model');
+    expect(request.messages.at(-1).content[1].image_url.url).toBe(image);
+  });
+
   it('uses streaming on web when text chunks are requested', async () => {
     const fetchMock = jest.fn().mockResolvedValueOnce(response({
       choices: [{ message: { content: 'A streamed reply.' } }],
