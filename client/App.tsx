@@ -367,6 +367,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       conversations,
       activeConversationId,
       memories,
+      emotionCheckIns,
+      journalEntries,
       rememberInSession,
       shareMemories,
       shareChatHistory,
