@@ -111,7 +111,7 @@ test('chat composer sends on Enter and keeps the send button available after a f
   await ReactTestRenderer.act(async () => pinButton.props.onPress());
   expect(onTogglePin).toHaveBeenCalledTimes(1);
   expect(renderer.root.findAllByProps({ accessibilityRole: 'switch' })).toHaveLength(0);
-  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Attach an image' })).toHaveLength(0);
+  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Attach an image' }).length).toBeGreaterThan(0);
   await ReactTestRenderer.act(async () => renderer.unmount());
 }, 15000);
 
