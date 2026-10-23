@@ -514,6 +514,12 @@ const APPROVED_MODELS = [
   { id: FALLBACK_MODEL, name: 'GLM-4.7 Flash', capabilities: ['coding', 'reasoning', 'function_calling', 'multilingual'], architecture: { input_modalities: ['text'] } },
 ];
 
+function enterpriseModeEnabled(env) {
+  return env.ENTERPRISE_MODE === 'true'
+    || typeof env.ENTERPRISE_MODEL_BASE_URL === 'string'
+    || typeof env.ENTERPRISE_TEXT_MODEL_ID === 'string';
+}
+
 function enterpriseProviderConfigured(env) {
   return typeof env.ENTERPRISE_MODEL_BASE_URL === 'string'
     && /^https:\/\//i.test(env.ENTERPRISE_MODEL_BASE_URL)
@@ -536,7 +542,7 @@ async function models(request, env) {
   if (!await rateLimit(request, env, 'models-user', 120, claims.sub)) {
     return json(429, { error: { message: 'Too many model-catalog requests. Try again shortly.' } });
   }
-  if (!enterpriseProviderConfigured(env) && (!env.AI || typeof env.AI.run !== 'function')) {
+  if (enterpriseModeEnabled(env) ? !enterpriseProviderConfigured(env) : (!env.AI || typeof env.AI.run !== 'function')) {
     return json(503, { error: { message: 'No AI provider is configured. Configure Workers AI or the enterprise model endpoint.' } });
   }
   return json(200, { data: configuredModels(env) });
