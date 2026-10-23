@@ -30,7 +30,7 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 function emptyData(): LocalAppData {
-  return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' } };
+  return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy' } };
 }
 
 describe('LocalDataService', () => {
@@ -71,7 +71,7 @@ describe('LocalDataService', () => {
     await service.clear('account-a');
 
     expect(await service.load('account-a')).toEqual(emptyData());
-    expect(await service.load('account-b')).toEqual({ ...emptyData(), shareMemories: true, assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' }, emotionCheckIns: [], journalEntries: [] });
+    expect(await service.load('account-b')).toEqual({ ...emptyData(), shareMemories: true });
   });
 
   test('persists all chats, messages, and memories without application count limits', async () => {
@@ -134,7 +134,7 @@ describe('LocalDataService', () => {
   test('retains existing memories when suggestions are disabled and keeps sharing independent', async () => {
     await service.save('account-a', {
       ...emptyData(),
-      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
+      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' },
       memories: [{ id: 1, text: 'Private note', date: 'Today' }],
       rememberInSession: false,
       shareMemories: true,
@@ -143,7 +143,7 @@ describe('LocalDataService', () => {
 
     expect(await service.load('account-a')).toEqual({
       ...emptyData(),
-      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
+      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' },
       memories: [{ id: 1, text: 'Private note', date: 'Today' }],
       rememberInSession: false,
       shareMemories: true,
