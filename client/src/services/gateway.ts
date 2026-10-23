@@ -404,9 +404,12 @@ export class GatewayService {
   async sendChatMessage(message: string, history: GatewayMessage[], sessionToken?: string, options: SendChatOptions = {}): Promise<string> {
     const accessToken = await this.token(sessionToken);
     const requiredCapability = options.enableWebBrowsing ? 'web_search' : options.imageDataUrl ? 'vision' : options.task === 'coding' ? 'coding' : undefined;
-    // Always read the server-owned catalog: enterprise deployments can replace
-    // the default model IDs with company-managed IDs without changing the client.
-    const catalog = await this.getModelCatalog(accessToken);
+    // Only fetch the model catalog for model-specific tasks. The gateway accepts
+    // the standard IDs as routing aliases in enterprise mode and replaces them
+    // server-side, avoiding an extra network round-trip for ordinary chat.
+    const catalog = options.modelId || requiredCapability === 'vision' || requiredCapability === 'web_search'
+      ? await this.getModelCatalog(accessToken)
+      : [];
     const chatModels = preferredChatModels(catalog);
     // Prefer the standard vision model when available, otherwise use the model
     // the enterprise gateway advertises for image input.
