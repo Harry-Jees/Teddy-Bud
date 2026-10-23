@@ -491,7 +491,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const confirmClear = () => confirmAction(
     'Clear local data?',
-    'This removes all chats and memories saved on this device.',
+    'This removes all chats, memories, emotion check-ins, and journal entries saved on this device.',
     () => {
       localDataService.clear(owner).then(() => {
         memorySuggestionRequestId.current += 1;
@@ -499,6 +499,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         setConversations([]);
         setActiveConversationId(null);
         setMemories([]);
+        setEmotionCheckIns([]);
+        setJournalEntries([]);
         setRememberInSession(true);
         rememberPreferenceRef.current = true;
         setShareMemories(false);
@@ -522,7 +524,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const clearUnavailableLocalData = () => confirmAction(
     'Clear local data and start over?',
-    'This permanently removes all saved chats and memories for this account from this device.',
+    'This permanently removes all chats, memories, emotion check-ins, and journal entries saved for this account on this device.',
     () => {
       localDataService.clear(owner).then(() => {
         memorySuggestionRequestId.current += 1;
