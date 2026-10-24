@@ -23,7 +23,7 @@ win:
         - x64
         - arm64
 
-nsis:nsis:
+nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
