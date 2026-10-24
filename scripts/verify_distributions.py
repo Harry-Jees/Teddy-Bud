@@ -42,8 +42,9 @@ def verify_apk() -> None:
     path = DIST / "android/TeddyBud.v.1.0-Android-arm64.apk"
     if not is_real_payload(path):
         return
-    require(zipfile.is_zipfile(path), "Android APK is not a valid ZIP archive")
-    if zipfile.is_zipfile(path):
+    is_zip = zipfile.is_zipfile(path)
+    require(is_zip, "Android APK is not a valid ZIP archive")
+    if is_zip:
         with zipfile.ZipFile(path) as archive:
             names = archive.namelist()
             require(archive.testzip() is None, "APK archive CRC check failed")
@@ -51,18 +52,29 @@ def verify_apk() -> None:
             require(any(n.startswith("classes") and n.endswith(".dex") for n in names), "APK missing DEX bytecode")
             require(any(n.startswith("lib/arm64-v8a/") for n in names), "APK missing ARM64 native libraries")
 
-def verify_windows() -> None:
-    path = DIST / "desktop/TeddyBud.v.1.0-win-x64.exe"
+def verify_windows_architecture(arch: str, expected_machine: int) -> None:
+    path = DIST / f"desktop/TeddyBud.v.1.0-win-{arch}.exe"
     if is_real_payload(path):
         with path.open("rb") as stream:
-            header = stream.read(64)
-            valid = header[:2] == b"MZ" and len(header) >= 64
-            if valid:
-                stream.seek(struct.unpack("<I", header[60:64])[0])
-                valid = stream.read(4) == b"PE\0\0"
-            require(valid, "Windows installer has invalid PE signature")
-    blockmap = DIST / "desktop/TeddyBud.v.1.0-win-x64.exe.blockmap"
-    require(blockmap.is_file() and blockmap.stat().st_size > 1024, "Missing or invalid Windows blockmap")
+            dos_header = stream.read(64)
+            valid = len(dos_header) >= 64 and dos_header[:2] == b"MZ"
+            pe_offset = struct.unpack("<I", dos_header[60:64])[0] if valid else 0
+            if valid and pe_offset <= path.stat().st_size - 6:
+                stream.seek(pe_offset)
+                signature = stream.read(4)
+                machine_bytes = stream.read(2)
+                valid = signature == b"PE\\0\\0" and len(machine_bytes) == 2
+                if valid:
+                    valid = struct.unpack("<H", machine_bytes)[0] == expected_machine
+            else:
+                valid = False
+            require(valid, f"Windows {arch} installer has an invalid PE signature or wrong architecture")
+    blockmap = DIST / f"desktop/TeddyBud.v.1.0-win-{arch}.exe.blockmap"
+    require(blockmap.is_file() and blockmap.stat().st_size > 1024, f"Missing or invalid Windows {arch} blockmap")
+
+def verify_windows() -> None:
+    verify_windows_architecture("x64", 0x8664)
+    verify_windows_architecture("arm64", 0xAA64)
 
 def verify_dmg() -> None:
     for arch, label in (("arm64", "Apple Silicon"), ("x64", "Intel")):
@@ -78,13 +90,13 @@ def verify_deb() -> None:
     path = DIST / "desktop/TeddyBud.v.1.0-linux-amd64.deb"
     if is_real_payload(path):
         with path.open("rb") as stream:
-            require(stream.read(8) == b"!<arch>\n", "Linux DEB has an invalid ar header")
+            require(stream.read(8) == b"!<arch>\\n", "Linux DEB has an invalid ar header")
 
 def verify_appimage() -> None:
     path = DIST / "desktop/TeddyBud.v.1.0-linux-amd64.AppImage"
     if is_real_payload(path):
         with path.open("rb") as stream:
-            require(stream.read(4) == b"\x7fELF", "Linux AppImage has no ELF executable header")
+            require(stream.read(4) == b"\\x7fELF", "Linux AppImage has no ELF executable header")
         require(os.access(path, os.X_OK), "Linux AppImage is not executable")
 
 def main() -> int:
