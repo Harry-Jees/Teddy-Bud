@@ -21,7 +21,9 @@ win:
     - target: nsis
       arch:
         - x64
-nsis:
+        - arm64
+
+nsis:nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
@@ -33,6 +35,7 @@ mac:
     - target: dmg
       arch:
         - arm64
+        - x64
 linux:
   icon: icons/teddy-bud.png
   category: Network;InstantMessaging;
