@@ -8,20 +8,19 @@ Run locally after collecting a complete CI artifact:
 python scripts/verify_distributions.py
 ```
 
-The verifier rejects Git LFS pointer text, implausibly small files, invalid package signatures, missing payloads, and any unexpected or stale file. CI runs it before uploading the combined `teddy-bud-dist` artifact or committing the refreshed `dist/` folder.
+The verifier rejects Git LFS pointer text, implausibly small files, invalid package signatures/headers, wrong Windows executable architectures, missing payloads, and any unexpected or stale file. CI runs it before uploading the combined `teddy-bud-dist` artifact or committing the refreshed `dist/` folder.
 
 ## Published package set
 
 | File | Target | Validation |
 | --- | --- | --- |
 | `android/TeddyBud.v.1.0-Android-arm64.apk` | ARM64 Android | ZIP CRC, manifest, DEX, native ABI |
-| `desktop/TeddyBud.v.1.0-win-x64.exe` | Windows x64 | PE executable signature |
+| `desktop/TeddyBud.v.1.0-win-x64.exe` | Windows x64 | PE signature and x64 machine type |
 | `desktop/TeddyBud.v.1.0-win-x64.exe.blockmap` | Windows x64 updater metadata | Non-empty companion file |
-| `desktop/TeddyBud.v.1.0-win-arm64.exe` | Windows ARM64 | PE executable signature |
+| `desktop/TeddyBud.v.1.0-win-arm64.exe` | Windows ARM64 | PE signature and ARM64 machine type |
 | `desktop/TeddyBud.v.1.0-win-arm64.exe.blockmap` | Windows ARM64 updater metadata | Non-empty companion file |
 | `desktop/TeddyBud.v.1.0-mac-arm64.dmg` | Apple Silicon macOS installer | DMG UDIF footer |
 | `desktop/TeddyBud.v.1.0-mac-x64.dmg` | Intel macOS installer | DMG UDIF footer |
-
 | `desktop/TeddyBud.v.1.0-linux-amd64.deb` | Debian/Ubuntu x64 | Debian archive header |
 | `desktop/TeddyBud.v.1.0-linux-amd64.AppImage` | Linux x64 | ELF header and executable bit |
 
