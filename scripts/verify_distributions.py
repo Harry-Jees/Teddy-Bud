@@ -15,7 +15,10 @@ EXPECTED = {
     "android/TeddyBud.v.1.0-Android-arm64.apk",
     "desktop/TeddyBud.v.1.0-win-x64.exe",
     "desktop/TeddyBud.v.1.0-win-x64.exe.blockmap",
+    "desktop/TeddyBud.v.1.0-win-arm64.exe",
+    "desktop/TeddyBud.v.1.0-win-arm64.exe.blockmap",
     "desktop/TeddyBud.v.1.0-mac-arm64.dmg",
+    "desktop/TeddyBud.v.1.0-mac-x64.dmg",
     "desktop/TeddyBud.v.1.0-linux-amd64.deb",
     "desktop/TeddyBud.v.1.0-linux-amd64.AppImage",
 }
@@ -62,13 +65,14 @@ def verify_windows() -> None:
     require(blockmap.is_file() and blockmap.stat().st_size > 1024, "Missing or invalid Windows blockmap")
 
 def verify_dmg() -> None:
-    path = DIST / "desktop/TeddyBud.v.1.0-mac-arm64.dmg"
-    if not is_real_payload(path):
-        return
-    with path.open("rb") as stream:
-        stream.seek(-512, 2)
-        footer = stream.read(512)
-    require(footer[:4] == b"koly", "Apple Silicon DMG has no UDIF footer")
+    for arch, label in (("arm64", "Apple Silicon"), ("x64", "Intel")):
+        path = DIST / f"desktop/TeddyBud.v.1.0-mac-{arch}.dmg"
+        if not is_real_payload(path):
+            continue
+        with path.open("rb") as stream:
+            stream.seek(-512, 2)
+            footer = stream.read(512)
+        require(footer[:4] == b"koly", f"{label} DMG has no UDIF footer")
 
 def verify_deb() -> None:
     path = DIST / "desktop/TeddyBud.v.1.0-linux-amd64.deb"
@@ -99,7 +103,7 @@ def main() -> int:
         for error in errors:
             print(f"FAIL: {error}")
         return 1
-    print("All six expected Teddy Bud V 1.0 distribution files passed structural checks.")
+    print("All eight expected Teddy Bud V 1.0 distribution files passed structural checks.")
     return 0
 
 if __name__ == "__main__":
