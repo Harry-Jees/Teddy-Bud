@@ -103,7 +103,7 @@ def main() -> int:
         for error in errors:
             print(f"FAIL: {error}")
         return 1
-    print("All eight expected Teddy Bud V 1.0 distribution files passed structural checks.")
+    print("All nine expected Teddy Bud V 1.0 distribution files passed structural checks.")
     return 0
 
 if __name__ == "__main__":
