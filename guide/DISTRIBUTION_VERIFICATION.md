@@ -1,6 +1,6 @@
 # Distribution verification
 
-The distribution workflow builds and collects a deliberately small, current package set. It removes stale platform folders before collecting artifacts and verifies the actual package payloads (not just file existence) before publishing them.
+The distribution workflow builds and collects the current cross-platform package set. It removes stale platform folders before collecting artifacts and verifies the actual package payloads (not just file existence) before publishing them.
 
 Run locally after collecting a complete CI artifact:
 
@@ -16,13 +16,16 @@ The verifier rejects Git LFS pointer text, implausibly small files, invalid pack
 | --- | --- | --- |
 | `android/TeddyBud.v.1.0-Android-arm64.apk` | ARM64 Android | ZIP CRC, manifest, DEX, native ABI |
 | `desktop/TeddyBud.v.1.0-win-x64.exe` | Windows x64 | PE executable signature |
-| `desktop/TeddyBud.v.1.0-win-x64.exe.blockmap` | Windows updater metadata | Non-empty companion file |
+| `desktop/TeddyBud.v.1.0-win-x64.exe.blockmap` | Windows x64 updater metadata | Non-empty companion file |
+| `desktop/TeddyBud.v.1.0-win-arm64.exe` | Windows ARM64 | PE executable signature |
+| `desktop/TeddyBud.v.1.0-win-arm64.exe.blockmap` | Windows ARM64 updater metadata | Non-empty companion file |
 | `desktop/TeddyBud.v.1.0-mac-arm64.dmg` | Apple Silicon macOS installer | DMG UDIF footer |
+| `desktop/TeddyBud.v.1.0-mac-x64.dmg` | Intel macOS installer | DMG UDIF footer |
 
 | `desktop/TeddyBud.v.1.0-linux-amd64.deb` | Debian/Ubuntu x64 | Debian archive header |
 | `desktop/TeddyBud.v.1.0-linux-amd64.AppImage` | Linux x64 | ELF header and executable bit |
 
-Windows has one installer. macOS distribution is DMG only; Linux offers DEB and AppImage. There is no standalone web distribution, no iOS Simulator download, and no native iPhone/iPad package.
+Windows provides x64 and ARM64 installers. macOS provides Apple Silicon (arm64) and Intel (x64) DMGs. Linux offers DEB and AppImage. There is no standalone web distribution, no iOS Simulator download, and no native iPhone/iPad package.
 
 ## Web and iPhone/iPad status
 
