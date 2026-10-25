@@ -18,20 +18,23 @@ class MemorySessions {
         if (pathname === '/user-sessions/add' && method === 'POST') {
           const body = init.body ?? (input instanceof Request ? await input.text() : '');
           const { sessionId } = JSON.parse(body);
-          state.userSessions ??= [];
-          if (!state.userSessions.includes(sessionId)) state.userSessions.push(sessionId);
+          const previousSessionId = state.activeSessionId;
+          state.activeSessionId = sessionId;
           this.values.set(id, state);
-          return new Response(JSON.stringify({ success: true }), { status: 200 });
+          return new Response(JSON.stringify({ success: true, previousSessionIds: previousSessionId && previousSessionId !== sessionId ? [previousSessionId] : [] }), { status: 200 });
         }
         if (pathname === '/user-sessions/remove' && method === 'POST') {
           const body = init.body ?? (input instanceof Request ? await input.text() : '');
           const { sessionId } = JSON.parse(body);
-          state.userSessions = (state.userSessions ?? []).filter(value => value !== sessionId);
+          if (state.activeSessionId === sessionId) delete state.activeSessionId;
           this.values.set(id, state);
           return new Response(JSON.stringify({ success: true }), { status: 200 });
         }
         if (pathname === '/user-sessions/list' && method === 'GET') {
-          return new Response(JSON.stringify({ sessionIds: state.userSessions ?? [] }), { status: 200 });
+          return new Response(JSON.stringify({ sessionIds: state.activeSessionId ? [state.activeSessionId] : [] }), { status: 200 });
+        }
+        if (pathname === '/user-sessions/active' && method === 'GET') {
+          return new Response(JSON.stringify({ activeSessionId: state.activeSessionId ?? null }), { status: 200 });
         }
         if (pathname.startsWith('/credits/') && (method === 'POST' || method === 'GET')) {
           const day = new Date().toISOString().slice(0, 10);
@@ -164,6 +167,7 @@ async function createSession(env, userId) {
   env.SESSIONS.values.set(sessionId, {
     session: { userId, kind: 'password-user', sessionId, refreshUntil },
   });
+  env.SESSIONS.values.set(`user-sessions:${userId}`, { activeSessionId: sessionId });
   return signedInternalJwt({
     sub: userId,
     kind: 'password-user',
@@ -641,3 +645,16 @@ test('credit exhaustion remains enforced even when clients request a different m
   assert.equal(limited.body.error.code, 'DAILY_CREDITS_EXHAUSTED');
 });
 
+
+
+test('a new login atomically invalidates the previous account session', async () => {
+  const env = makeEnv();
+  const oldToken = await createSession(env, 'single-device-user');
+  const newToken = await createSession(env, 'single-device-user');
+
+  const oldValidation = await worker.fetch(request('/auth/session', 'GET', undefined, { Authorization: `Bearer ${oldToken}` }), env);
+  const newValidation = await worker.fetch(request('/auth/session', 'GET', undefined, { Authorization: `Bearer ${newToken}` }), env);
+
+  assert.equal(oldValidation.status, 401, 'the previous session must be rejected after a newer login');
+  assert.equal(newValidation.status, 200, 'the currently active session must remain valid');
+});
