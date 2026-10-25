@@ -396,3 +396,50 @@ test('assistant replies can be shared through the platform share sheet', async (
     shareSpy.mockRestore();
   }
 }, 15000);
+
+
+test('the latest user message can be edited and resent', async () => {
+  const onEditMessage = jest.fn();
+  const noop = jest.fn();
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <ChatPage
+        wide={false}
+        messages={[
+          { id: 11, author: 'you', text: 'I feel overwhelmed.', time: 'Now' },
+          { id: 12, author: 'teddy', text: 'Let us take one small step.', time: 'Now' },
+        ]}
+        conversationTitle="A little room to breathe"
+        onOpenHistory={noop}
+        onRenameChat={noop}
+        isPinned={false}
+        onTogglePin={noop}
+        onOpenCrisisResources={noop}
+        emergencyCallOption={null}
+        crisisHelplineOption={null}
+        onCallEmergency={noop}
+        onCallHelpline={noop}
+        onTextHelpline={noop}
+        onOpenHelplineWebsite={noop}
+        memorySuggestion={null}
+        onSaveMemorySuggestion={noop}
+        onDismissMemorySuggestion={noop}
+        draft=""
+        setDraft={noop}
+        onSend={noop}
+        onStop={noop}
+        onRetry={noop}
+        onEditMessage={onEditMessage}
+        onRegenerate={noop}
+        retryPending={false}
+        isSending={false}
+        chatError={null}
+      />,
+    );
+  });
+  const editButton = renderer.root.findByProps({ accessibilityLabel: 'Edit and resend your last message' });
+  await ReactTestRenderer.act(async () => editButton.props.onPress());
+  expect(onEditMessage).toHaveBeenCalledWith({ id: 11, author: 'you', text: 'I feel overwhelmed.', time: 'Now' });
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);
