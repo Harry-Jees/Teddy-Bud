@@ -574,12 +574,19 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const importBackup = async (fileContents: string, passphrase: string) => {
     const imported = await readEncryptedBackup(fileContents, owner, passphrase);
+    const backupPreview = [
+      `${imported.conversations.length} conversation${imported.conversations.length === 1 ? '' : 's'}`,
+      `${imported.memories.length} saved memor${imported.memories.length === 1 ? 'y' : 'ies'}`,
+      `${(imported.emotionCheckIns ?? []).length} emotion check-in${(imported.emotionCheckIns ?? []).length === 1 ? '' : 's'}`,
+      `${(imported.journalEntries ?? []).length} journal entr${(imported.journalEntries ?? []).length === 1 ? 'y' : 'ies'}`,
+    ].join(' • ');
+    const previewMessage = `Backup contents: ${backupPreview}.\n\nThis will replace the saved chats, memories, emotion check-ins, journal entries, and settings for this account on this device. Nothing changes unless you confirm.`;
     const confirmed = Platform.OS === 'web'
-      // eslint-disable-next-line no-alert -- confirm before replacing the current account's local data.
-      ? typeof window !== 'undefined' && window.confirm("Replace this account's saved chats, memories, emotion check-ins, journal entries, and settings with the backup?")
-      : await new Promise<boolean>(resolve => Alert.alert('Replace saved data?', 'This replaces chats, memories, emotion check-ins, journal entries, and settings for the currently signed-in account on this device.', [
+      // eslint-disable-next-line no-alert -- show a decrypted local-data preview before replacing the current account's data.
+      ? typeof window !== 'undefined' && window.confirm(previewMessage)
+      : await new Promise<boolean>(resolve => Alert.alert('Review backup before restoring', previewMessage, [
         { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Replace', style: 'destructive', onPress: () => resolve(true) },
+        { text: 'Replace data', style: 'destructive', onPress: () => resolve(true) },
       ]));
     if (!confirmed) return false;
     await localDataService.save(owner, imported);
