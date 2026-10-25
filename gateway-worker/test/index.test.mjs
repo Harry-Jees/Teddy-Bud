@@ -262,6 +262,7 @@ test('a valid legacy session migrates to password auth without changing chat own
   env.SESSIONS.values.set(sessionId, {
     session: { userId, kind: 'google-user', sessionId, refreshUntil },
   });
+  env.SESSIONS.values.set(`user-sessions:${userId}`, { activeSessionId: sessionId });
   const legacyToken = await signedInternalJwt({
     sub: userId, kind: 'google-user', sid: sessionId, iat: now,
     exp: now + 60, rfe: refreshUntil, iss: 'teddy-bud-gateway',
