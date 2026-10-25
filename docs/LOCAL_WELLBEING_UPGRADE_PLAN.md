@@ -20,7 +20,7 @@ Use a radar/web chart inspired by the supplied S/B/I/R/T/A/F chart. It is a desc
 
 - **Implemented in this branch:** local emotion check-ins with validated ratings, spider-web/radar-style chart geometry, local trend averages, entry deletion, private journal prompts/search/save/delete, offline wellbeing exercises, local persistence and inclusion in the encrypted backup payload.
 - **Still requires verification:** TypeScript/lint/unit tests, web build, native builds, device testing, accessibility review, and encrypted backup round-trip tests on each platform.
-- **Not yet implemented:** true account-level single-device enforcement, journal editing, journal export, conversation controls, voice, notifications, and end-to-end encryption. Do not describe these as shipped.
+- **Original gap list (historical):** true account-level single-device enforcement, journal editing/export, conversation controls, voice, notifications, and end-to-end encryption. The dated status below supersedes the earlier journal/conversation entries; use [`FEATURE_STATUS.md`](./FEATURE_STATUS.md) for the current implementation and release-readiness matrix.
 
 ## Verified implementation status — 2026-10-25
 
