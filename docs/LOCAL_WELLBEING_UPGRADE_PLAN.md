@@ -22,6 +22,15 @@ Use a radar/web chart inspired by the supplied S/B/I/R/T/A/F chart. It is a desc
 - **Still requires verification:** TypeScript/lint/unit tests, web build, native builds, device testing, accessibility review, and encrypted backup round-trip tests on each platform.
 - **Not yet implemented:** true account-level single-device enforcement, journal editing, journal export, conversation controls, voice, notifications, and end-to-end encryption. Do not describe these as shipped.
 
+## Verified implementation status — 2026-10-25
+
+The current application code also includes journal editing, deletion, search and text export, plus local emotion check-ins, recent-pattern averages, and offline wellbeing exercises. The feature branch adds two further capabilities:
+
+- **Explicit journal sharing:** “Discuss with Teddy” asks for confirmation and copies the selected entry into the chat composer as a draft. It is not sent until the user reviews and presses Send.
+- **Weekly reflection:** a seven-day summary is calculated on-device from at least two user-entered check-ins, with average energy and the most frequently highest-rated emotion. It is descriptive, not diagnostic, and is not sent to the AI provider automatically.
+
+These additions still require CI, accessibility and cross-platform testing before release. The following remain unimplemented or require separate architecture work: true account-level single-device enforcement, full response editing/regeneration/copy controls, voice interaction, reminders/notifications, and a production payment/entitlement ledger. End-to-end encryption of messages is not compatible with sending readable prompts to a remote AI provider; it would require a different local-inference or privacy-preserving architecture, not a checkbox in the current client.
+
 ## Phased delivery
 
 ### Phase 0 — safety and data contracts
