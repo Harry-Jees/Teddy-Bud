@@ -4,7 +4,7 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { Animated, Modal, Text } from 'react-native';
+import { Animated, Modal, Share, Text } from 'react-native';
 import { ChatPage } from '../App';
 
 jest.mock('@react-native-documents/picker', () => ({
@@ -345,3 +345,49 @@ test('memory suggestion appears beside its reply and requires explicit approval'
   await ReactTestRenderer.act(async () => renderer.unmount());
   expect(onDismiss).not.toHaveBeenCalled();
 });
+
+
+test('assistant replies can be shared through the platform share sheet', async () => {
+  const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+  const noop = jest.fn();
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  try {
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ChatPage
+          wide={false}
+          messages={[{ id: 2, author: 'teddy', text: 'Take a breath. You can go one step at a time.', time: 'Now' }]}
+          conversationTitle="A little room to breathe"
+          onOpenHistory={noop}
+          onRenameChat={noop}
+          isPinned={false}
+          onTogglePin={noop}
+          onOpenCrisisResources={noop}
+          emergencyCallOption={null}
+          crisisHelplineOption={null}
+          onCallEmergency={noop}
+          onCallHelpline={noop}
+          onTextHelpline={noop}
+          onOpenHelplineWebsite={noop}
+          memorySuggestion={null}
+          onSaveMemorySuggestion={noop}
+          onDismissMemorySuggestion={noop}
+          draft=""
+          setDraft={noop}
+          onSend={noop}
+          onStop={noop}
+          onRetry={noop}
+          retryPending={false}
+          isSending={false}
+          chatError={null}
+        />,
+      );
+    });
+    const shareButton = renderer.root.findByProps({ accessibilityLabel: 'Share Teddy Bud reply' });
+    await ReactTestRenderer.act(async () => shareButton.props.onPress());
+    expect(shareSpy).toHaveBeenCalledWith({ title: 'Teddy Bud reply', message: 'Take a breath. You can go one step at a time.' });
+  } finally {
+    await ReactTestRenderer.act(async () => renderer?.unmount());
+    shareSpy.mockRestore();
+  }
+}, 15000);
