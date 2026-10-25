@@ -349,6 +349,7 @@ test('memory suggestion appears beside its reply and requires explicit approval'
 
 test('assistant replies can be shared through the platform share sheet', async () => {
   const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+  const onRegenerate = jest.fn();
   const noop = jest.fn();
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   try {
@@ -377,6 +378,7 @@ test('assistant replies can be shared through the platform share sheet', async (
           onSend={noop}
           onStop={noop}
           onRetry={noop}
+          onRegenerate={onRegenerate}
           retryPending={false}
           isSending={false}
           chatError={null}
@@ -386,6 +388,9 @@ test('assistant replies can be shared through the platform share sheet', async (
     const shareButton = renderer.root.findByProps({ accessibilityLabel: 'Share Teddy Bud reply' });
     await ReactTestRenderer.act(async () => shareButton.props.onPress());
     expect(shareSpy).toHaveBeenCalledWith({ title: 'Teddy Bud reply', message: 'Take a breath. You can go one step at a time.' });
+    const regenerateButton = renderer.root.findByProps({ accessibilityLabel: 'Generate another reply' });
+    await ReactTestRenderer.act(async () => regenerateButton.props.onPress());
+    expect(onRegenerate).toHaveBeenCalledTimes(1);
   } finally {
     await ReactTestRenderer.act(async () => renderer?.unmount());
     shareSpy.mockRestore();
