@@ -404,7 +404,11 @@ async function issueSession(userId, kind, env, profilePictureUrl) {
   const sessionId = crypto.randomUUID();
   const refreshUntil = now + ACCESS_TOKEN_SECONDS;
   await writeSession(env, sessionId, { userId, kind, refreshUntil, sessionId, ...(profilePictureUrl ? { profilePictureUrl } : {}) });
-  await registerUserSession(env, userId, sessionId);
+  const previousSessionIds = await registerUserSession(env, userId, sessionId);
+  // The per-user Durable Object atomically selects the only active session.
+  // Revoke older sessions after that selection; bearerClaims also checks the
+  // active ID so a concurrent login cannot make an older token valid again.
+  await Promise.all(previousSessionIds.filter(id => id !== sessionId).map(id => deleteSession(env, id)));
   return {
     accessToken: await signToken(tokenClaims(userId, kind, sessionId, now, refreshUntil), env.JWT_SIGNING_SECRET),
     expiresIn: ACCESS_TOKEN_SECONDS,
@@ -465,6 +469,15 @@ async function registerUserSession(env, userId, sessionId) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }),
   });
   if (!response.ok) throw new Error('Session index storage request failed.');
+  const payload = await response.json();
+  return Array.isArray(payload.previousSessionIds) ? payload.previousSessionIds : [];
+}
+
+async function isActiveUserSession(env, userId, sessionId) {
+  const response = await userSessionsStub(env, userId).fetch('https://state/user-sessions/active');
+  if (!response.ok) throw new Error('Session index lookup failed.');
+  const { activeSessionId } = await response.json();
+  return activeSessionId === sessionId;
 }
 
 async function revokeUserSessions(env, userId) {
@@ -491,6 +504,7 @@ async function bearerClaims(request, env, permitExpired = false) {
   const session = await readSession(env, claims.sid);
   if (!session) return null;
   if (session.userId !== claims.sub || session.kind !== claims.kind || session.refreshUntil !== claims.rfe) return null;
+  if (!(await isActiveUserSession(env, claims.sub, claims.sid))) return null;
   return claims;
 }
 
@@ -837,23 +851,27 @@ export class GatewayStateStore {
     const pathname = new URL(request.url).pathname;
 
     if (pathname === '/user-sessions/list' && request.method === 'GET') {
-      return json(200, { sessionIds: await this.ctx.storage.get('user-session-ids') ?? [] });
+      const activeSessionId = await this.ctx.storage.get('active-user-session-id');
+      return json(200, { sessionIds: typeof activeSessionId === 'string' ? [activeSessionId] : [] });
+    }
+
+    if (pathname === '/user-sessions/active' && request.method === 'GET') {
+      return json(200, { activeSessionId: await this.ctx.storage.get('active-user-session-id') ?? null });
     }
 
     if (pathname === '/user-sessions/add' && request.method === 'POST') {
       const { sessionId } = await request.json();
-      if (typeof sessionId !== 'string') return json(400, { error: 'Invalid session id.' });
-      const sessionIds = await this.ctx.storage.get('user-session-ids') ?? [];
-      if (!sessionIds.includes(sessionId)) sessionIds.push(sessionId);
-      await this.ctx.storage.put('user-session-ids', sessionIds);
-      return json(200, { success: true });
+      if (typeof sessionId !== 'string' || !sessionId) return json(400, { error: 'Invalid session id.' });
+      const previousSessionId = await this.ctx.storage.get('active-user-session-id');
+      await this.ctx.storage.put('active-user-session-id', sessionId);
+      return json(200, { success: true, previousSessionIds: typeof previousSessionId === 'string' && previousSessionId !== sessionId ? [previousSessionId] : [] });
     }
 
     if (pathname === '/user-sessions/remove' && request.method === 'POST') {
       const { sessionId } = await request.json();
-      if (typeof sessionId !== 'string') return json(400, { error: 'Invalid session id.' });
-      const sessionIds = await this.ctx.storage.get('user-session-ids') ?? [];
-      await this.ctx.storage.put('user-session-ids', sessionIds.filter(value => value !== sessionId));
+      if (typeof sessionId !== 'string' || !sessionId) return json(400, { error: 'Invalid session id.' });
+      const activeSessionId = await this.ctx.storage.get('active-user-session-id');
+      if (activeSessionId === sessionId) await this.ctx.storage.delete('active-user-session-id');
       return json(200, { success: true });
     }
 
