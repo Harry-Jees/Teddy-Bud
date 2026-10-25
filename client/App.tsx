@@ -1464,6 +1464,12 @@ function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entr
   const [note, setNote] = useState('');
   const [showForm, setShowForm] = useState(false);
   const latest = entries[0];
+  const weekEntries = entries.filter(entry => { const age = Date.now() - new Date(entry.createdAt).getTime(); return age >= 0 && age <= 7 * 24 * 60 * 60 * 1000; });
+  const weekEnergy = weekEntries.length ? weekEntries.reduce((sum, entry) => sum + entry.energy, 0) / weekEntries.length : 0;
+  const weekEmotionAverages = EMOTION_AXES.map(axis => {
+    const rated = weekEntries.filter(entry => typeof entry.emotions[axis.id] === 'number');
+    return { label: axis.label, average: rated.length ? rated.reduce((sum, entry) => sum + (entry.emotions[axis.id] ?? 0), 0) / rated.length : null, count: rated.length };
+  }).filter(item => item.average !== null).sort((a, b) => (b.average ?? 0) - (a.average ?? 0));
   const axisCount = EMOTION_AXES.length;
   const size = wide ? 340 : 290;
   const center = size / 2;
@@ -1518,6 +1524,14 @@ function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entr
         <TextInput value={note} onChangeText={setNote} multiline placeholder="Anything you want to remember about this moment…" placeholderTextColor={C.muted} style={{minHeight:76,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:7,textAlignVertical:'top'}} />
         <Pressable onPress={()=>{onSave({id:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),createdAt:new Date().toISOString(),emotions:ratings,energy,support,note:note.trim()||undefined});setRatings({});setEnergy(3);setSupport('listen');setNote('');setShowForm(false);}} style={{backgroundColor:C.cocoaDark,borderRadius:15,padding:14,alignItems:'center',marginTop:14}}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>Save privately on this device</Text></Pressable>
       </View> : null}
+      <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:18,padding:15,marginTop:18}}>
+        <Text style={{fontSize:16,fontWeight:'700',color:C.cocoaDark}}>Your week in reflection</Text>
+        {weekEntries.length >= 2 ? <>
+          <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>A local summary of {weekEntries.length} check-ins from the last seven days. This uses only ratings you entered and is not a diagnosis or prediction.</Text>
+          <Text style={{fontSize:14,color:C.cocoaDark,marginTop:10}}>Average energy: {weekEnergy.toFixed(1)}/5</Text>
+          {weekEmotionAverages.length ? <Text style={{fontSize:14,color:C.cocoaDark,marginTop:6}}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={{fontSize:13,color:C.muted,marginTop:6}}>No emotion ratings were recorded in these check-ins.</Text>}
+        </> : <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>Add at least two check-ins within seven days to see a summary. It stays on this device and never labels or scores your mental health.</Text>}
+      </View>
       {entries.length >= 2 ? <View style={{backgroundColor:'#F4ECE6',borderRadius:18,padding:15,marginTop:18}}>
         <Text style={{fontSize:16,fontWeight:'700',color:C.cocoaDark}}>Your recent pattern</Text>
         <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
