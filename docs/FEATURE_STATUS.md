@@ -16,7 +16,8 @@ This document distinguishes implemented code from features that still need crede
 - Explicit **Discuss with Teddy** action that places a journal entry into the chat composer for review; it is not sent automatically.
 - Local emotion check-ins, editable/deletable entries, radar visualization, recent trends, and offline wellbeing exercises.
 - Local seven-day reflection calculated from at least two user-entered check-ins; descriptive only, not diagnostic.
-- Encrypted `.teddybud` backup and restore with passphrase and account-owner checks. Review the current import flow before describing it as a preview/merge workflow.
+- Encrypted `.teddybud` backup and restore with passphrase and account-owner checks; import now previews record counts and asks before replacing data.
+- Backup merge logic is available as a tested service utility, preserving current preferences, deduplicating repeated records, resolving conflicting memory IDs, and choosing the newer snapshot for a matching conversation. The UI does not yet offer this merge option.
 - Share assistant replies on native platforms and copy them to the clipboard on web when the browser Clipboard API is available.
 - Edit and resend the latest user message, replacing the old message and subsequent reply; regenerate the latest assistant reply.
 - Local-first storage; journal and check-in data are not added to AI context unless the user explicitly shares relevant text.
@@ -38,7 +39,7 @@ This document distinguishes implemented code from features that still need crede
 | Reminders/notifications | User-controlled schedules, permission handling, local notification implementation and tests across platforms | Not implemented by the current client. |
 | Single-device enforcement | Robust atomic session policy and race-condition tests | Session indexing exists, but it is not yet a verified single-active-device guarantee. |
 | End-to-end encrypted AI conversations | A design compatible with the inference model and privacy requirements | A remote model must receive readable prompt content; current transport encryption is not end-to-end encryption. |
-| Backup preview and merge | Decrypted-data preview, merge/replace choice, duplicate handling, rollback tests | The current restore flow should not be advertised as supporting preview/merge unless separately verified. |
+| Backup preview and merge | Wire merge utility into the import UI, duplicate/conflict UX, and rollback/interrupted-write tests | Preview counts and replace confirmation are implemented; merge logic is tested as a service utility but not yet exposed in the UI. |
 | Live production smoke tests | Authenticated text and vision requests using a disposable test account | Automated tests do not prove that current production secrets, bindings, merchant settings, or external accounts are configured correctly. |
 
 ## Release gates
