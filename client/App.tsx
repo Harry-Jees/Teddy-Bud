@@ -30,7 +30,7 @@ import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
 import type { EmotionCheckIn, JournalEntry, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
-import { createEncryptedBackup, MAX_BACKUP_BYTES, readEncryptedBackup } from './src/services/backup';
+import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncryptedBackup } from './src/services/backup';
 import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
@@ -580,30 +580,43 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       `${(imported.emotionCheckIns ?? []).length} emotion check-in${(imported.emotionCheckIns ?? []).length === 1 ? '' : 's'}`,
       `${(imported.journalEntries ?? []).length} journal entr${(imported.journalEntries ?? []).length === 1 ? 'y' : 'ies'}`,
     ].join(' • ');
-    const previewMessage = `Backup contents: ${backupPreview}.\n\nThis will replace the saved chats, memories, emotion check-ins, journal entries, and settings for this account on this device. Nothing changes unless you confirm.`;
-    const confirmed = Platform.OS === 'web'
-      // eslint-disable-next-line no-alert -- show a decrypted local-data preview before replacing the current account's data.
-      ? typeof window !== 'undefined' && window.confirm(previewMessage)
-      : await new Promise<boolean>(resolve => Alert.alert('Review backup before restoring', previewMessage, [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Replace data', style: 'destructive', onPress: () => resolve(true) },
+    const previewMessage = `Backup contents: ${backupPreview}.\n\nChoose how to restore this backup. MERGE keeps your current preferences and combines records; REPLACE overwrites saved data on this device. Nothing changes until you confirm.`;
+    let mode: 'merge' | 'replace' | null = null;
+    if (Platform.OS === 'web') {
+      // eslint-disable-next-line no-alert -- a local-only choice is required before changing private saved data.
+      const choice = typeof window !== 'undefined' ? window.prompt(`${previewMessage}\n\nType MERGE or REPLACE. Cancel leaves your data unchanged.`, 'MERGE') : null;
+      if (choice?.trim().toLocaleLowerCase() === 'merge') mode = 'merge';
+      else if (choice?.trim().toLocaleLowerCase() === 'replace') mode = 'replace';
+    } else {
+      mode = await new Promise<'merge' | 'replace' | null>(resolve => Alert.alert('Review backup before restoring', previewMessage, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+        { text: 'Merge records', onPress: () => resolve('merge') },
+        { text: 'Replace data', style: 'destructive', onPress: () => resolve('replace') },
       ]));
-    if (!confirmed) return false;
-    await localDataService.save(owner, imported);
-    setConversations(imported.conversations);
-    setActiveConversationId(imported.activeConversationId);
-    setMemories(imported.memories);
-    setEmotionCheckIns(imported.emotionCheckIns ?? []);
-    setJournalEntries(imported.journalEntries ?? []);
-    setRememberInSession(imported.rememberInSession);
-    rememberPreferenceRef.current = imported.rememberInSession;
-    setShareMemories(imported.shareMemories);
-    setShareChatHistory(imported.shareChatHistory);
-    setShareAboutMe(imported.shareAboutMe);
-    setAboutMe(imported.aboutMe);
-    setAssistantName(imported.assistantName);
-    setAssistantCharacterId(imported.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
-    setAssistantCharacterNames(imported.assistantCharacterNames ?? {});
+    }
+    if (!mode) return false;
+    const currentData = {
+      conversations, activeConversationId, memories, emotionCheckIns, journalEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    };
+    const restored = mode === 'merge' ? mergeLocalAppData(currentData, imported) : imported;
+    // Persist the complete replacement in one storage operation before updating React state.
+    await localDataService.save(owner, restored);
+    setConversations(restored.conversations);
+    setActiveConversationId(restored.activeConversationId);
+    setMemories(restored.memories);
+    setEmotionCheckIns(restored.emotionCheckIns ?? []);
+    setJournalEntries(restored.journalEntries ?? []);
+    setRememberInSession(restored.rememberInSession);
+    rememberPreferenceRef.current = restored.rememberInSession;
+    setShareMemories(restored.shareMemories);
+    setShareChatHistory(restored.shareChatHistory);
+    setShareAboutMe(restored.shareAboutMe);
+    setAboutMe(restored.aboutMe);
+    setAssistantName(restored.assistantName);
+    setAssistantCharacterId(restored.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
+    setAssistantCharacterNames(restored.assistantCharacterNames ?? {});
     setLocalDataReady(true);
     setLocalDataOwner(owner);
     return true;
