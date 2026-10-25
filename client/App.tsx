@@ -282,6 +282,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [emotionCheckIns, setEmotionCheckIns] = useState<EmotionCheckIn[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [draft, setDraft] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [memoryModal, setMemoryModal] = useState(false);
   const [renameConversationId, setRenameConversationId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
@@ -601,10 +602,12 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     return true;
   };
 
-  const sendMessage = async (messageToRetry?: string, imageDataUrl?: string, regenerate = false) => {
+  const sendMessage = async (messageToRetry?: string, imageDataUrl?: string, regenerate = false, replaceFromMessageId?: number) => {
     const text = messageToRetry ?? (draft.trim() || (imageDataUrl ? 'Please describe this image.' : ''));
     if ((!text && !imageDataUrl) || isSending || !localDataReady) return;
     const conversationId = activeConversationId ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const editIndex = replaceFromMessageId === undefined ? -1 : messages.findIndex(message => message.id === replaceFromMessageId);
+    if (replaceFromMessageId !== undefined && editIndex < 0) { setEditingMessageId(null); return; }
     if (!activeConversationId) setActiveConversationId(conversationId);
 
     const userMessage: Message = {
@@ -614,8 +617,14 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     };
 
+    if (replaceFromMessageId !== undefined) {
+      setConversations(current => current.map(conversation => conversation.id === conversationId
+        ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.slice(0, Math.max(0, conversation.messages.findIndex(message => message.id === replaceFromMessageId))) }
+        : conversation));
+    }
     if (!messageToRetry) appendConversationMessage(conversationId, userMessage);
     if (!messageToRetry) setRetryMessage(null);
+    setEditingMessageId(null);
     setDraft('');
     setIsSending(true);
     const abortController = new AbortController();
@@ -630,7 +639,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     setStreamingConversationId(conversationId);
 
     try {
-      const history = regenerate ? messages.slice(0, -2) : messageToRetry ? messages.slice(0, -1) : messages;
+      const history = regenerate ? messages.slice(0, -2) : replaceFromMessageId !== undefined ? messages.slice(0, editIndex) : messageToRetry ? messages.slice(0, -1) : messages;
       const isFirstExchange = !history.some(message => message.author === 'you');
       const conversationBeforeReply = conversations.find(conversation => conversation.id === conversationId);
       const fallbackTitle = text.trim().slice(0, 48) || 'New chat';
@@ -825,7 +834,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
                 : [{ id: Date.now(), text: fact, date: 'Added just now' }, ...current]);
             }
             setMemorySuggestion(null);
-          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => sendMessage(undefined, imageDataUrl)} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} onRegenerate={() => { const currentMessages = activeConversation?.messages ?? []; const lastMessage = currentMessages[currentMessages.length - 1]; const lastUser = [...currentMessages].reverse().find(message => message.author === 'you'); if (!lastMessage || lastMessage.author !== 'teddy' || !lastUser || isSending) return; setConversations(current => current.map(conversation => conversation.id === activeConversationId ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.filter(message => message.id !== lastMessage.id) } : conversation)); void sendMessage(lastUser.text, undefined, true); }} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
+          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => editingMessageId !== null ? sendMessage(undefined, imageDataUrl, false, editingMessageId) : sendMessage(undefined, imageDataUrl)} editingMessageId={editingMessageId} onEditMessage={message => { setEditingMessageId(message.id); setDraft(message.text); }} onCancelEdit={() => { setEditingMessageId(null); setDraft(''); }} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} onRegenerate={() => { const currentMessages = activeConversation?.messages ?? []; const lastMessage = currentMessages[currentMessages.length - 1]; const lastUser = [...currentMessages].reverse().find(message => message.author === 'you'); if (!lastMessage || lastMessage.author !== 'teddy' || !lastUser || isSending) return; setConversations(current => current.map(conversation => conversation.id === activeConversationId ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.filter(message => message.id !== lastMessage.id) } : conversation)); void sendMessage(lastUser.text, undefined, true); }} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
           {page === 'history' && <ChatHistoryPage
             conversations={conversations}
             activeConversationId={activeConversationId}
@@ -1138,7 +1147,7 @@ function BottomNav({ page, onNavigate, bottomInset }: { page: Page; onNavigate: 
   </Pressable>)}</View>;
 }
 
-export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, onStop, onRetry, onRegenerate, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; onStop: () => void; onRetry: () => void; onRegenerate?: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
+export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, editingMessageId, onEditMessage, onCancelEdit, onStop, onRetry, onRegenerate, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; editingMessageId?: number | null; onEditMessage?: (message: Message) => void; onCancelEdit?: () => void; onStop: () => void; onRetry: () => void; onRegenerate?: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
   const canSend = (!!draft.trim() || !!selectedImage) && !isSending;
   const [composerFocused, setComposerFocused] = useState(false);
@@ -1175,6 +1184,7 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
             {message.author === 'teddy' && <View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View>}
             <View style={[styles.messageBubble, message.author === 'you' ? styles.userBubble : styles.teddyBubble]}>{message.author === 'teddy' ? <MarkdownReply content={message.text} /> : <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>}<Text style={[styles.messageTime, message.author === 'you' && styles.userMessageTime]}>{message.time}</Text></View>
           </View>
+          {message.author === 'you' && messages.filter(item => item.author === 'you').slice(-1)[0]?.id === message.id && onEditMessage && <Pressable accessibilityRole="button" accessibilityLabel="Edit and resend your last message" disabled={isSending} onPress={() => onEditMessage(message)} style={{ alignSelf: 'flex-end', marginRight: 4, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Edit & resend</Text></Pressable>}
           {message.author === 'teddy' && messages[messages.length - 1]?.id === message.id && onRegenerate && <Pressable accessibilityRole="button" accessibilityLabel="Generate another reply" disabled={isSending} onPress={onRegenerate} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Try another reply</Text></Pressable>}
           {message.author === 'teddy' && <Pressable accessibilityRole="button" accessibilityLabel="Share Teddy Bud reply" onPress={() => { void Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.')); }} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4' }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Share reply</Text></Pressable>}
           {message.author === 'teddy' && memorySuggestion?.messageId === message.id && <MemorySuggestionCard fact={memorySuggestion.fact} onSave={onSaveMemorySuggestion} onDismiss={onDismissMemorySuggestion} />}
@@ -1206,6 +1216,7 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
         </Pressable>}
       </View>
       {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={{ width: 42, height: 42, borderRadius: 9, marginRight: 8 }} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
+      {editingMessageId !== null && editingMessageId !== undefined && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={{ padding: 6 }}><Text style={{ color: C.cocoa, fontWeight: '700' }}>Cancel</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         {isSending
