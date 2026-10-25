@@ -209,7 +209,13 @@ export function mergeLocalAppData(current: LocalAppData, imported: LocalAppData)
     const identity = `${incoming.text.trim().toLocaleLowerCase()}\u0000${incoming.date}`;
     if (memoryKeys.has(identity)) continue;
     const idInUse = memories.some(item => item.id === incoming.id);
-    memories.push({ ...incoming, id: idInUse ? nextMemoryId++ : incoming.id });
+    if (idInUse) {
+      while (memories.some(item => item.id === nextMemoryId)) nextMemoryId += 1;
+      memories.push({ ...incoming, id: nextMemoryId });
+      nextMemoryId += 1;
+    } else {
+      memories.push(incoming);
+    }
     memoryKeys.add(identity);
   }
 
