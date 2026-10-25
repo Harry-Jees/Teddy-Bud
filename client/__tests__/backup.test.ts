@@ -85,6 +85,7 @@ describe('backup merge behavior', () => {
       emotionCheckIns: [{ id: 'check-local', createdAt: '2026-02-01T09:00:00.000Z', emotions: { calm: 3 }, energy: 3, support: 'listen' }],
       journalEntries: [{ id: 'journal-local', createdAt: '2026-02-01T09:00:00.000Z', title: 'Local', body: 'Keep this', prompt: '' }],
       assistantName: 'My Buddy',
+      assistantCharacterNames: { ...sampleData.assistantCharacterNames, 'teddy-bud': 'My Buddy' },
       shareMemories: false,
     };
     const imported: LocalAppData = {
