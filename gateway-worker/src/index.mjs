@@ -862,16 +862,21 @@ export class GatewayStateStore {
     if (pathname === '/user-sessions/add' && request.method === 'POST') {
       const { sessionId } = await request.json();
       if (typeof sessionId !== 'string' || !sessionId) return json(400, { error: 'Invalid session id.' });
-      const previousSessionId = await this.ctx.storage.get('active-user-session-id');
-      await this.ctx.storage.put('active-user-session-id', sessionId);
+      let previousSessionId;
+      await this.ctx.storage.transaction(async transaction => {
+        previousSessionId = await transaction.get('active-user-session-id');
+        await transaction.put('active-user-session-id', sessionId);
+      });
       return json(200, { success: true, previousSessionIds: typeof previousSessionId === 'string' && previousSessionId !== sessionId ? [previousSessionId] : [] });
     }
 
     if (pathname === '/user-sessions/remove' && request.method === 'POST') {
       const { sessionId } = await request.json();
       if (typeof sessionId !== 'string' || !sessionId) return json(400, { error: 'Invalid session id.' });
-      const activeSessionId = await this.ctx.storage.get('active-user-session-id');
-      if (activeSessionId === sessionId) await this.ctx.storage.delete('active-user-session-id');
+      await this.ctx.storage.transaction(async transaction => {
+        const activeSessionId = await transaction.get('active-user-session-id');
+        if (activeSessionId === sessionId) await transaction.delete('active-user-session-id');
+      });
       return json(200, { success: true });
     }
 
