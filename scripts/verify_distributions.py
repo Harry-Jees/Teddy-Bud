@@ -63,7 +63,7 @@ def verify_windows_architecture(arch: str, expected_machine: int) -> None:
                 stream.seek(pe_offset)
                 signature = stream.read(4)
                 machine_bytes = stream.read(2)
-                valid = signature == b"PE\\0\\0" and len(machine_bytes) == 2
+                valid = signature == b"PE\0\0" and len(machine_bytes) == 2
                 if valid:
                     valid = struct.unpack("<H", machine_bytes)[0] == expected_machine
             else:
@@ -90,13 +90,13 @@ def verify_deb() -> None:
     path = DIST / "desktop/TeddyBud.v.1.0-linux-amd64.deb"
     if is_real_payload(path):
         with path.open("rb") as stream:
-            require(stream.read(8) == b"!<arch>\\n", "Linux DEB has an invalid ar header")
+            require(stream.read(8) == b"!<arch>\n", "Linux DEB has an invalid ar header")
 
 def verify_appimage() -> None:
     path = DIST / "desktop/TeddyBud.v.1.0-linux-amd64.AppImage"
     if is_real_payload(path):
         with path.open("rb") as stream:
-            require(stream.read(4) == b"\\x7fELF", "Linux AppImage has no ELF executable header")
+            require(stream.read(4) == b"\x7fELF", "Linux AppImage has no ELF executable header")
         require(os.access(path, os.X_OK), "Linux AppImage is not executable")
 
 def main() -> int:
