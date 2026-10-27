@@ -344,6 +344,11 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [memorySuggestion, setMemorySuggestion] = useState<MemorySuggestion | null>(null);
   const [editing, setEditing] = useState<Memory | null>(null);
   const [memoryDraft, setMemoryDraft] = useState('');
+  const [memorySaving, setMemorySaving] = useState(false);
+  const [memoryActionError, setMemoryActionError] = useState<string | null>(null);
+  const [memoryDeleteRetry, setMemoryDeleteRetry] = useState<Memory | null>(null);
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [rememberInSession, setRememberInSession] = useState(true);
   const rememberPreferenceRef = useRef(true);
   const memorySuggestionRequestId = useRef(0);
