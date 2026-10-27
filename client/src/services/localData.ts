@@ -8,6 +8,7 @@ export type LocalMessage = {
   text: string;
   author: 'you' | 'teddy';
   time: string;
+  imageDataUrl?: string;
 };
 
 export type LocalConversation = {
@@ -292,7 +293,8 @@ function isLocalMessage(message: unknown): message is LocalMessage {
     && typeof (message as LocalMessage).id === 'number'
     && typeof (message as LocalMessage).text === 'string'
     && ((message as LocalMessage).author === 'you' || (message as LocalMessage).author === 'teddy')
-    && typeof (message as LocalMessage).time === 'string';
+    && typeof (message as LocalMessage).time === 'string'
+    && ((message as LocalMessage).imageDataUrl === undefined || (typeof (message as LocalMessage).imageDataUrl === 'string' && /^data:image\/(?:jpeg|png|webp|gif);base64,/i.test((message as LocalMessage).imageDataUrl)));
 }
 
 export class LocalDataService {
