@@ -113,6 +113,7 @@ describe('GatewayService', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('https://gateway.test/v1/models');
     const request = JSON.parse(fetchMock.mock.calls[1][1].body as string);
     expect(request.model).toBe('company/vision-model');
+    expect(request.stream).toBe(false);
     expect(request.messages.at(-1).content[1].image_url.url).toBe(image);
   });
 
