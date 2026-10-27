@@ -102,11 +102,15 @@ test('chat composer sends on Enter and keeps the send button available after a f
   });
   expect(onOpenHistory).toHaveBeenCalledTimes(1);
 
+  const mobileActions = renderer.root.findByProps({ accessibilityLabel: 'Open chat actions' });
+  await ReactTestRenderer.act(async () => mobileActions.props.onPress());
   const renameButton = renderer.root.findByProps({ accessibilityLabel: 'Rename chat' });
-  await ReactTestRenderer.act(async () => {
-    renameButton.props.onPress();
-  });
+  await ReactTestRenderer.act(async () => renameButton.props.onPress());
   expect(onRenameChat).toHaveBeenCalledTimes(1);
+
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Open chat actions' }).props.onPress();
+  });
   const pinButton = renderer.root.findByProps({ accessibilityLabel: 'Pin chat' });
   await ReactTestRenderer.act(async () => pinButton.props.onPress());
   expect(onTogglePin).toHaveBeenCalledTimes(1);
