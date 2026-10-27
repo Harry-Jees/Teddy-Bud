@@ -834,25 +834,22 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const stopResponse = () => responseAbortControllerRef.current?.abort();
 
   const openCrisisResources = () => {
-    openExternalUrl('https://findahelpline.com/').catch(error => {
-      const detail = error instanceof Error ? error.message : 'The link could not be opened.';
-      setChatError(`Could not open the helpline directory. Visit https://findahelpline.com/ directly. ${detail}`);
+    openExternalUrl('https://findahelpline.com/').catch(() => {
+      setChatError('Could not open the helpline directory. Visit https://findahelpline.com/ directly or try again.');
     });
   };
 
   const openPhoneAction = (scheme: 'tel' | 'sms', number: string, failureMessage: string) => {
-    openExternalUrl(`${scheme}:${number}`).catch(error => {
-      const detail = error instanceof Error ? error.message : 'The phone app could not be opened.';
-      setChatError(`${failureMessage} ${detail}`);
+    openExternalUrl(`${scheme}:${number}`).catch(() => {
+      setChatError(failureMessage);
     });
   };
   const callEmergencyServices = (number: string) => openPhoneAction('tel', number, `Could not start a call. Dial ${number} from your phone, or use the local emergency number.`);
   const callCrisisHelpline = (number: string) => openPhoneAction('tel', number, `Could not call ${number}. Use the local helpline directory instead.`);
   const textCrisisHelpline = (number: string) => openPhoneAction('sms', number, `Could not open a text message to ${number}. Use the local helpline directory instead.`);
   const openHelplineWebsite = (url: string) => {
-    openExternalUrl(url).catch(error => {
-      const detail = error instanceof Error ? error.message : 'The website could not be opened.';
-      setChatError(`Could not open the official helpline website. Visit ${url} directly. ${detail}`);
+    openExternalUrl(url).catch(() => {
+      setChatError(`Could not open the official helpline website. Visit ${url} directly or try again.`);
     });
   };
 
@@ -1510,7 +1507,10 @@ function renderInlineMarkdown(value: string): React.ReactNode[] {
     if (current.index > cursor) result.push(value.slice(cursor, current.index));
     if (current[1] && current[2]) {
       const url = current[2];
-      result.push(<Text key={`link-${current.index}`} accessibilityRole="link" style={styles.markdownLink} onPress={() => openExternalUrl(url).catch(() => undefined)}>{current[1]}</Text>);
+      result.push(<Text key={`link-${current.index}`} accessibilityRole="link" style={styles.markdownLink} onPress={() => openExternalUrl(url).catch(() => {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert('Could not open this link. Copy it and try again in your browser.');
+        else Alert.alert('Could not open link', 'Copy the link and try again in your browser.');
+      })}>{current[1]}</Text>);
     } else if (current[4] !== undefined) result.push(<Text key={`strong-${current.index}`} style={styles.markdownStrong}>{current[4]}</Text>);
     else if (current[5] !== undefined) result.push(<Text key={`strike-${current.index}`} style={styles.markdownStrike}>{current[5]}</Text>);
     else if (current[6] !== undefined) result.push(<Text key={`italic-${current.index}`} style={styles.markdownItalic}>{current[6]}</Text>);
