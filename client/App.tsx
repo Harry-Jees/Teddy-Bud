@@ -35,6 +35,7 @@ import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import { authErrorMessage, AuthValidationError } from './src/services/authErrors';
+import { chatErrorMessage, localDataErrorMessage } from './src/services/userFacingErrors';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
@@ -935,16 +936,6 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   );
 }
 
-function chatErrorMessage(error: unknown): string {
-  const detail = error instanceof Error ? error.message : '';
-  const status = (error as { status?: unknown } | null)?.status;
-  if (error instanceof DOMException && error.name === 'AbortError') return 'The conversation service took too long to respond. Check your connection and try again.';
-  if (/failed to fetch|network request failed|fetch failed|load failed/i.test(detail)) return "Teddy Bud couldn't reach the conversation service. Check your internet connection and try again.";
-  if (status === 429) return 'The conversation service is busy right now. Please wait a moment and try again.';
-  if (typeof status === 'number' && status >= 500) return 'The conversation service is temporarily unavailable. Your message is saved; try again shortly.';
-  return detail || 'The conversation service is unavailable right now.';
-}
-
 function ConversationHistoryList({ conversations, activeConversationId, busyConversationId, onSelect, onPin, onDelete, onRename }: {
   conversations: Conversation[];
   activeConversationId: string | null;
@@ -1025,7 +1016,7 @@ function LocalDataLoading() {
 
 function LocalDataSaveWarning({ error, onRetry }: { error: string; onRetry: () => void }) {
   return <View accessibilityRole="alert" style={styles.saveWarning}>
-    <Text style={styles.saveWarningText}>Your chat is still available, but this change could not be saved. {error}</Text>
+    <Text style={styles.saveWarningText}>{localDataErrorMessage(error, 'save')}</Text>
     <Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.saveWarningButton, pressed && styles.pressed]}>
       <Text style={styles.saveWarningButtonText}>Try again</Text>
     </Pressable>
@@ -1033,7 +1024,7 @@ function LocalDataSaveWarning({ error, onRetry }: { error: string; onRetry: () =
 }
 
 function LocalDataError({ error, onRetry, onClear }: { error: string; onRetry: () => void; onClear: () => void }) {
-  return <View style={styles.authScreen}><View style={styles.authCard}><Text style={styles.authTitle}>Your saved space needs attention.</Text><Text style={styles.authBody}>{error}</Text><Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.authButton, pressed && styles.pressed]}><Text style={styles.authButtonText}>Retry local storage</Text></Pressable><Pressable accessibilityRole="button" onPress={onClear} style={styles.authToggle}><Text style={styles.authToggleText}>Clear local data and start over</Text></Pressable><Text style={styles.authFootnote}>Your messages are paused until local storage is available.</Text></View></View>;
+  return <View style={styles.authScreen}><View style={styles.authCard}><Text style={styles.authTitle}>Your saved space needs attention.</Text><Text style={styles.authBody}>{localDataErrorMessage(error, 'load')}</Text><Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.authButton, pressed && styles.pressed]}><Text style={styles.authButtonText}>Retry local storage</Text></Pressable><Pressable accessibilityRole="button" onPress={onClear} style={styles.authToggle}><Text style={styles.authToggleText}>Clear local data and start over</Text></Pressable><Text style={styles.authFootnote}>Your messages are paused until local storage is available.</Text></View></View>;
 }
 
 function confirmAction(title: string, message: string, onConfirm: () => void) {
