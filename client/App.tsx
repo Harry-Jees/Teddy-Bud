@@ -623,6 +623,28 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     }
   };
 
+  const saveEmotionCheckIn = useCallback(async (entry: EmotionCheckIn) => {
+    const nextEntries = [entry, ...emotionCheckIns.filter(existing => existing.id !== entry.id)].slice(0, 500);
+    await localDataService.save(owner, {
+      conversations, activeConversationId, memories, emotionCheckIns: nextEntries, journalEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    });
+    setEmotionCheckIns(nextEntries);
+    setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+
+  const deleteEmotionCheckIn = useCallback(async (id: string) => {
+    const nextEntries = emotionCheckIns.filter(entry => entry.id !== id);
+    await localDataService.save(owner, {
+      conversations, activeConversationId, memories, emotionCheckIns: nextEntries, journalEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    });
+    setEmotionCheckIns(nextEntries);
+    setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+
   const saveJournalEntry = useCallback(async (entry: JournalEntry) => {
     const nextEntries = [entry, ...journalEntries.filter(existing => existing.id !== entry.id)].slice(0, 1000);
     await localDataService.save(owner, {
@@ -957,7 +979,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             }
           }} />}
           {page === 'studio' && <WellbeingStudio wide={wide} />}
-          {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={entry => setEmotionCheckIns(current => [entry, ...current].slice(0, 500))} onDelete={id => setEmotionCheckIns(current => current.filter(entry => entry.id !== id))} />}
+          {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} />}
           {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
           {page === 'settings' && <SettingsPage wide={wide} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
