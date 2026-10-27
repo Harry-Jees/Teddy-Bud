@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import worker from '../src/index.mjs';
+import worker, { GatewayStateStore } from '../src/index.mjs';
 
 class MemorySessions {
   values = new Map();
@@ -658,4 +658,44 @@ test('a new login atomically invalidates the previous account session', async ()
 
   assert.equal(oldValidation.status, 401, 'the previous session must be rejected after a newer login');
   assert.equal(newValidation.status, 200, 'the currently active session must remain valid');
+});
+
+
+test('legacy session indexes migrate to the newest active session', async () => {
+  const values = new Map([
+    ['user-session-ids', ['older-session', 'newest-session']],
+  ]);
+  const storage = {
+    get: async key => values.get(key),
+    transaction: async callback => callback({
+      get: async key => values.get(key),
+      put: async (key, value) => { values.set(key, value); },
+      delete: async key => { values.delete(key); },
+    }),
+  };
+  const state = new GatewayStateStore({ storage }, {});
+  const response = await state.fetch(new Request('https://state/user-sessions/active'));
+  assert.deepEqual(await response.json(), { activeSessionId: 'newest-session' });
+  assert.equal(values.get('active-user-session-id'), 'newest-session');
+  assert.equal(values.has('user-session-ids'), false);
+});
+
+test('removing a stale session never clears the newer active session', async () => {
+  const values = new Map([['active-user-session-id', 'newest-session']]);
+  const storage = {
+    get: async key => values.get(key),
+    transaction: async callback => callback({
+      get: async key => values.get(key),
+      put: async (key, value) => { values.set(key, value); },
+      delete: async key => { values.delete(key); },
+    }),
+  };
+  const state = new GatewayStateStore({ storage }, {});
+  const response = await state.fetch(new Request('https://state/user-sessions/remove', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: 'older-session' }),
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(values.get('active-user-session-id'), 'newest-session');
 });
