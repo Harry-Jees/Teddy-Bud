@@ -591,14 +591,12 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       ? { ...conversation, pinned }
       : conversation);
     const persistPin = async () => {
-      try {
-        await persistLocalSnapshot({ conversations: nextConversations });
-      } catch {
-        setPendingLocalAction(() => persistPin);
-        setLocalDataSaveError('This chat change could not be saved. The saved version remains unchanged; retry to apply the change.');
-      }
+      await persistLocalSnapshot({ conversations: nextConversations });
     };
-    void persistPin();
+    void persistPin().catch(() => {
+      setPendingLocalAction(() => persistPin);
+      setLocalDataSaveError('This chat change could not be saved. The saved version remains unchanged; retry to apply the change.');
+    });
   }, [conversations, persistLocalSnapshot]);
 
   const beginRenameConversation = useCallback((conversation: Conversation) => {
@@ -638,19 +636,17 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
           ? remaining[0]?.id ?? null
           : activeConversationId;
         const persistDelete = async () => {
-          try {
-            await persistLocalSnapshot({ conversations: remaining, activeConversationId: nextActiveId });
-            if (activeConversationId === conversation.id) {
-              setDraft('');
-              setChatError(null);
-              setRetryMessage(null);
-            }
-          } catch {
-            setPendingLocalAction(() => persistDelete);
-            setLocalDataSaveError('This chat could not be deleted from saved data. The chat remains available; retry to confirm the removal.');
+          await persistLocalSnapshot({ conversations: remaining, activeConversationId: nextActiveId });
+          if (activeConversationId === conversation.id) {
+            setDraft('');
+            setChatError(null);
+            setRetryMessage(null);
           }
         };
-        void persistDelete();
+        void persistDelete().catch(() => {
+          setPendingLocalAction(() => persistDelete);
+          setLocalDataSaveError('This chat could not be deleted from saved data. The chat remains available; retry to confirm the removal.');
+        });
       },
     );
   }, [activeConversationId, conversations, streamingConversationId, persistLocalSnapshot]); 
@@ -741,15 +737,27 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const retryLocalData = async () => {
     setLocalDataError(null);
-    setLocalDataSaveError(null);
     if (!localDataReady) {
       setLocalDataRetry(current => current + 1);
       return;
     }
+    if (pendingLocalAction) {
+      const actionToRetry = pendingLocalAction;
+      try {
+        await actionToRetry();
+        setPendingLocalAction(null);
+        setLocalDataSaveError(null);
+      } catch (error) {
+        setPendingLocalAction(() => actionToRetry);
+        setLocalDataSaveError(localDataErrorMessage(error, 'save'));
+      }
+      return;
+    }
+    setLocalDataSaveError(null);
     try {
-      await localDataService.save(owner, { conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames });
+      await localDataService.save(owner, { conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames });
     } catch (error) {
-      setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
+      setLocalDataSaveError(localDataErrorMessage(error, 'save'));
     }
   };
 
