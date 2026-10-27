@@ -24,7 +24,7 @@ Deliver a calmer, more predictable Teddy Bud app without losing access to existi
 ## Merge gate — 2026-10-27
 
 - Pull request: https://github.com/Harry-Jees/Teddy-Bud/pull/12
-- Merge is blocked until a CI run against the latest head passes. Earlier runs tested older snapshots and failed, so they do not validate the final code.
+- A fresh CI run was queued after the safe-area/menu-test fixes. Earlier runs tested older snapshots and failed, so they do not validate the final code.
 - No claim of production safety is made until automated checks pass and actual mobile/desktop smoke tests verify existing conversations, switching accounts, storage recovery, backup/restore, and navigation.
 - Existing user chats must remain stored and readable; no migration or cleanup is allowed to reset local conversation records as part of this UI work.
 
