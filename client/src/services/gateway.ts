@@ -66,7 +66,7 @@ const MEMORY_EXTRACTION_GUIDANCE = [
 ].join(' ');
 const CODING_HINTS = ['code', 'coder', 'coding', 'deepseek', 'qwen', 'codestral', 'starcoder', 'gpt-oss'];
 const VISION_HINTS = ['vision', 'vl', 'llava', 'pixtral', 'gemma-3', 'muse-glimmer'];
-type HttpError = Error & { status?: number };
+type HttpError = Error & { status?: number; code?: string };
 type SessionAuth = {
   restore(): Promise<StoredSession | null>;
   refresh(): Promise<StoredSession>;
@@ -104,7 +104,12 @@ async function fetchJson<T>(url: string, init?: RequestInit, maxRetries = MAX_RE
     let payload: any = null;
     try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
     if (response.ok) return payload as T;
-    const error = Object.assign(new Error(payload?.error?.message ?? payload?.message ?? `Request failed (${response.status}).`), { status: response.status });
+    const error = Object.assign(new Error(payload?.error?.message ?? payload?.message ?? `Request failed (${response.status}).`), {
+      status: response.status,
+      ...(typeof payload?.error?.code === 'string'
+        ? { code: payload.error.code }
+        : typeof payload?.code === 'string' ? { code: payload.code } : {}),
+    });
     if (!isRetryableStatus(response.status) || attempt === maxRetries) throw error;
     lastError = error;
     await sleep(RETRY_DELAY_MS * (attempt + 1));
