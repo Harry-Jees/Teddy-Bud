@@ -34,6 +34,16 @@ Deliver a calmer, more predictable Teddy Bud app without losing access to existi
 
 The plan is now being executed on this branch. Items below describe code added so far; they are **not marked phase-complete until CI and relevant manual checks pass**.
 
+### Latest verification checkpoint — 2026-10-27
+
+- [x] Mobile navigation is now four icons total: **Chats**, **Memories**, central boxed **+**, **More**. Journal and secondary features are inside More.
+- [x] Added a compact mobile chat actions sheet; desktop retains visible chat actions.
+- [x] Added searchable mobile chat history and surfaced chat rename/pin/delete controls there.
+- [x] Added platform-specific plain-text journal export implementations.
+- [x] Changed memory, conversation, and emotion mutations to persist before confirming the change; failures preserve the current text/ratings and expose retry guidance where available.
+- [ ] Run full CI against the current tip. The older run failed on an adapter export and navigation-test assertions; adapter exports and test selectors have since been corrected, but this checkpoint remains open until re-run results confirm it.
+- [ ] Merge gate remains blocked until current CI passes and the critical chat/data-preservation checks are reviewed.
+  
 ### Initial implementation committed
 
 - [x] Added a central, typed authentication error mapper that avoids displaying arbitrary server text and differentiates credentials, validation, rate limits, network failures, timeouts, service errors, session expiry, and storage failures.
