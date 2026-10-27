@@ -4,7 +4,7 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { Animated, Modal, Share, Text } from 'react-native';
+import { Animated, Modal, ScrollView, Share, Text } from 'react-native';
 import { ChatPage } from '../App';
 
 jest.mock('@react-native-documents/picker', () => ({
@@ -441,5 +441,75 @@ test('the latest user message can be edited and resent', async () => {
   const editButton = renderer.root.findByProps({ accessibilityLabel: 'Edit and resend your last message' });
   await ReactTestRenderer.act(async () => editButton.props.onPress());
   expect(onEditMessage).toHaveBeenCalledWith({ id: 11, author: 'you', text: 'I feel overwhelmed.', time: 'Now' });
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);
+
+
+test('chat preserves an older reading position during streaming and exposes jump-to-latest', async () => {
+  const noop = jest.fn();
+  const messages = [
+    { id: 1, author: 'you' as const, text: 'Earlier question', time: '9:00 AM' },
+    { id: 2, author: 'teddy' as const, text: 'Earlier answer', time: '9:01 AM' },
+    { id: 3, author: 'you' as const, text: 'Another question', time: '9:02 AM' },
+    { id: 4, author: 'teddy' as const, text: 'Another answer', time: '9:03 AM' },
+  ];
+  const renderChat = (streamingReply = '') => (
+    <ChatPage
+      wide={false}
+      conversationId="scroll-test"
+      messages={messages}
+      streamingReply={streamingReply}
+      conversationTitle="Scroll test"
+      onOpenHistory={noop}
+      onRenameChat={noop}
+      isPinned={false}
+      onTogglePin={noop}
+      onOpenCrisisResources={noop}
+      emergencyCallOption={null}
+      crisisHelplineOption={null}
+      onCallEmergency={noop}
+      onCallHelpline={noop}
+      onTextHelpline={noop}
+      onOpenHelplineWebsite={noop}
+      memorySuggestion={null}
+      onSaveMemorySuggestion={noop}
+      onDismissMemorySuggestion={noop}
+      draft=""
+      setDraft={noop}
+      onSend={noop}
+      onStop={noop}
+      onRetry={noop}
+      retryPending={false}
+      isSending={Boolean(streamingReply)}
+      chatError={null}
+    />
+  );
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(renderChat());
+  });
+
+  const chatScroll = renderer.root.findAllByType(ScrollView).find(node => node.props.scrollEventThrottle === 16);
+  expect(chatScroll).toBeTruthy();
+  await ReactTestRenderer.act(async () => {
+    chatScroll!.props.onScroll({
+      nativeEvent: {
+        contentOffset: { y: 0 },
+        contentSize: { height: 2000, width: 360 },
+        layoutMeasurement: { height: 500, width: 360 },
+      },
+    });
+  });
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Jump to latest message' })).toBeTruthy();
+
+  await ReactTestRenderer.act(async () => {
+    renderer.update(renderChat('A streaming continuation'));
+  });
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Jump to latest message' })).toBeTruthy();
+
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Jump to latest message' }).props.onPress();
+  });
+  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Jump to latest message' })).toHaveLength(0);
   await ReactTestRenderer.act(async () => renderer.unmount());
 }, 15000);
