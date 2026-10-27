@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import * as Keychain from 'react-native-keychain';
 import type { StoredSession } from './session';
+import { authContextForPath, authErrorMessage, authServiceErrorFromResponse, AuthServiceError } from './authErrors';
 import { GATEWAY_BASE_URL } from '../config/gateway';
 
 type LoginResponse = { accessToken: string; expiresIn?: number; userId?: string; profilePictureUrl?: string };
@@ -34,29 +35,31 @@ function expiresAt(token: string, expiresIn: number) {
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
+  const context = authContextForPath(path);
   try {
-    const response = await fetch(`${GATEWAY_BASE_URL}${path}`, { ...init, signal: controller.signal });
+    let response: Response;
+    try {
+      response = await fetch(`${GATEWAY_BASE_URL}${path}`, { ...init, signal: controller.signal });
+    } catch (requestError) {
+      if (controller.signal.aborted || (requestError instanceof Error && requestError.name === 'AbortError')) {
+        throw new AuthServiceError('The request took too long. Check your connection and try again.', 'timeout', 408);
+      }
+      throw new AuthServiceError(authErrorMessage(requestError, context), 'network');
+    }
+
     const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const message = payload?.error?.message ?? payload?.error ?? payload?.message;
-      const error = Object.assign(
-        new Error(
-          response.status === 404 && path.startsWith('/auth/')
-            ? 'The sign-in endpoint is unavailable. Please contact the app administrator.'
-            : typeof message === 'string'
-              ? message
-              : `Request failed (${response.status}).`,
-        ),
-        { status: response.status },
-      );
-      throw error;
+    if (!response.ok) throw authServiceErrorFromResponse(response.status, context);
+    if (payload === null) {
+      throw new AuthServiceError('The account service returned an unreadable response. Please try again.', 'unexpected', response.status);
     }
     return payload as T;
   } catch (error) {
-    if (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('The sign-in request timed out. Check your internet connection and try again.');
-    }
-    throw error;
+    if (error instanceof AuthServiceError) throw error;
+    const status = error && typeof error === 'object' && 'status' in error
+      && typeof (error as { status?: unknown }).status === 'number'
+      ? (error as { status: number }).status
+      : undefined;
+    throw new AuthServiceError(authErrorMessage(error, context), 'unexpected', status);
   } finally {
     clearTimeout(timeout);
   }
@@ -169,7 +172,9 @@ export class BrowserAuthService {
       try {
         return await this.refresh();
       } catch (error) {
-        if ((error as { status?: number }).status === 401) return null;
+        if ((error as { status?: number }).status === 401) {
+          throw authServiceErrorFromResponse(401, 'session-restore');
+        }
         throw error;
       }
     }
@@ -182,7 +187,7 @@ export class BrowserAuthService {
       if ((error as { status?: number }).status === 401) {
         if (this.hasActiveLegacySession(current.accessToken)) return null;
         await this.clear();
-        return null;
+        throw authServiceErrorFromResponse(401, 'session-restore');
       }
       throw error;
     }
@@ -220,14 +225,31 @@ export class BrowserAuthService {
   }
 
   private async save(response: LoginResponse): Promise<StoredSession> {
-    if (!response.accessToken) throw new Error('The gateway did not return an access token.');
-    const session = { accessToken: response.accessToken, expiresAt: expiresAt(response.accessToken, response.expiresIn ?? 3600), ...(response.profilePictureUrl ? { profilePictureUrl: response.profilePictureUrl } : {}) };
-    if (Platform.OS === 'web') {
-      if (desktopBridge()) await desktopBridge()!.saveSession(JSON.stringify(session));
-      else sessionStore()?.setItem(SESSION_KEY, JSON.stringify(session));
-    } else {
-      const saved = await Keychain.setGenericPassword('session', JSON.stringify(session), { service: NATIVE_SESSION_SERVICE });
-      if (!saved) throw new Error('Could not save your secure sign-in session.');
+    if (!response.accessToken) {
+      throw new AuthServiceError('The account service did not complete sign-in. Please try again.', 'unexpected');
+    }
+    const session = {
+      accessToken: response.accessToken,
+      expiresAt: expiresAt(response.accessToken, response.expiresIn ?? 3600),
+      ...(response.profilePictureUrl ? { profilePictureUrl: response.profilePictureUrl } : {}),
+    };
+    try {
+      if (Platform.OS === 'web') {
+        if (desktopBridge()) await desktopBridge()!.saveSession(JSON.stringify(session));
+        else {
+          const storage = sessionStore();
+          if (!storage) throw new Error('Session storage is unavailable.');
+          storage.setItem(SESSION_KEY, JSON.stringify(session));
+        }
+      } else {
+        const saved = await Keychain.setGenericPassword('session', JSON.stringify(session), { service: NATIVE_SESSION_SERVICE });
+        if (!saved) throw new Error('Secure session storage did not accept the session.');
+      }
+    } catch {
+      throw new AuthServiceError(
+        'Your account responded, but this device could not save the sign-in securely. Please try signing in again. Your saved chats have not been deleted.',
+        'storage',
+      );
     }
     inMemorySession = session;
     return session;
