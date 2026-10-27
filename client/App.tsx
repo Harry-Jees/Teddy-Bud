@@ -36,7 +36,7 @@ import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import { authErrorMessage, AuthServiceError, AuthValidationError } from './src/services/authErrors';
 import type { AuthField } from './src/services/authErrors';
-import { chatErrorMessage, localDataErrorMessage } from './src/services/userFacingErrors';
+import { backupErrorMessage, chatErrorMessage, localDataErrorMessage } from './src/services/userFacingErrors';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
@@ -1817,7 +1817,7 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
       const saved = await saveBackupFile(fileContents);
       setBackupStatus(saved ? 'Encrypted backup saved. Keep the passphrase somewhere safe; it cannot be recovered.' : 'Backup export cancelled.');
     } catch (error) {
-      setBackupStatus(error instanceof Error ? error.message : 'The backup could not be created.');
+      setBackupStatus(backupErrorMessage(error, 'export'));
     } finally {
       setBackupBusy(false);
     }
@@ -1836,7 +1836,7 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
     }).then(imported => {
       if (typeof imported === 'boolean') setBackupStatus(imported ? 'Backup restored for this account on this device.' : 'Import cancelled. Your saved data was not changed.');
     }).catch(error => {
-      setBackupStatus(error instanceof Error ? error.message : 'The backup could not be loaded.');
+      setBackupStatus(backupErrorMessage(error, 'import'));
     }).finally(() => setBackupBusy(false));
   };
 
