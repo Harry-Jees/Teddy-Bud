@@ -216,11 +216,18 @@ export class BrowserAuthService {
 
   async clear() {
     inMemorySession = null;
-    if (Platform.OS === 'web') {
-      if (desktopBridge()) await desktopBridge()!.clearSession();
-      else sessionStore()?.removeItem(SESSION_KEY);
-    } else {
-      await Keychain.resetGenericPassword({ service: NATIVE_SESSION_SERVICE });
+    try {
+      if (Platform.OS === 'web') {
+        if (desktopBridge()) await desktopBridge()!.clearSession();
+        else sessionStore()?.removeItem(SESSION_KEY);
+      } else {
+        await Keychain.resetGenericPassword({ service: NATIVE_SESSION_SERVICE });
+      }
+    } catch {
+      throw new AuthServiceError(
+        'Teddy Bud could not remove the saved sign-in details from this device. Retry sign-out before sharing this device.',
+        'storage',
+      );
     }
   }
 
