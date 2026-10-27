@@ -364,6 +364,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [localDataOwner, setLocalDataOwner] = useState<string | null>(null);
   const [localDataError, setLocalDataError] = useState<string | null>(null);
   const [localDataSaveError, setLocalDataSaveError] = useState<string | null>(null);
+  const [pendingLocalAction, setPendingLocalAction] = useState<(() => Promise<void>) | null>(null);
   const [localDataRetry, setLocalDataRetry] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -416,6 +417,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     if ('assistantCharacterId' in overrides) setAssistantCharacterId(nextSnapshot.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
     if ('assistantCharacterNames' in overrides) setAssistantCharacterNames(nextSnapshot.assistantCharacterNames ?? {});
     setLocalDataSaveError(null);
+    setPendingLocalAction(null);
   }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
   const refreshCreditBalance = useCallback(async () => {
     try {
