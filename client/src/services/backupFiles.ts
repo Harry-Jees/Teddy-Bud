@@ -1,3 +1,21 @@
+export async function savePlainTextFile(contents: string, filename: string): Promise<boolean> {
+  if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') {
+    throw new Error('Text file downloads are unavailable in this browser.');
+  }
+  const objectUrl = URL.createObjectURL(new Blob([contents], { type: 'text/plain;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+  }
+  return true;
+}
+
 export async function saveBackupFile(contents: string): Promise<boolean> {
   if (typeof document === 'undefined') throw new Error('File downloads are unavailable in this browser.');
   const objectUrl = URL.createObjectURL(new Blob([contents], { type: 'application/vnd.teddybud+json' }));
