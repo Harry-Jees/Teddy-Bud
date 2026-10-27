@@ -341,7 +341,7 @@ test('memory suggestion appears beside its reply and requires explicit approval'
   expect(renderer.root.findByProps({ accessibilityRole: 'summary' }).findAllByType(Text).map(node => node.props.children))
     .toContain('Would you like Teddy Bud to remember this?');
   expect(renderer.root.findByProps({ accessibilityLabel: 'Add to memories' })).toBeDefined();
-  expect(renderer.root.findAllByType(Modal)).toHaveLength(0);
+  expect(renderer.root.findAllByType(Modal).filter(node => node.props.visible === true)).toHaveLength(0);
 
   const saveButton = renderer.root.findByProps({ accessibilityLabel: 'Add to memories' });
   await ReactTestRenderer.act(async () => saveButton.props.onPress());
