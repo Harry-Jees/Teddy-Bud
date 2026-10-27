@@ -2087,7 +2087,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
         {renderWeb(latest?.emotions)}
         <Text accessibilityRole="text" style={{textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}}>{latest ? 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString() : 'Your web appears after your first check-in.'}</Text>
         {latest ? <Text style={{fontSize:13,lineHeight:20,color:C.cocoaDark,marginTop:8}}>Highest ratings: {EMOTION_AXES.filter(a=>(latest.emotions[a.id]??0)>0).sort((a,b)=>(latest.emotions[b.id]??0)-(latest.emotions[a.id]??0)).slice(0,3).map(a=>a.label+' '+latest.emotions[a.id]+'/5').join(' · ') || 'No emotions rated'} · Energy {latest.energy}/5</Text> : null}
-        <Pressable accessibilityRole="button" onPress={toggleForm} style={{backgroundColor:C.cocoaDark,borderRadius:15,padding:14,alignItems:'center',marginTop:16}}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={showForm ? 'Close check-in form' : 'Add a check-in'} onPress={toggleForm} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:16 }, pressed && styles.pressed]}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
       </View>
       {showForm ? <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:14}}>
         <Text style={{fontSize:19,fontWeight:'700',color:C.cocoaDark,marginBottom:6}}>How are you feeling?</Text>
