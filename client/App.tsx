@@ -1387,7 +1387,7 @@ export function ChatPage({ wide, conversationId, assistantName = 'Teddy', messag
 
   const handleChatContentSizeChange = () => {
     if (shouldAutoScrollRef.current) {
-      scrollRef.current?.scrollToEnd({ animated: Boolean(streamingReply) });
+      scrollRef.current?.scrollToEnd({ animated: false });
       setShowJumpToLatest(false);
     }
   };
@@ -1400,7 +1400,7 @@ export function ChatPage({ wide, conversationId, assistantName = 'Teddy', messag
 
   useEffect(() => {
     if (shouldAutoScrollRef.current && (messages.length > 0 || streamingReply)) {
-      scrollRef.current?.scrollToEnd({ animated: Boolean(streamingReply) });
+      scrollRef.current?.scrollToEnd({ animated: !isSending });
     }
   }, [messages.length, isSending]);
 
