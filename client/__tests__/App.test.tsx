@@ -580,11 +580,7 @@ test('emotion check-in keeps ratings and note visible when local persistence fai
   });
 
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityRole: 'button', children: undefined });
-  }).catch(() => undefined);
-
-  await ReactTestRenderer.act(async () => {
-    renderer.root.findAll(node => node.props.children === 'Add a check-in').at(0)?.props.onPress();
+    renderer.root.findByProps({ accessibilityLabel: 'Add a check-in' }).props.onPress();
   });
   await ReactTestRenderer.act(async () => {
     renderer.root.findByProps({ accessibilityLabel: 'Anxious 5 out of 5' }).props.onPress();
