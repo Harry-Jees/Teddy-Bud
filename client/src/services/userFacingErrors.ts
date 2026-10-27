@@ -71,3 +71,12 @@ export function backupErrorMessage(error: unknown, operation: 'export' | 'import
   }
   return 'Teddy Bud could not complete the restore safely. Review the backup file and passphrase, then retry. Do not clear local data as a troubleshooting step.';
 }
+
+export function imagePickerErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  if (/^Choose an image smaller than 8 MB\.$/i.test(message)) return message;
+  if (/^Choose a JPEG, PNG, WebP, or GIF image\.$/i.test(message)) return message;
+  if (/^The selected image could not be read\.$/i.test(message)) return message;
+  if (/^Image selection is unavailable on this device\.$/i.test(message)) return message;
+  return 'The image could not be opened. Choose a JPEG, PNG, WebP, or GIF smaller than 8 MB, then try again.';
+}
