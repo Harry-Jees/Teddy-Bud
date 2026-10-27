@@ -941,6 +941,9 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             onBack={() => setPage('chat')}
             onSelect={selectConversation}
             onNewConversation={startNewConversation}
+            onPin={setConversationPinned}
+            onDelete={deleteConversation}
+            onRename={beginRenameConversation}
           />}
           {page === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
             const preparedMessage = `I'd like to talk about this journal entry with you.\\n\\n${entry.title}\\n\\n${entry.body}\\n\\nPlease help me reflect on it.`;
@@ -1050,29 +1053,61 @@ function ConversationHistoryList({ conversations, activeConversationId, busyConv
   }) : <Text style={styles.historyEmpty}>Your chats will appear here as you talk with Teddy Bud.</Text>;
 }
 
-function ChatHistoryPage({ conversations, activeConversationId, busyConversationId, onBack, onSelect, onNewConversation }: {
+export function ChatHistoryPage({ conversations, activeConversationId, busyConversationId, onBack, onSelect, onNewConversation, onPin, onDelete, onRename }: {
   conversations: Conversation[];
   activeConversationId: string | null;
   busyConversationId?: string | null;
   onBack: () => void;
   onSelect: (id: string) => void;
   onNewConversation: () => void;
+  onPin: (id: string, pinned: boolean) => void;
+  onDelete: (conversation: Conversation) => void;
+  onRename: (conversation: Conversation) => void;
 }) {
+  const [search, setSearch] = useState('');
+  const visibleConversations = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    if (!query) return conversations;
+    return conversations.filter(conversation => {
+      const latestMessage = conversation.messages[conversation.messages.length - 1]?.text ?? '';
+      return `${conversation.title} ${latestMessage}`.toLocaleLowerCase().includes(query);
+    });
+  }, [conversations, search]);
+
   return <View style={styles.mobileHistoryPage}>
     <View style={styles.historyPageHeader}>
-      <View>
+      <View style={styles.historyPageHeaderCopy}>
         <Text style={styles.eyebrow}>YOUR SPACE</Text>
         <Text style={styles.pageTitle}>Your chats</Text>
+        <Text style={styles.pageDescription}>{conversations.length} saved {conversations.length === 1 ? 'conversation' : 'conversations'}</Text>
       </View>
       <Button label="Back to chat" onPress={onBack} tone="quiet" />
     </View>
     <Button label="New chat" onPress={onNewConversation} />
-    <ScrollView style={styles.mobileHistoryList} keyboardShouldPersistTaps="handled">
-      <ConversationHistoryList conversations={conversations} activeConversationId={activeConversationId} busyConversationId={busyConversationId} onSelect={onSelect} />
+    <TextInput
+      accessibilityLabel="Search chats"
+      value={search}
+      onChangeText={setSearch}
+      placeholder="Search chats and recent messages"
+      placeholderTextColor={C.muted}
+      returnKeyType="search"
+      style={styles.mobileHistorySearch}
+    />
+    <ScrollView style={styles.mobileHistoryList} contentContainerStyle={styles.mobileHistoryListContent} keyboardShouldPersistTaps="handled">
+      {visibleConversations.length > 0
+        ? <ConversationHistoryList
+          conversations={visibleConversations}
+          activeConversationId={activeConversationId}
+          busyConversationId={busyConversationId}
+          onSelect={onSelect}
+          onPin={onPin}
+          onDelete={onDelete}
+          onRename={onRename}
+        />
+        : <Text style={styles.historyEmpty}>{search.trim() ? 'No chats match your search. Try a different word.' : 'Your chats will appear here as you talk with Teddy Bud.'}</Text>}
     </ScrollView>
   </View>;
 }
-
 function LocalDataLoading() {
   return <View style={styles.localLoadingScreen} accessibilityRole="progressbar" accessibilityLabel="Loading your saved chats">
     <Text style={styles.localLoadingTitle}>Opening your saved space…</Text>
@@ -2283,7 +2318,10 @@ const styles = StyleSheet.create({
   memorySuggestionActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 11 },
   mobileHistoryPage: { flex: 1, paddingHorizontal: 20, paddingTop: 26, paddingBottom: 20 },
   historyPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20 },
+  historyPageHeaderCopy: { flex: 1, minWidth: 0 },
+  mobileHistorySearch: { minHeight: 48, marginTop: 12, marginBottom: 4, borderWidth: 1, borderColor: C.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: C.paper, color: C.ink, fontSize: 14 },
   mobileHistoryList: { flex: 1, marginTop: 12 },
+  mobileHistoryListContent: { paddingBottom: 18 },
   profileTextButton: { width: 'auto', minWidth: 66, paddingHorizontal: 10 },
   settingsCardForm: { width: '100%', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, padding: 16, marginBottom: 20, gap: 10 },
   characterChoices: { gap: 8, marginVertical: 4 },
