@@ -23,6 +23,8 @@ Deliver a calmer, more predictable Teddy Bud app without losing access to existi
 
 ## Merge gate — 2026-10-27
 
+- The memory-suggestion regression test now checks for **visible** modals rather than requiring the component tree to contain no modal instances. This matches React Native's retained hidden-modal rendering and keeps the test focused on user-visible behavior.
+
 - Pull request: https://github.com/Harry-Jees/Teddy-Bud/pull/12
 - A fresh CI run was queued after the safe-area/menu-test fixes. Earlier runs tested older snapshots and failed, so they do not validate the final code.
 - No claim of production safety is made until automated checks pass and actual mobile/desktop smoke tests verify existing conversations, switching accounts, storage recovery, backup/restore, and navigation.
