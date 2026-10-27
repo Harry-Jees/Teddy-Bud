@@ -60,6 +60,10 @@ test('mobile navigation exposes four destinations plus a central New Chat action
     interactive('Discover')!.props.onPress();
   });
   expect(onNavigate).toHaveBeenCalledWith('discover');
+  await ReactTestRenderer.act(async () => {
+    interactive('Settings')!.props.onPress();
+  });
+  expect(onNavigate).toHaveBeenCalledWith('settings');
   await ReactTestRenderer.act(async () => renderer.unmount());
 });
 
