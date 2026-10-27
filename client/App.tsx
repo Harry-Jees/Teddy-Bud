@@ -31,7 +31,7 @@ import { findRelevantChatHistory, localDataService, ownerFromToken } from './src
 import type { EmotionCheckIn, JournalEntry, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncryptedBackup } from './src/services/backup';
-import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
+import { pickBackupFile, saveBackupFile, savePlainTextFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import { authErrorMessage, AuthServiceError, AuthValidationError } from './src/services/authErrors';
@@ -624,6 +624,28 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     }
   };
 
+  const saveJournalEntry = useCallback(async (entry: JournalEntry) => {
+    const nextEntries = [entry, ...journalEntries.filter(existing => existing.id !== entry.id)].slice(0, 1000);
+    await localDataService.save(owner, {
+      conversations, activeConversationId, memories, emotionCheckIns, journalEntries: nextEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    });
+    setJournalEntries(nextEntries);
+    setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+
+  const deleteJournalEntry = useCallback(async (id: string) => {
+    const nextEntries = journalEntries.filter(entry => entry.id !== id);
+    await localDataService.save(owner, {
+      conversations, activeConversationId, memories, emotionCheckIns, journalEntries: nextEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    });
+    setJournalEntries(nextEntries);
+    setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+
   const exportBackup = (passphrase: string) => createEncryptedBackup({
     conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames,
   }, owner, passphrase);
@@ -920,7 +942,18 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             onSelect={selectConversation}
             onNewConversation={startNewConversation}
           />}
-          {page === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={entry => setJournalEntries(current => [entry, ...current.filter(existing => existing.id !== entry.id)].slice(0, 1000))} onDelete={id => setJournalEntries(current => current.filter(entry => entry.id !== id))} onShare={entry => { setDraft(`I'd like to talk about this journal entry with you.\\n\\n${entry.title}\\n\\n${entry.body}\\n\\nPlease help me reflect on it.`); setPage('chat'); }} />}
+          {page === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
+            const preparedMessage = `I'd like to talk about this journal entry with you.\\n\\n${entry.title}\\n\\n${entry.body}\\n\\nPlease help me reflect on it.`;
+            if (draft.trim()) {
+              confirmAction('Keep your existing draft?', 'Your current chat draft is not empty. Continuing will append the journal entry so your draft is preserved.', () => {
+                setDraft(current => current.trim() ? `${current}\\n\\n${preparedMessage}` : preparedMessage);
+                setPage('chat');
+              });
+            } else {
+              setDraft(preparedMessage);
+              setPage('chat');
+            }
+          }} />}
           {page === 'studio' && <WellbeingStudio wide={wide} />}
           {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={entry => setEmotionCheckIns(current => [entry, ...current].slice(0, 500))} onDelete={id => setEmotionCheckIns(current => current.filter(entry => entry.id !== id))} />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} />}
@@ -1694,24 +1727,156 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete }
 
 
 
-function JournalPage({wide,entries,onSave,onDelete,onShare}:{wide:boolean;entries:JournalEntry[];onSave:(entry:JournalEntry)=>void;onDelete:(id:string)=>void;onShare:(entry:JournalEntry)=>void}) {
-  const [title,setTitle]=useState(''); const [body,setBody]=useState(''); const [prompt,setPrompt]=useState('Free reflection'); const [editing,setEditing]=useState<string|null>(null); const [search,setSearch]=useState('');
-  const prompts=['Free reflection','What felt heavy today?','What is one small thing I appreciate?','What do I need more of right now?','What would I tell a friend in this situation?'];
-  const save=()=>{if(!body.trim())return;onSave({id:editing??(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),createdAt:editing?(entries.find(e=>e.id===editing)?.createdAt??new Date().toISOString()):new Date().toISOString(),title:title.trim().slice(0,160)||prompt,body:body.trim().slice(0,30000),prompt});setTitle('');setBody('');setEditing(null);};
-  const visible=entries.filter(e=>(e.title+' '+e.body+' '+e.prompt).toLowerCase().includes(search.toLowerCase()));
-  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
-    <Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A page just for you</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>Your journal stays in this device's local app storage. It is never added to Teddy's context unless you choose “Discuss with Teddy” and then send the prepared message yourself.</Text>
-    <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:18}}>
-      <Text style={{fontSize:18,fontWeight:'700',color:C.cocoaDark}}>{editing?'Edit your entry':'Write a little'}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginVertical:10}}>{prompts.map(p=><Pressable key={p} onPress={()=>setPrompt(p)} style={{backgroundColor:prompt===p?'#E7D0C2':'#F5ECE5',padding:10,borderRadius:12,marginRight:7}}><Text style={{fontSize:12,color:C.cocoaDark}}>{p}</Text></Pressable>)}</ScrollView>
-      <TextInput value={title} onChangeText={setTitle} placeholder="Title (optional)" placeholderTextColor={C.muted} style={{borderWidth:1,borderColor:C.line,borderRadius:12,padding:12,color:C.cocoaDark,marginBottom:9}} />
-      <TextInput value={body} onChangeText={setBody} multiline placeholder="Start wherever you are…" placeholderTextColor={C.muted} style={{minHeight:140,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,textAlignVertical:'top'}} />
-      <Pressable onPress={save} style={{backgroundColor:C.cocoaDark,borderRadius:14,padding:13,alignItems:'center',marginTop:12}}><Text style={{color:'#FFF',fontWeight:'700'}}>{editing?'Save changes':'Save privately'}</Text></Pressable>{editing?<Pressable onPress={()=>{setEditing(null);setTitle('');setBody('');setPrompt('Free reflection')}} style={{alignItems:'center',padding:10}}><Text style={{color:C.muted}}>Cancel editing</Text></Pressable>:null}
+export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
+  wide: boolean;
+  entries: JournalEntry[];
+  onSave: (entry: JournalEntry) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onShare: (entry: JournalEntry) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [prompt, setPrompt] = useState('Free reflection');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const prompts = ['Free reflection', 'What felt heavy today?', 'What is one small thing I appreciate?', 'What do I need more of right now?', 'What would I tell a friend in this situation?'];
+
+  const save = async () => {
+    const normalizedBody = body.trim();
+    if (!normalizedBody || saving) {
+      if (!normalizedBody) setActionError('Write a little in your entry before saving.');
+      return;
+    }
+    const entry: JournalEntry = {
+      id: editing ?? (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)),
+      createdAt: editing ? (entries.find(item => item.id === editing)?.createdAt ?? new Date().toISOString()) : new Date().toISOString(),
+      title: title.trim().slice(0, 160) || prompt,
+      body: normalizedBody.slice(0, 30000),
+      prompt,
+    };
+    setSaving(true);
+    setActionError(null);
+    setActionNotice(null);
+    try {
+      await onSave(entry);
+      setTitle('');
+      setBody('');
+      setEditing(null);
+      setPrompt('Free reflection');
+      setActionNotice('Saved privately on this device.');
+    } catch {
+      setActionError('This entry could not be saved to this device. Your text is still in the editor; retry saving before leaving this page.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const beginDelete = (entry: JournalEntry) => {
+    confirmAction(
+      'Delete journal entry?',
+      `“${entry.title}” will be removed from this device. This cannot be undone.`,
+      () => {
+        setDeletingId(entry.id);
+        setActionError(null);
+        setActionNotice(null);
+        onDelete(entry.id).then(() => {
+          if (editing === entry.id) {
+            setEditing(null);
+            setTitle('');
+            setBody('');
+            setPrompt('Free reflection');
+          }
+        }).catch(() => {
+          setActionError('This entry could not be deleted from saved data. The entry remains available; try again.');
+        }).finally(() => setDeletingId(null));
+      },
+    );
+  };
+
+  const exportJournal = async () => {
+    if (!entries.length || exporting) {
+      if (!entries.length) setActionError('Write a journal entry before exporting.');
+      return;
+    }
+    setExporting(true);
+    setActionError(null);
+    setActionNotice(null);
+    const content = entries.map(entry => `# ${entry.title}\n${new Date(entry.createdAt).toLocaleString()} · ${entry.prompt}\n\n${entry.body}`).join('\n\n---\n\n');
+    try {
+      if (Platform.OS === 'web') {
+        await savePlainTextFile(content, `teddy-bud-journal-${new Date().toISOString().slice(0, 10)}.txt`);
+        setActionNotice('Your journal text download has started.');
+      } else {
+        await Share.share({ title: 'Teddy Bud private journal export', message: content });
+        setActionNotice('The share sheet opened. Choose where you would like to keep your journal text.');
+      }
+    } catch {
+      setActionError('Teddy Bud could not export the journal text. Try again, or select and copy the entries you want to keep.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setTitle('');
+    setBody('');
+    setPrompt('Free reflection');
+    setActionError(null);
+    setActionNotice(null);
+  };
+  const visible = entries.filter(entry => (entry.title + ' ' + entry.body + ' ' + entry.prompt).toLowerCase().includes(search.toLowerCase()));
+
+  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
+    <View style={styles.pageIntro}>
+      <Text style={styles.eyebrow}>PRIVATE REFLECTION</Text>
+      <Text style={styles.pageTitle}>A page just for you</Text>
+      <Text style={styles.pageDescription}>Your journal stays in this device's local app storage. It is never added to Teddy's context unless you choose “Discuss with Teddy” and then send the prepared message yourself.</Text>
     </View>
-    <Pressable onPress={()=>{if(!entries.length){Alert.alert('Journal is empty','Write an entry before exporting.');return;}const content=entries.map(entry=>'# '+entry.title+'\n'+new Date(entry.createdAt).toLocaleString()+' · '+entry.prompt+'\n\n'+entry.body).join('\n\n---\n\n');void Share.share({title:'Teddy Bud private journal export',message:content});}} style={{alignSelf:'flex-start',paddingVertical:12,paddingHorizontal:14,backgroundColor:'#E7D0C2',borderRadius:12,marginTop:12}}><Text style={{color:C.cocoaDark,fontWeight:'700'}}>Export journal text</Text></Pressable>
-    <TextInput value={search} onChangeText={setSearch} placeholder="Search journal entries" placeholderTextColor={C.muted} style={{borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:18}} />
-    {visible.map(entry=><View key={entry.id} style={{padding:15,borderWidth:1,borderColor:C.line,borderRadius:17,marginTop:10,backgroundColor:C.paper}}><Text style={{fontWeight:'700',color:C.cocoaDark,fontSize:16}}>{entry.title}</Text><Text style={{fontSize:12,color:C.muted,marginTop:4}}>{new Date(entry.createdAt).toLocaleString()} · {entry.prompt}</Text><View style={{flexDirection:'row',flexWrap:'wrap',alignItems:'center',gap:12}}><Pressable onPress={()=>{setTitle(entry.title);setBody(entry.body);setPrompt(entry.prompt);setEditing(entry.id);}} style={{alignSelf:'flex-start',paddingVertical:8}}><Text style={{color:'#895B43',fontWeight:'700'}}>Edit entry</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Prepare journal entry ${entry.title} to discuss with Teddy`} onPress={()=>Alert.alert('Share this entry with Teddy?','The entry will be copied into your chat draft. It will not be sent until you review it and tap Send.',[{text:'Cancel',style:'cancel'},{text:'Prepare draft',onPress:()=>onShare(entry)}])} style={{alignSelf:'flex-start',paddingVertical:8}}><Text style={{color:'#895B43',fontWeight:'700'}}>Discuss with Teddy</Text></Pressable></View><Text selectable style={{color:C.cocoaDark,lineHeight:21,marginTop:9}}>{entry.body}</Text><Pressable onPress={()=>Alert.alert('Delete journal entry?','This cannot be undone.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>onDelete(entry.id)}])} style={{alignSelf:'flex-end',padding:8}}><Text style={{color:'#98594B',fontWeight:'600'}}>Delete</Text></Pressable></View>)}
-    {visible.length===0?<Text style={{color:C.muted,marginTop:18}}>No matching entries yet.</Text>:null}
+    {(actionError || actionNotice) && <View accessibilityRole={actionError ? 'alert' : 'summary'} style={actionError ? styles.authError : styles.journalNotice}>
+      <Text accessibilityLiveRegion="polite" style={actionError ? styles.authErrorText : styles.journalNoticeText}>{actionError || actionNotice}</Text>
+      {actionError && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss journal notice" onPress={() => setActionError(null)} style={styles.journalDismiss}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>}
+    </View>}
+    <View style={styles.journalEditorCard}>
+      <Text style={styles.sectionTitle}>{editing ? 'Edit your entry' : 'Write a little'}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.journalPrompts}>{prompts.map(value => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: prompt === value }} onPress={() => { setPrompt(value); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [styles.journalPromptChip, prompt === value && styles.journalPromptChipSelected, pressed && styles.pressed]}><Text style={styles.journalPromptText}>{value}</Text></Pressable>)}</ScrollView>
+      <TextInput accessibilityLabel="Journal title (optional)" value={title} onChangeText={setTitle} maxLength={160} placeholder="Title (optional)" placeholderTextColor={C.muted} style={styles.journalTextInput} editable={!saving} />
+      <TextInput accessibilityLabel="Journal entry" accessibilityHint="Your entry is stored locally and is not sent to the AI unless you choose to discuss it and then send the prepared chat message." value={body} onChangeText={value => { setBody(value); setActionError(null); setActionNotice(null); }} maxLength={30000} multiline placeholder="Start wherever you are…" placeholderTextColor={C.muted} style={[styles.journalTextInput, styles.journalBodyInput]} editable={!saving} textAlignVertical="top" />
+      <View style={styles.journalEditorActions}>
+        <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Save journal changes' : 'Save privately'} disabled={saving || !body.trim()} onPress={save} style={({ pressed }) => [styles.journalSaveButton, (saving || !body.trim()) && styles.buttonDisabled, pressed && styles.pressed]}>
+          <Text style={styles.journalSaveButtonText}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Save privately'}</Text>
+        </Pressable>
+        {editing && <Pressable accessibilityRole="button" disabled={saving} onPress={cancelEdit} style={({ pressed }) => [styles.journalCancelButton, pressed && styles.pressed]}><Text style={styles.journalCancelButtonText}>Cancel edit</Text></Pressable>}
+      </View>
+    </View>
+    <Pressable accessibilityRole="button" disabled={exporting || !entries.length} onPress={exportJournal} style={({ pressed }) => [styles.journalExportButton, (exporting || !entries.length) && styles.buttonDisabled, pressed && styles.pressed]}>
+      <Text style={styles.journalExportButtonText}>{exporting ? 'Preparing export…' : 'Export journal text'}</Text>
+    </Pressable>
+    <TextInput accessibilityLabel="Search journal entries" value={search} onChangeText={setSearch} placeholder="Search journal entries" placeholderTextColor={C.muted} style={styles.journalSearchInput} />
+    {visible.map(entry => <View key={entry.id} style={styles.journalEntryCard}>
+      <Text style={styles.journalEntryTitle}>{entry.title}</Text>
+      <Text style={styles.journalEntryMeta}>{new Date(entry.createdAt).toLocaleString()} · {entry.prompt}</Text>
+      <View style={styles.journalEntryActions}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Edit journal entry ${entry.title}`} disabled={saving || deletingId !== null} onPress={() => { setTitle(entry.title); setBody(entry.body); setPrompt(entry.prompt); setEditing(entry.id); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [styles.journalInlineButton, pressed && styles.pressed]}>
+          <Text style={styles.journalInlineButtonText}>Edit entry</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Discuss journal entry ${entry.title} with Teddy`} onPress={() => {
+          confirmAction('Share this entry with Teddy?', 'The entry will be copied into your chat draft. It will not be sent until you review it and tap Send.', () => onShare(entry));
+        }} style={({ pressed }) => [styles.journalInlineButton, pressed && styles.pressed]}>
+          <Text style={styles.journalInlineButtonText}>Discuss with Teddy</Text>
+        </Pressable>
+      </View>
+      <Text selectable style={styles.journalEntryBody}>{entry.body}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Delete journal entry ${entry.title}`} disabled={deletingId !== null} onPress={() => beginDelete(entry)} style={({ pressed }) => [styles.journalDeleteButton, deletingId === entry.id && styles.buttonDisabled, pressed && styles.pressed]}>
+        <Text style={styles.journalDeleteButtonText}>{deletingId === entry.id ? 'Deleting…' : 'Delete'}</Text>
+      </Pressable>
+    </View>)}
+    {visible.length === 0 && <Text style={styles.journalEmptyText}>{search ? 'No entries match your search.' : 'Your journal is empty. Write a little whenever you are ready.'}</Text>}
   </ScrollView>;
 }
 function WellbeingStudio({wide}:{wide:boolean}) {
@@ -2116,6 +2281,35 @@ const styles = StyleSheet.create({
   typingIndicator: { minWidth: 48, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 12 },
   typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.muted },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(45, 36, 29, 0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 }, modalCard: { width: '100%', maxWidth: 460, backgroundColor: C.paper, borderRadius: 22, padding: 22 }, modalTopline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }, modalIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, modalIconText: { color: C.cocoa, fontSize: 18 }, closeButton: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.paperAlt }, closeText: { color: C.muted, fontSize: 22, lineHeight: 24 }, modalTitle: { color: C.ink, fontWeight: '700', fontSize: 20, letterSpacing: -0.4 }, modalBody: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 7, marginBottom: 16 }, memoryInput: { minHeight: 100, maxHeight: 180, backgroundColor: '#F9F6F1', borderColor: C.line, borderWidth: 1, borderRadius: 14, padding: 13, color: C.ink, fontSize: 13, lineHeight: 19 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 17 }, suggestedFact: { color: C.ink, fontSize: 15, lineHeight: 22, fontWeight: '600', backgroundColor: '#F9F6F1', borderRadius: 14, padding: 13, marginTop: 12 }, historyCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: C.paper, borderRadius: 22, padding: 22 }, historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 }, historyList: { maxHeight: 430, marginTop: 14 }, historyItemWrap: { position: 'relative', width: '100%', minWidth: 0, marginBottom: 6 }, historyItem: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 3, paddingHorizontal: 4, paddingVertical: 4, borderRadius: 13, borderWidth: 1, borderColor: 'transparent' }, historyItemOpen: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, borderRadius: 10 }, historyItemSelected: { backgroundColor: '#F2E5C9', borderColor: '#D9B879' }, chatMenuTrigger: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, chatMenuDots: { color: C.muted, fontSize: 16, fontWeight: '700', letterSpacing: 1 }, chatActionMenu: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 12, padding: 5, marginHorizontal: 5, marginTop: -1, shadowColor: '#302821', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, chatActionItem: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8 }, chatActionText: { color: C.ink, fontSize: 12, fontWeight: '500' }, chatActionDelete: { backgroundColor: '#FCF5F2' }, chatActionDeleteText: { color: C.rose }, historyItemCopy: { flex: 1, minWidth: 0 }, historyItemTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, historyItemTitleSelected: { color: '#5A422C' }, historyItemPreview: { color: C.muted, fontSize: 11, marginTop: 5 }, historyEmpty: { textAlign: 'center', color: C.muted, fontSize: 12, lineHeight: 19, padding: 20 }, memorySuggestionError: { color: C.rose, fontSize: 11, lineHeight: 16, paddingHorizontal: 8, paddingVertical: 8 },
+  journalNotice: { backgroundColor: C.greenLight, borderRadius: 12, padding: 12, marginBottom: 12 },
+  journalNoticeText: { color: C.green, fontSize: 12, lineHeight: 17 },
+  journalDismiss: { alignSelf: 'flex-end', paddingVertical: 4, paddingHorizontal: 8 },
+  journalDismissText: { color: C.cocoaDark, fontSize: 11, fontWeight: '700' },
+  journalEditorCard: { borderWidth: 1, borderColor: C.line, borderRadius: 22, padding: 16, marginTop: 4, backgroundColor: C.paper },
+  journalPrompts: { marginVertical: 10 },
+  journalPromptChip: { paddingVertical: 10, paddingHorizontal: 11, borderRadius: 12, marginRight: 7, borderWidth: 1, borderColor: C.line, backgroundColor: '#F5ECE5' },
+  journalPromptChipSelected: { backgroundColor: '#E7D0C2', borderColor: '#D6BBA9' },
+  journalPromptText: { fontSize: 12, color: C.cocoaDark },
+  journalTextInput: { minHeight: 48, borderWidth: 1, borderColor: C.line, borderRadius: 13, padding: 12, color: C.cocoaDark, marginBottom: 10, backgroundColor: '#FDFCFA', fontSize: 14 },
+  journalBodyInput: { minHeight: 160, lineHeight: 21 },
+  journalEditorActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 2 },
+  journalSaveButton: { minHeight: 48, borderRadius: 14, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: C.cocoaDark },
+  journalSaveButtonText: { color: C.white, fontSize: 12, fontWeight: '700' },
+  journalCancelButton: { minHeight: 44, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  journalCancelButtonText: { color: C.cocoaDark, fontSize: 12, fontWeight: '600' },
+  journalExportButton: { alignSelf: 'flex-start', minHeight: 46, justifyContent: 'center', paddingVertical: 11, paddingHorizontal: 14, backgroundColor: '#E7D0C2', borderRadius: 13, marginTop: 12 },
+  journalExportButtonText: { color: C.cocoaDark, fontWeight: '700', fontSize: 12 },
+  journalSearchInput: { minHeight: 48, borderWidth: 1, borderColor: C.line, borderRadius: 14, padding: 12, color: C.cocoaDark, marginTop: 18, backgroundColor: C.paper, fontSize: 14 },
+  journalEntryCard: { padding: 15, borderWidth: 1, borderColor: C.line, borderRadius: 17, marginTop: 10, backgroundColor: C.paper },
+  journalEntryTitle: { fontWeight: '700', color: C.cocoaDark, fontSize: 16 },
+  journalEntryMeta: { fontSize: 12, color: C.muted, marginTop: 4 },
+  journalEntryActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
+  journalInlineButton: { minHeight: 42, justifyContent: 'center', paddingVertical: 8 },
+  journalInlineButtonText: { color: '#895B43', fontWeight: '700', fontSize: 12 },
+  journalEntryBody: { color: C.cocoaDark, lineHeight: 21, marginTop: 9, fontSize: 14 },
+  journalDeleteButton: { minHeight: 42, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: 12 },
+  journalDeleteButtonText: { color: '#98594B', fontWeight: '600', fontSize: 12 },
+  journalEmptyText: { color: C.muted, marginTop: 18, lineHeight: 21 },
   moreList: { gap: 10 },
   moreItem: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 17, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper },
   moreItemIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
