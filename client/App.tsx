@@ -1139,7 +1139,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             setAssistantCharacterId(id);
             setAssistantName(savedName);
             setAssistantCharacterNames(current => ({ ...current, [id]: savedName }));
-          }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} />}
+          }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} onOpenPrivacy={() => setPage('privacy')} />}
           {(page === 'discover' || page === 'more') && <MorePage wide={wide} onNavigate={setPage} />}
           </>}
         </View>
@@ -1586,6 +1586,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
 
 export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, editingMessageId, onEditMessage, onCancelEdit, onStop, onRetry, onRegenerate, retryPending, isSending, chatError }: { wide: boolean; bottomInset?: number; conversationId?: string | null; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; editingMessageId?: number | null; onEditMessage?: (message: Message) => void; onCancelEdit?: () => void; onStop: () => void; onRetry: () => void; onRegenerate?: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
   const reduceMotion = useReducedMotionPreference();
   const canSend = (!!draft.trim() || !!selectedImage) && !isSending;
@@ -1694,7 +1695,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
           <View style={[styles.messageRow, message.author === 'you' && styles.messageRowYou]}>
             {message.author === 'teddy' && <View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View>}
             <View style={[styles.messageBubble, message.author === 'you' ? styles.userBubble : styles.teddyBubble]}>
-              {message.imageDataUrl && <Pressable accessibilityRole="button" accessibilityLabel="Open attached image" onPress={() => openExternalUrl(message.imageDataUrl!)}><Image source={{ uri: message.imageDataUrl }} resizeMode="contain" style={{ width: 240, height: 220, maxWidth: '100%', borderRadius: 12, marginBottom: 8, backgroundColor: C.paperAlt }} /></Pressable>}
+              {message.imageDataUrl && <Pressable accessibilityRole="button" accessibilityLabel="Open attached image" onPress={() => setViewingImage(message.imageDataUrl!)}><Image source={{ uri: message.imageDataUrl }} resizeMode="contain" style={{ width: 240, height: 220, maxWidth: '100%', borderRadius: 12, marginBottom: 8, backgroundColor: C.paperAlt }} /></Pressable>}
               {message.author === 'teddy' ? <MarkdownReply content={message.text} /> : <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>}
               <Text style={[styles.messageTime, message.author === 'you' && styles.userMessageTime]}>{message.time}</Text>
             </View>
@@ -1757,6 +1758,12 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       </View>
       {wide && <Text style={styles.composerFootnote}>{isSending ? 'Sending to the companion service…' : 'Your conversation is saved on this device.'}</Text>}
     </View>
+    <Modal visible={viewingImage !== null} transparent animationType="fade" onRequestClose={() => setViewingImage(null)}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(20,18,16,0.94)', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close image viewer" onPress={() => setViewingImage(null)} style={{ position: 'absolute', top: 24, right: 20, zIndex: 2, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF22' }}><Text style={{ color: '#FFFFFF', fontSize: 28 }}>×</Text></Pressable>
+        {viewingImage && <Image source={{ uri: viewingImage }} resizeMode="contain" style={{ width: '100%', height: '82%' }} />}
+      </View>
+    </Modal>
   </KeyboardAvoidingView>;
 }
 
@@ -2348,7 +2355,7 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
   </ScrollView>;
 }
 
-function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
+function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout, onOpenPrivacy }: {
   wide: boolean;
   creditBalance: CreditBalance | null;
   onRefreshCredits: () => Promise<void>;
@@ -2361,6 +2368,7 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
   onExport: (passphrase: string) => Promise<string>;
   onImport: (fileContents: string, passphrase: string) => Promise<boolean>;
   onLogout: () => void;
+  onOpenPrivacy: () => void;
 }) {
   const [backupPassphrase, setBackupPassphrase] = useState('');
   const [backupStatus, setBackupStatus] = useState('');
@@ -2406,6 +2414,11 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text><Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
+    <View style={styles.settingsCardForm}>
+      <Text style={styles.settingTitle}>Privacy & data</Text>
+      <Text style={styles.settingDescription}>Choose what Teddy Bud can remember, what context is shared, and manage local data.</Text>
+      <Button label="Open privacy controls" tone="quiet" onPress={onOpenPrivacy} />
+    </View>
     <Text style={styles.settingsSectionLabel}>FREE PLAN</Text>
     <View style={styles.settingsCardForm}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
