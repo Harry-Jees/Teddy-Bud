@@ -34,7 +34,7 @@ import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncrypt
 import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
-import { authErrorMessage, AuthValidationError } from './src/services/authErrors';
+import { authErrorMessage, AuthServiceError, AuthValidationError } from './src/services/authErrors';
 import { chatErrorMessage, localDataErrorMessage } from './src/services/userFacingErrors';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
@@ -179,7 +179,13 @@ function AccessGate() {
   if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
   return <TeddyBud sessionToken={session.accessToken} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
-      setError(authErrorMessage(logoutError, 'sign-out'));
+      const message = authErrorMessage(logoutError, 'sign-out');
+      setError(message);
+      if (logoutError instanceof AuthServiceError && logoutError.kind === 'storage') {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert(message);
+        else Alert.alert('Sign out could not finish', message);
+        return;
+      }
       setSession(null);
     });
   }} />;
