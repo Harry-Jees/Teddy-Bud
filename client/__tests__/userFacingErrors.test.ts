@@ -1,4 +1,4 @@
-import { chatErrorMessage, localDataErrorMessage } from '../src/services/userFacingErrors';
+import { backupErrorMessage, chatErrorMessage, localDataErrorMessage } from '../src/services/userFacingErrors';
 
 describe('safe chat error messages', () => {
   test('explains exhausted credits separately from temporary service throttling', () => {
@@ -44,5 +44,25 @@ describe('safe local-data error messages', () => {
 
   test('keeps local data failures recoverable and encourages retry', () => {
     expect(localDataErrorMessage(new Error('SQLITE_BUSY'), 'load')).toMatch(/retry/i);
+  });
+});
+
+describe('safe backup error messages', () => {
+  test('preserves supported, actionable backup validation messages', () => {
+    expect(backupErrorMessage(new Error('The backup could not be unlocked. Check your passphrase and try again.'), 'import'))
+      .toMatch(/check your passphrase/i);
+    expect(backupErrorMessage(new Error('That file is not a supported Teddy Bud backup.'), 'import'))
+      .toMatch(/not a supported/i);
+  });
+
+  test('hides native crypto/storage internals for unexpected backup failures', () => {
+    const message = backupErrorMessage(new Error('NativeCryptoInternalClass stack trace and SQLCipher details'), 'import');
+    expect(message).toMatch(/could not complete the restore safely/i);
+    expect(message).not.toMatch(/NativeCryptoInternalClass|SQLCipher details/i);
+  });
+
+  test('gives export failures a practical next step', () => {
+    expect(backupErrorMessage(new Error('Opaque file dialog failure'), 'export'))
+      .toMatch(/check available storage/i);
   });
 });
