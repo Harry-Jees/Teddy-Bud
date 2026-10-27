@@ -1502,19 +1502,16 @@ function useReducedMotionPreference() {
 export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
   const reduceMotion = useReducedMotionPreference();
   const items: { id: Page; icon: string; label: string; description: string }[] = [
-    { id: 'history', icon: '▤', label: 'Chat history', description: 'Find a conversation from earlier' },
-    { id: 'journal', icon: '▤', label: 'Journal', description: 'Write, search, and export private reflections' },
-    { id: 'emotions', icon: '◉', label: 'Emotions', description: 'Check in with how you feel' },
-    { id: 'studio', icon: '☼', label: 'Wellbeing', description: 'Gentle exercises you can use offline' },
-    { id: 'privacy', icon: '⌑', label: 'Privacy', description: 'Choose what stays local and what is shared' },
-    { id: 'settings', icon: '⚙', label: 'Settings', description: 'Your companion, backup, and account' },
+    { id: 'journal', icon: 'book-open', label: 'Journal', description: 'Write, search, and revisit private reflections' },
+    { id: 'emotions', icon: 'heart-pulse', label: 'Emotions', description: 'Check in with how you feel, without pressure' },
+    { id: 'studio', icon: 'wind', label: 'Wellbeing', description: 'Gentle exercises you can use offline' },
   ];
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
     <View style={styles.pageIntro}>
-      <Text style={styles.eyebrow}>YOUR SPACE, YOUR WAY</Text>
-      <Text style={styles.pageTitle}>More tools</Text>
-      <Text style={styles.pageDescription}>Everything else, in one calm place. Your everyday essentials stay close at hand.</Text>
+      <Text style={styles.eyebrow}>A LITTLE SPACE FOR YOU</Text>
+      <Text style={styles.pageTitle}>Discover</Text>
+      <Text style={styles.pageDescription}>Small, supportive tools for reflection and feeling a little more grounded.</Text>
     </View>
     <View style={styles.moreList}>
       {items.map(item => <Pressable
