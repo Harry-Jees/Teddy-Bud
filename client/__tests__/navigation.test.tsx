@@ -2,6 +2,30 @@ import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { BottomNav, MorePage } from '../App';
 
+jest.mock('@react-native-documents/picker', () => ({
+  errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
+  isErrorWithCode: () => false,
+  keepLocalCopy: jest.fn(),
+  pick: jest.fn(),
+  saveDocuments: jest.fn(),
+  types: { json: 'application/json' },
+}));
+
+jest.mock('react-native-file-access', () => ({
+  Dirs: { CacheDir: '/tmp' },
+  FileSystem: { writeFile: jest.fn(), readFile: jest.fn(), unlink: jest.fn() },
+}));
+
+jest.mock('@op-engineering/op-sqlite', () => ({
+  Storage: class {
+    async getItem() { return undefined; }
+    async setItem() {}
+    async removeItem() {}
+  },
+  isSQLCipher: () => true,
+}));
+
+
 test('mobile navigation exposes four destinations and an immediate central New Chat action', async () => {
   const onNavigate = jest.fn();
   const onNewConversation = jest.fn();
