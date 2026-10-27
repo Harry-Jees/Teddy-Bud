@@ -35,6 +35,11 @@ The plan is now being executed on this branch. Items below describe code added s
 - [x] Added a More screen for Chat history, Emotions, Wellbeing, Privacy, and Settings, while leaving the desktop sidebar hierarchy available.
 - [x] Added small press-in scale feedback to common buttons and navigation, honoring reduced-motion preferences; enlarged common button and navigation targets.
 - [x] Added safe, actionable messages for chat, quota, oversized-input, local database, backup, and external-link failures; preserved structured daily-quota error codes for specific user guidance.
+- [x] Prevented chat stream updates from forcing users back to the bottom when they are reading older messages; added an accessible **Jump to latest** action and per-conversation scroll reset.
+- [x] Made journal save/delete wait for the local persistence operation before clearing the editor or removing a row; failures keep the entry/text visible and display an actionable notice.
+- [x] Added plain-text journal downloads on web/desktop and handled native share-sheet cancellation/errors.
+- [x] Reworded corrupted local-data recovery guidance so it no longer recommends clearing saved data as the first response.
+- [x] Added regression tests for interrupted chat reading position, jump-to-latest, and journal save/empty-state errors.
 - [x] Added dedicated tests for authentication error mapping, browser auth request failures, form validation, compact navigation, More routes, and safe chat/local-data/backup messages.
 - [ ] Run CI against the combined implementation commits and fix any failures before marking these items phase-complete.
 - [ ] Capture and review mobile/desktop screenshots and execute real-device checks. Source code and unit tests alone do not establish visual or platform correctness.
@@ -529,7 +534,7 @@ Use this summary to track progress between phases:
 | 1 — Authentication and errors | Implementation in progress; CI pending | Auth error map, dedicated tests, recovery-state evidence |
 | 2 — Navigation | Implementation in progress; CI pending | Mobile/desktop route tests and screenshots |
 | 3 — Initial error-path updates; full phase pending | Send/stream/retry/history tests and journey evidence |
-| 4 — Memories/journal/emotions/wellbeing | Not started | Data operation and privacy-consent tests |
+| 4 — Journal save/export failures improved; full phase pending | Data operation and privacy-consent tests |
 | 5 — Initial error-path updates; full phase pending | Fault-injection, restore safety, preservation tests |
 | 6 — Shared UI consistency | Not started | Component consistency review and regression results |
 | 7 — Accessibility/platforms | Not started | Recorded device/keyboard/screen-reader checks |
