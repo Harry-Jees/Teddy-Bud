@@ -133,10 +133,18 @@ export class BrowserAuthService {
       try { localStorage.setItem(SETUP_KEY, 'true'); } catch { /* Sign-in still works if storage is unavailable. */ }
       return;
     }
-    await Keychain.setGenericPassword('setup', 'true', {
-      service: NATIVE_SETUP_SERVICE,
-      accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-    });
+    try {
+      const saved = await Keychain.setGenericPassword('setup', 'true', {
+        service: NATIVE_SETUP_SERVICE,
+        accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      });
+      if (!saved) throw new Error('Secure setup storage rejected the value.');
+    } catch {
+      throw new AuthServiceError(
+        'Teddy Bud could not save the account setup securely on this device. Check device storage and try again. Your saved chats have not been deleted.',
+        'storage',
+      );
+    }
   }
 
   async signIn(email: string, password: string): Promise<StoredSession> {
