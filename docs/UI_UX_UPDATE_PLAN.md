@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-10-27  
 Working branch: `feature/phase-3-chat-polish`  
-Status: **Planning approved for execution; implementation not started by this document**  
+Status: **Implementation in progress; automated verification pending**  
 Scope: Mobile-first UX, all app screens, sign-in/password/recovery flows, error handling, accessibility, cross-platform behavior, regression tests, and release validation.
 
 ## 1. Goal and non-negotiable rules
@@ -19,6 +19,34 @@ Deliver a calmer, more predictable Teddy Bud app without losing access to existi
 - [ ] Every action that can fail needs a visible, accessible, actionable result; every destructive action needs a clear explanation and confirmation.
 - [ ] Every phase needs automated tests. UI completion is not established by a successful build alone.
 - [ ] No production deployment, signing, or release promotion until all release gates in Phase 10 pass.
+
+
+## Current execution log — 2026-10-27
+
+The plan is now being executed on this branch. Items below describe code added so far; they are **not marked phase-complete until CI and relevant manual checks pass**.
+
+### Initial implementation committed
+
+- [x] Added a central, typed authentication error mapper that avoids displaying arbitrary server text and differentiates credentials, validation, rate limits, network failures, timeouts, service errors, session expiry, and storage failures.
+- [x] Added inline sign-in form validation for email, password, password confirmation, and recovery passphrase fields; validation submits are no longer silently blocked without feedback.
+- [x] Added accessible error announcements and clears stale field errors when users correct input.
+- [x] Added explicit secure-session storage failure handling so sign-out does not silently pretend credentials were cleared when local storage removal fails.
+- [x] Replaced the mobile seven-destination bar with four destinations (**Chats, Memories, Journal, More**) plus a boxed central **+** that starts a new chat directly.
+- [x] Added a More screen for Chat history, Emotions, Wellbeing, Privacy, and Settings, while leaving the desktop sidebar hierarchy available.
+- [x] Added small press-in scale feedback to common buttons and navigation, honoring reduced-motion preferences; enlarged common button and navigation targets.
+- [x] Added safe, actionable messages for chat, quota, oversized-input, local database, backup, and external-link failures; preserved structured daily-quota error codes for specific user guidance.
+- [x] Added dedicated tests for authentication error mapping, browser auth request failures, form validation, compact navigation, More routes, and safe chat/local-data/backup messages.
+- [ ] Run CI against the combined implementation commits and fix any failures before marking these items phase-complete.
+- [ ] Capture and review mobile/desktop screenshots and execute real-device checks. Source code and unit tests alone do not establish visual or platform correctness.
+
+### Research references used
+
+- [Apple Human Interface Guidelines — Tab bars](https://developer.apple.com/design/human-interface-guidelines/tab-bars/): keep navigation focused, preserve tab visibility, and put actions in controls rather than treating every action as a tab.
+- [Apple Human Interface Guidelines — Buttons](https://developer.apple.com/design/human-interface-guidelines/buttons/): clear button roles, target spacing, and press feedback; Apple recommends 44×44 pt hit regions.
+- [Apple Human Interface Guidelines — Motion](https://developer.apple.com/design/human-interface-guidelines/motion/): motion should be purposeful and respond to accessibility preferences.
+- [Android Accessibility — Touch target size](https://support.google.com/accessibility/android/answer/7101858): recommended 48×48 dp targets with spacing.
+- [WCAG 2.2 — Target Size (Minimum)](https://www.w3.org/TR/WCAG22/#target-size-minimum): baseline Level AA target size of 24×24 CSS pixels with defined exceptions.
+- [Nielsen Norman Group — Find navigation on mobile](https://www.nngroup.com/articles/find-navigation-mobile-even-hamburger/): use visible or combined navigation for important destinations and make hidden navigation discoverable.
 
 ## 2. Severity and completion rules
 
@@ -497,15 +525,15 @@ Use this summary to track progress between phases:
 
 | Phase | Status | Completion evidence |
 |---|---|---|
-| 0 — Baseline and inventory | Not started | Baseline results, screen/state inventory, test matrix |
-| 1 — Authentication and errors | Not started | Auth error map, dedicated tests, recovery-state evidence |
-| 2 — Navigation | Not started | Mobile/desktop route tests and screenshots |
-| 3 — Chat and history | Not started | Send/stream/retry/history tests and journey evidence |
+| 0 — Baseline and inventory | In progress | Baseline results, screen/state inventory, test matrix |
+| 1 — Authentication and errors | Implementation in progress; CI pending | Auth error map, dedicated tests, recovery-state evidence |
+| 2 — Navigation | Implementation in progress; CI pending | Mobile/desktop route tests and screenshots |
+| 3 — Initial error-path updates; full phase pending | Send/stream/retry/history tests and journey evidence |
 | 4 — Memories/journal/emotions/wellbeing | Not started | Data operation and privacy-consent tests |
-| 5 — Privacy/settings/backup/storage | Not started | Fault-injection, restore safety, preservation tests |
+| 5 — Initial error-path updates; full phase pending | Fault-injection, restore safety, preservation tests |
 | 6 — Shared UI consistency | Not started | Component consistency review and regression results |
 | 7 — Accessibility/platforms | Not started | Recorded device/keyboard/screen-reader checks |
-| 8 — Regression/error coverage | Not started | CI links and completed error-state matrix |
+| 8 — Tests added; CI pending | CI links and completed error-state matrix |
 | 9 — Manual journey review | Not started | Journey checklists and screenshot comparisons |
 | 10 — Release readiness | Not started | Final commit, builds, install/launch checks, report |
 
