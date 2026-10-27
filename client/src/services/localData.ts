@@ -312,7 +312,7 @@ export class LocalDataService {
     try {
       return normalize(JSON.parse(saved));
     } catch {
-      throw new Error('Saved app data could not be read. Clear local data to start a new conversation.');
+      throw new Error('Saved app data could not be read safely. Retry local storage; if it continues, make a backup or contact support before clearing anything.');
     }
   }
 
