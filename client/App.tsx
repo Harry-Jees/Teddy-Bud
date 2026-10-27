@@ -188,7 +188,7 @@ function AuthLoading() {
   return <View style={styles.authScreen}><View style={styles.brandMark}><Image source={teddyBudLogo} style={styles.brandLogo} accessibilityLabel="Teddy Bud" /></View><Text style={styles.authTitle}>Opening your private space…</Text><Text style={styles.authBody}>Checking your secure session.</Text></View>;
 }
 
-function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
+export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
   const { width } = useWindowDimensions();
   const compact = width < 600;
   const [mode, setMode] = useState<'login' | 'create' | 'recover' | 'migrate'>(initialMode);
