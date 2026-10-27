@@ -851,12 +851,35 @@ export class GatewayStateStore {
     const pathname = new URL(request.url).pathname;
 
     if (pathname === '/user-sessions/list' && request.method === 'GET') {
-      const activeSessionId = await this.ctx.storage.get('active-user-session-id');
-      return json(200, { sessionIds: typeof activeSessionId === 'string' ? [activeSessionId] : [] });
+      const sessionIds = await this.ctx.storage.transaction(async transaction => {
+        let activeSessionId = await transaction.get('active-user-session-id');
+        if (typeof activeSessionId !== 'string') {
+          // Migrate the legacy index in-place. Its IDs were appended in login order,
+          // so the final valid ID represents the most recent session.
+          const legacyIds = await transaction.get('user-session-ids');
+          const candidates = Array.isArray(legacyIds) ? legacyIds.filter(id => typeof id === 'string' && id) : [];
+          activeSessionId = candidates.at(-1);
+          if (typeof activeSessionId === 'string') await transaction.put('active-user-session-id', activeSessionId);
+          if (legacyIds !== undefined) await transaction.delete('user-session-ids');
+        }
+        return typeof activeSessionId === 'string' ? [activeSessionId] : [];
+      });
+      return json(200, { sessionIds });
     }
 
     if (pathname === '/user-sessions/active' && request.method === 'GET') {
-      return json(200, { activeSessionId: await this.ctx.storage.get('active-user-session-id') ?? null });
+      const activeSessionId = await this.ctx.storage.transaction(async transaction => {
+        let active = await transaction.get('active-user-session-id');
+        if (typeof active !== 'string') {
+          const legacyIds = await transaction.get('user-session-ids');
+          const candidates = Array.isArray(legacyIds) ? legacyIds.filter(id => typeof id === 'string' && id) : [];
+          active = candidates.at(-1);
+          if (typeof active === 'string') await transaction.put('active-user-session-id', active);
+          if (legacyIds !== undefined) await transaction.delete('user-session-ids');
+        }
+        return typeof active === 'string' ? active : null;
+      });
+      return json(200, { activeSessionId });
     }
 
     if (pathname === '/user-sessions/add' && request.method === 'POST') {
@@ -865,7 +888,13 @@ export class GatewayStateStore {
       let previousSessionId;
       await this.ctx.storage.transaction(async transaction => {
         previousSessionId = await transaction.get('active-user-session-id');
+        if (typeof previousSessionId !== 'string') {
+          const legacyIds = await transaction.get('user-session-ids');
+          const candidates = Array.isArray(legacyIds) ? legacyIds.filter(id => typeof id === 'string' && id) : [];
+          previousSessionId = candidates.at(-1);
+        }
         await transaction.put('active-user-session-id', sessionId);
+        if (await transaction.get('user-session-ids') !== undefined) await transaction.delete('user-session-ids');
       });
       return json(200, { success: true, previousSessionIds: typeof previousSessionId === 'string' && previousSessionId !== sessionId ? [previousSessionId] : [] });
     }
@@ -874,8 +903,19 @@ export class GatewayStateStore {
       const { sessionId } = await request.json();
       if (typeof sessionId !== 'string' || !sessionId) return json(400, { error: 'Invalid session id.' });
       await this.ctx.storage.transaction(async transaction => {
-        const activeSessionId = await transaction.get('active-user-session-id');
+        let activeSessionId = await transaction.get('active-user-session-id');
+        const legacyIds = await transaction.get('user-session-ids');
+        if (typeof activeSessionId !== 'string') {
+          const candidates = Array.isArray(legacyIds) ? legacyIds.filter(id => typeof id === 'string' && id) : [];
+          activeSessionId = candidates.at(-1);
+          if (typeof activeSessionId === 'string') await transaction.put('active-user-session-id', activeSessionId);
+        }
         if (activeSessionId === sessionId) await transaction.delete('active-user-session-id');
+        if (Array.isArray(legacyIds)) {
+          const remaining = legacyIds.filter(id => id !== sessionId);
+          if (remaining.length) await transaction.put('user-session-ids', remaining);
+          else await transaction.delete('user-session-ids');
+        }
       });
       return json(200, { success: true });
     }
