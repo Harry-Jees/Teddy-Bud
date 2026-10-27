@@ -26,7 +26,7 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 }));
 
 
-test('mobile navigation exposes four destinations and an immediate central New Chat action', async () => {
+test('mobile navigation exposes four icons total and an immediate central New Chat action', async () => {
   const onNavigate = jest.fn();
   const onNewConversation = jest.fn();
   let renderer!: ReactTestRenderer.ReactTestRenderer;
@@ -44,7 +44,7 @@ test('mobile navigation exposes four destinations and an immediate central New C
     'Start a new chat',
     'More',
   ]);
-  expect(labels.filter(label => label !== 'Start a new chat')).toHaveLength(4);
+  expect(labels.filter(label => label !== 'Start a new chat')).toHaveLength(3);
 
   const interactive = (label: string) => renderer.root
     .findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')
