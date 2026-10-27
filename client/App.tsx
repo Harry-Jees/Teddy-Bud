@@ -1454,8 +1454,19 @@ function NavigationIcon({ name, active = false, size = 22 }: { name: string; act
     'heart-pulse': ['M20.8 8.8c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.8 4.8 0 0 1 12 6a4.8 4.8 0 0 1 8.8 2.8Z', 'M5 12h3l2-3 3 6 2-3h4'],
     wind: ['M3 8h12a3 3 0 1 0-3-3', 'M2 12h17a3 3 0 1 1-3 3', 'M4 16h6'],
   };
-  const fallback: Record<string, string> = { 'message-circle': '◌', brain: '✳', compass: '◎', settings: '⚙', 'book-open': '▤', 'heart-pulse': '♡', wind: '≈' };
-  if (Platform.OS !== 'web') return <Text accessibilityElementsHidden style={{ fontSize: size, lineHeight: size + 3, color: active ? C.cocoaDark : C.muted }}>{fallback[name] ?? '○'}</Text>;
+  const color = active ? C.cocoaDark : C.muted;
+  if (Platform.OS !== 'web') {
+    const line = { height: 1.8, backgroundColor: color, borderRadius: 2 } as const;
+    return <View accessibilityElementsHidden style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {name === 'message-circle' && <View style={{ width: 18, height: 15, borderRadius: 8, borderWidth: 1.7, borderColor: color, alignItems: 'center', justifyContent: 'center' }}><View style={{ flexDirection: 'row', gap: 2.5 }}><View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: color }} /><View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: color }} /><View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: color }} /></View></View>}
+      {name === 'brain' && <View style={{ width: 19, height: 19, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 10, height: 15, borderWidth: 1.7, borderColor: color, borderTopLeftRadius: 7, borderBottomLeftRadius: 7, borderRightWidth: 0 }} /><View style={{ width: 10, height: 15, borderWidth: 1.7, borderColor: color, borderTopRightRadius: 7, borderBottomRightRadius: 7, borderLeftWidth: 0 }} /></View>}
+      {name === 'compass' && <View style={{ width: 19, height: 19, borderWidth: 1.7, borderColor: color, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 7, height: 7, borderLeftWidth: 1.7, borderTopWidth: 1.7, borderColor: color, transform: [{ rotate: '45deg' }] }} /></View>}
+      {name === 'settings' && <View style={{ width: 18, height: 18, borderRadius: 6, borderWidth: 1.7, borderColor: color, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 6, height: 6, borderRadius: 4, borderWidth: 1.7, borderColor: color }} /></View>}
+      {name === 'book-open' && <View style={{ flexDirection: 'row', gap: 1 }}><View style={{ width: 8, height: 15, borderWidth: 1.6, borderColor: color, borderTopLeftRadius: 3, borderBottomLeftRadius: 3 }} /><View style={{ width: 8, height: 15, borderWidth: 1.6, borderColor: color, borderTopRightRadius: 3, borderBottomRightRadius: 3 }} /></View>}
+      {name === 'heart-pulse' && <Text style={{ color, fontSize: size - 1, lineHeight: size }}>♡</Text>}
+      {name === 'wind' && <View style={{ width: 19, gap: 4 }}><View style={[line, { width: 15 }]} /><View style={[line, { width: 19 }]} /><View style={[line, { width: 11 }]} /></View>}
+    </View>;
+  }
   return React.createElement('svg' as any, { viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: active ? C.cocoaDark : C.muted, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', focusable: false, 'aria-hidden': true },
     ...(paths[name] ?? paths.compass).map(d => React.createElement('path' as any, { key: d, d, fill: 'none' })));
 }
