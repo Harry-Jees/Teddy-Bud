@@ -1364,6 +1364,7 @@ export function ChatPage({ wide, conversationId, assistantName = 'Teddy', messag
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
   const chatInsets = useSafeAreaInsets();
+  const reduceMotion = useReducedMotionPreference();
   const canSend = (!!draft.trim() || !!selectedImage) && !isSending;
   const [composerFocused, setComposerFocused] = useState(false);
   const [manualCrisisSupport, setManualCrisisSupport] = useState(false);
@@ -1417,10 +1418,10 @@ export function ChatPage({ wide, conversationId, assistantName = 'Teddy', messag
     <View style={[styles.chatHeader, wide && styles.chatHeaderWide]}>
       <View style={styles.chatHeaderCopy}><Text style={styles.pageTitle} numberOfLines={1}>{conversationTitle}</Text></View>
       <View style={styles.headerActions}>
-        {!wide && <Pressable accessibilityRole="button" accessibilityLabel="View chats" onPress={onOpenHistory} style={({ pressed }) => [styles.headerTextButton, pressed && styles.pressed]}><Text style={styles.headerActionLabel}>Chats</Text></Pressable>}
+        {!wide && <Pressable accessibilityRole="button" accessibilityLabel="View chats" onPress={onOpenHistory} style={({ pressed }) => [styles.headerTextButton, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.headerActionLabel}>Chats</Text></Pressable>}
         {wide ? <>
-          <Pressable accessibilityRole="button" accessibilityLabel="Rename chat" disabled={isSending || !canManageChat} onPress={onRenameChat} style={({ pressed }) => [styles.headerTextButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed]}><Text style={styles.headerActionLabel}>Rename chat</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={isPinned ? 'Unpin chat' : 'Pin chat'} accessibilityState={{ checked: isPinned }} disabled={isSending || !canManageChat} onPress={onTogglePin} style={({ pressed }) => [styles.headerTextButton, isPinned && styles.headerPinnedButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed]}><Text style={[styles.headerActionLabel, isPinned && styles.headerPinnedButtonLabel]}>{isPinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Rename chat" disabled={isSending || !canManageChat} onPress={onRenameChat} style={({ pressed }) => [styles.headerTextButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.headerActionLabel}>Rename chat</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={isPinned ? 'Unpin chat' : 'Pin chat'} accessibilityState={{ checked: isPinned }} disabled={isSending || !canManageChat} onPress={onTogglePin} style={({ pressed }) => [styles.headerTextButton, isPinned && styles.headerPinnedButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={[styles.headerActionLabel, isPinned && styles.headerPinnedButtonLabel]}>{isPinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
         </> : <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open chat actions"
@@ -1428,7 +1429,7 @@ export function ChatPage({ wide, conversationId, assistantName = 'Teddy', messag
           accessibilityState={{ expanded: chatActionsOpen }}
           disabled={isSending || !canManageChat}
           onPress={() => setChatActionsOpen(true)}
-          style={({ pressed }) => [styles.chatActionsMenuButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.chatActionsMenuButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}
         ><Text style={styles.chatActionsMenuGlyph}>···</Text></Pressable>}
       </View>
     </View>
@@ -1440,8 +1441,8 @@ export function ChatPage({ wide, conversationId, assistantName = 'Teddy', messag
             <Text style={styles.chatActionsSheetTitle}>Chat options</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Dismiss chat options" onPress={() => setChatActionsOpen(false)} style={({ pressed }) => [styles.chatActionsDismiss, pressed && styles.pressed]}><Text style={styles.chatActionsDismissText}>Done</Text></Pressable>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Rename chat" disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onRenameChat(); }} style={({ pressed }) => [styles.chatActionsSheetItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed]}><Text style={styles.chatActionsSheetItemText}>Rename chat</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={isPinned ? 'Unpin chat' : 'Pin chat'} accessibilityState={{ checked: isPinned }} disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onTogglePin(); }} style={({ pressed }) => [styles.chatActionsSheetItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed]}><Text style={styles.chatActionsSheetItemText}>{isPinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Rename chat" disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onRenameChat(); }} style={({ pressed }) => [styles.chatActionsSheetItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.chatActionsSheetItemText}>Rename chat</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={isPinned ? 'Unpin chat' : 'Pin chat'} accessibilityState={{ checked: isPinned }} disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onTogglePin(); }} style={({ pressed }) => [styles.chatActionsSheetItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.chatActionsSheetItemText}>{isPinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
         </View>
       </View>
     </Modal>}
