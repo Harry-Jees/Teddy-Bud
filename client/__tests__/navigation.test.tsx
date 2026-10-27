@@ -42,7 +42,6 @@ test('mobile navigation exposes four destinations and an immediate central New C
     'Chats',
     'Memories',
     'Start a new chat',
-    'Journal',
     'More',
   ]);
   expect(labels.filter(label => label !== 'Start a new chat')).toHaveLength(4);
@@ -74,7 +73,7 @@ test('More screen keeps secondary tools discoverable and navigable', async () =>
   const labels = [...new Set(renderer.root
     .findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string')
     .map(button => button.props.accessibilityLabel))];
-  expect(labels).toEqual(['Chat history', 'Emotions', 'Wellbeing', 'Privacy', 'Settings']);
+  expect(labels).toEqual(['Chat history', 'Journal', 'Emotions', 'Wellbeing', 'Privacy', 'Settings']);
 
   const privacyControl = renderer.root
     .findAll(node => node.props.accessibilityLabel === 'Privacy' && typeof node.props.onPress === 'function')
