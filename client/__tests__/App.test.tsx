@@ -5,7 +5,7 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Animated, Modal, ScrollView, Share, Text } from 'react-native';
-import { ChatPage } from '../App';
+import { ChatPage, JournalPage } from '../App';
 
 jest.mock('@react-native-documents/picker', () => ({
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
@@ -511,5 +511,56 @@ test('chat preserves an older reading position during streaming and exposes jump
     renderer.root.findByProps({ accessibilityLabel: 'Jump to latest message' }).props.onPress();
   });
   expect(renderer.root.findAllByProps({ accessibilityLabel: 'Jump to latest message' })).toHaveLength(0);
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);
+
+
+test('journal preserves edited text and explains a failed local save', async () => {
+  const onSave = jest.fn().mockRejectedValue(new Error('SQLite internal stack details'));
+  const noop = jest.fn(async () => undefined);
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <JournalPage wide={false} entries={[]} onSave={onSave} onDelete={noop} onShare={jest.fn()} />,
+    );
+  });
+
+  const entryField = renderer.root.findByProps({ accessibilityLabel: 'Journal entry' });
+  await ReactTestRenderer.act(async () => {
+    entryField.props.onChangeText('A private entry I do not want to lose.');
+  });
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Save privately' }).props.onPress();
+  });
+
+  expect(onSave).toHaveBeenCalledTimes(1);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Journal entry' }).props.value)
+    .toBe('A private entry I do not want to lose.');
+  const alert = renderer.root.findByProps({ accessibilityRole: 'alert' });
+  expect(alert.findAllByType(Text).map(node => node.props.children).join(' '))
+    .toMatch(/your text is still in the editor/i);
+  expect(alert.findAllByType(Text).map(node => node.props.children).join(' '))
+    .not.toMatch(/SQLite internal stack details/i);
+
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);
+
+test('journal explains an empty save attempt instead of silently blocking it', async () => {
+  const onSave = jest.fn(async () => undefined);
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <JournalPage wide={false} entries={[]} onSave={onSave} onDelete={jest.fn(async () => undefined)} onShare={jest.fn()} />,
+    );
+  });
+
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Save privately' }).props.onPress();
+  });
+  const alert = renderer.root.findByProps({ accessibilityRole: 'alert' });
+  expect(alert.findAllByType(Text).map(node => node.props.children).join(' '))
+    .toMatch(/write a little in your entry before saving/i);
+  expect(onSave).not.toHaveBeenCalled();
+
   await ReactTestRenderer.act(async () => renderer.unmount());
 }, 15000);
