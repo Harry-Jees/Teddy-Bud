@@ -7,7 +7,7 @@ Scope: Mobile-first UX, all app screens, sign-in/password/recovery flows, error 
 
 ## 1. Goal and non-negotiable rules
 
-Deliver a calmer, more predictable Teddy Bud app without losing access to existing chats or weakening privacy. Mobile navigation should be simplified to four regular destinations plus a prominent boxed **+** in the middle that starts a new chat immediately. Secondary tools belong in **More**. The same feature set must remain reachable on desktop.
+Deliver a calmer, more predictable Teddy Bud app without losing access to existing chats or weakening privacy. Mobile navigation should contain **four icons total**: Chats, Memories, a boxed central **+** that starts a new chat immediately, and More. Journal and all other secondary tools belong in More. Secondary tools belong in **More**. The same feature set must remain reachable on desktop.
 
 - [ ] Keep this file as the source of truth for the rollout; tick tasks only after implementation and verification.
 - [ ] Do not redesign multiple unrelated flows in one risky commit; complete and test each phase before moving on.
@@ -31,7 +31,7 @@ The plan is now being executed on this branch. Items below describe code added s
 - [x] Added inline sign-in form validation for email, password, password confirmation, and recovery passphrase fields; validation submits are no longer silently blocked without feedback.
 - [x] Added accessible error announcements and clears stale field errors when users correct input.
 - [x] Added explicit secure-session storage failure handling so sign-out does not silently pretend credentials were cleared when local storage removal fails.
-- [x] Replaced the mobile seven-destination bar with four destinations (**Chats, Memories, Journal, More**) plus a boxed central **+** that starts a new chat directly.
+- [x] Replaced the mobile seven-destination bar with **four icons total**: Chats, Memories, a boxed central **+**, and More; moved Journal into More.
 - [x] Added a More screen for Chat history, Emotions, Wellbeing, Privacy, and Settings, while leaving the desktop sidebar hierarchy available.
 - [x] Added small press-in scale feedback to common buttons and navigation, honoring reduced-motion preferences; enlarged common button and navigation targets.
 - [x] Added safe, actionable messages for chat, quota, oversized-input, local database, backup, and external-link failures; preserved structured daily-quota error codes for specific user guidance.
@@ -187,9 +187,9 @@ A task is complete only when its code change, automated tests, narrow-screen che
 **Outcome:** fewer persistent choices with no loss of existing features.
 
 ### Todo 2.1 — Mobile bottom navigation
-- [ ] Replace the seven-destination bottom bar with four regular destinations plus a prominent boxed **+** in the center.
+- [x] Replace the seven-destination bottom bar with four icons total: Chats, Memories, a boxed central **+**, and More.
 - [ ] Keep the central **+** visually distinct and make one tap start a fresh chat immediately, without opening an intermediate menu.
-- [ ] Agree and document the four regular destinations before coding; initial proposal: Chats, Memories, Journal, More.
+- [x] Set the four bottom-bar icons to Chats, Memories, central New Chat, and More; place Journal and secondary tools inside More.
 - [ ] Make **More** open a clear destination list for Emotions, Wellbeing, Privacy, Settings, and other secondary tools.
 - [ ] Ensure History remains easy to find from Chats and is not lost during the change.
 - [ ] Preserve the selected destination and provide a visible, accessible current-state indicator.
@@ -515,7 +515,7 @@ A task is complete only when its code change, automated tests, narrow-screen che
 - [ ] Do not merge, deploy, or announce completion until the user explicitly requests the next release action and all applicable gates pass.
 
 **Final acceptance criteria**
-1. Mobile navigation contains four regular destinations plus a boxed central **+** for immediate New Chat, with all other tools reachable through More.
+1. Mobile navigation contains four icons total—Chats, Memories, a boxed central **+** for immediate New Chat, and More—with Journal and all other secondary tools reachable through More.
 2. Every sign-in/password/recovery state displays accurate, safe, accessible feedback and preserves user data on recoverable errors.
 3. Every major data-mutating action has reliable success/failure feedback, cancellation behavior, and regression coverage.
 4. Every high-priority issue from the audit is closed or explicitly recorded as blocked with a reason.
