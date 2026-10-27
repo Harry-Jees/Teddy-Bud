@@ -50,6 +50,9 @@ export function localDataErrorMessage(error: unknown, operation: LocalDataOperat
   if (/locked|busy|temporarily unavailable/.test(detail)) {
     return 'Your private data store is temporarily busy. Wait a moment and retry.';
   }
+  if (/could not clear|failed to clear|could not delete|failed to remove/.test(detail)) {
+    return 'Teddy Bud could not finish clearing this device’s saved data. Retry only if you still intend to remove it.';
+  }
   if (operation === 'load') {
     return 'Teddy Bud could not open the saved data on this device. Retry local storage. Your data has not been intentionally deleted.';
   }
@@ -57,4 +60,14 @@ export function localDataErrorMessage(error: unknown, operation: LocalDataOperat
     return 'Teddy Bud could not finish clearing this device’s saved data. Retry only if you still intend to remove it.';
   }
   return 'This change could not be saved to this device. Your current screen may be ahead of the saved data; retry saving before leaving this session.';
+}
+
+export function backupErrorMessage(error: unknown, operation: 'export' | 'import'): string {
+  const message = error instanceof Error ? error.message : '';
+  const safeKnownError = /^(Secure backup encryption is unavailable|A signed-in account is required|Choose a backup passphrase|This device data is too large|This backup is larger|Sign in to the account that owns|Enter the 12-character-or-longer|That file is not a supported|Backup encoding is invalid|Backup data is incomplete|Backup chat selection is invalid|A saved chat in this backup is invalid|A saved memory in this backup is invalid|Backup settings are invalid|The selected chat in this backup is missing|The backup cryptographic fields have invalid lengths|This backup belongs to a different account|The backup could not be unlocked)/i.test(message);
+  if (safeKnownError) return message;
+  if (operation === 'export') {
+    return 'Teddy Bud could not create the encrypted backup. Check available storage and secure-backup support, then try again.';
+  }
+  return 'Teddy Bud could not complete the restore safely. Review the backup file and passphrase, then retry. Do not clear local data as a troubleshooting step.';
 }
