@@ -1,3 +1,24 @@
+export async function savePlainTextFile(contents: string, filename: string): Promise<boolean> {
+  const safeFileName = filename.toLowerCase().endsWith('.txt') ? filename : `${filename}.txt`;
+  const path = `${Dirs.CacheDir}/${safeFileName}`;
+  await FileSystem.writeFile(path, contents);
+  try {
+    const [result] = await saveDocuments({
+      sourceUris: [`file://${encodeURI(path)}`],
+      fileName: safeFileName,
+      mimeType: 'text/plain',
+      copy: true,
+    });
+    if (result.error) throw new Error('The text file could not be prepared for export.');
+    return true;
+  } catch (error) {
+    if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) return false;
+    throw error;
+  } finally {
+    await FileSystem.unlink(path).catch(() => undefined);
+  }
+}
+
 import { errorCodes, isErrorWithCode, keepLocalCopy, pick, saveDocuments, types } from '@react-native-documents/picker';
 import type { DocumentPickerResponse } from '@react-native-documents/picker';
 import { Dirs, FileSystem } from 'react-native-file-access';

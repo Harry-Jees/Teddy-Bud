@@ -28,17 +28,20 @@ import { GatewayService } from './src/services/gateway';
 import { browserAuthService } from './src/services/browserAuth';
 import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
-import type { EmotionCheckIn, JournalEntry, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
+import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
-import { createEncryptedBackup, MAX_BACKUP_BYTES, readEncryptedBackup } from './src/services/backup';
-import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
+import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncryptedBackup } from './src/services/backup';
+import { pickBackupFile, saveBackupFile, savePlainTextFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
+import { authErrorMessage, AuthServiceError, AuthValidationError } from './src/services/authErrors';
+import type { AuthField } from './src/services/authErrors';
+import { backupErrorMessage, chatErrorMessage, imagePickerErrorMessage, localDataErrorMessage } from './src/services/userFacingErrors';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
 
-type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio';
+type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio' | 'more';
 type Memory = LocalMemory;
 type MemorySuggestion = { conversationId: string; messageId: number; fact: string };
 type Message = LocalMessage;
@@ -59,10 +62,12 @@ const navItems: { id: Page; icon: string; label: string }[] = [
   { id: 'journal', icon: '▤', label: 'Journal' },
   { id: 'studio', icon: '☼', label: 'Wellbeing' },
   { id: 'privacy', icon: '⌑', label: 'Privacy' },
+  { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
-  ...navItems,
-  { id: 'settings', icon: '⚙', label: 'Settings' },
+  { id: 'chat', icon: '◌', label: 'Chats' },
+  { id: 'memories', icon: '✳', label: 'Memories' },
+  { id: 'more', icon: '···', label: 'More' },
 ];
 
 const gatewayService = new GatewayService(GATEWAY_BASE_URL);
@@ -142,7 +147,7 @@ function AccessGate() {
           }
         }
       } catch (restoreError) {
-        if (mounted) setError(restoreError instanceof Error ? restoreError.message : 'Unable to restore your sign-in.');
+        if (mounted) setError(authErrorMessage(restoreError, 'session-restore'));
       } finally {
         if (mounted) setBusy(false);
       }
@@ -156,8 +161,11 @@ function AccessGate() {
   useEffect(() => {
     if (!session) return undefined;
     const expireSession = () => {
-      browserAuthService.clear().catch(() => undefined).then(() => {
+      browserAuthService.clear().then(() => {
         setError('Your one-hour session has expired. Please sign in again.');
+      }).catch(clearError => {
+        setError(authErrorMessage(clearError, 'session-restore'));
+      }).finally(() => {
         setInitialMode('login');
         setSession(null);
       });
@@ -175,7 +183,13 @@ function AccessGate() {
   if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
   return <TeddyBud sessionToken={session.accessToken} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
-      setError(logoutError instanceof Error ? logoutError.message : 'Unable to end the server session.');
+      const message = authErrorMessage(logoutError, 'sign-out');
+      setError(message);
+      if (logoutError instanceof AuthServiceError && logoutError.kind === 'storage') {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert(message);
+        else Alert.alert('Sign out could not finish', message);
+        return;
+      }
       setSession(null);
     });
   }} />;
@@ -185,7 +199,7 @@ function AuthLoading() {
   return <View style={styles.authScreen}><View style={styles.brandMark}><Image source={teddyBudLogo} style={styles.brandLogo} accessibilityLabel="Teddy Bud" /></View><Text style={styles.authTitle}>Opening your private space…</Text><Text style={styles.authBody}>Checking your secure session.</Text></View>;
 }
 
-function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
+export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
   const { width } = useWindowDimensions();
   const compact = width < 600;
   const [mode, setMode] = useState<'login' | 'create' | 'recover' | 'migrate'>(initialMode);
@@ -196,44 +210,70 @@ function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthentica
   const [recoveryPassphraseConfirmation, setRecoveryPassphraseConfirmation] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
+
+  const clearFieldError = (field: AuthField) => {
+    setFieldErrors(current => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+    setFormError(null);
+  };
 
   const submit = async () => {
     if (submitting) return;
-    setSubmitting(true); setFormError(null); setNotice(null);
+    setSubmitting(true); setFormError(null); setFieldErrors({}); setNotice(null);
     try {
+      if (mode !== 'migrate' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        throw new AuthValidationError('Enter a valid email address.', 'email');
+      }
+      if (mode === 'login' && !password) throw new AuthValidationError('Enter your password.', 'password');
+
       if (mode === 'login') {
         onAuthenticated(await browserAuthService.signIn(email.trim(), password));
       } else if (mode === 'create') {
-        if (password.length < 6) throw new Error('Choose a password with at least 6 characters.');
-        if (password !== confirmPassword) throw new Error('The passwords do not match.');
+        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.', 'password');
+        if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.', 'confirmPassword');
         const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 10 || phrase.length > 128) throw new Error('Choose a recovery passphrase with 10 to 128 characters.');
-        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new Error('The recovery passphrases do not match.');
+        if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.', 'recoveryPassphrase');
+        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.', 'recoveryPassphraseConfirmation');
         onAuthenticated(await browserAuthService.createAccount(email.trim(), password, phrase));
       } else if (mode === 'migrate') {
-        if (password.length < 6) throw new Error('Choose a password with at least 6 characters.');
-        if (password !== confirmPassword) throw new Error('The passwords do not match.');
+        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.');
+        if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.');
         const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 10 || phrase.length > 128) throw new Error('Choose a recovery passphrase with 10 to 128 characters.');
-        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new Error('The recovery passphrases do not match.');
+        if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.');
+        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.');
         onAuthenticated(await browserAuthService.migrateLegacyAccount(password, phrase));
       } else {
-        if (password.length < 6) throw new Error('Choose a new password with at least 6 characters.');
-        if (recoveryPassphrase.trim().length < 10) throw new Error('Enter the recovery passphrase you chose when you created your account.');
+        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a new password between 6 and 128 characters.', 'password');
+        if (recoveryPassphrase.trim().length < 10) throw new AuthValidationError('Enter the recovery passphrase you chose when you created your account.', 'recoveryPassphrase');
         await browserAuthService.recoverPassword(email.trim(), recoveryPassphrase.trim(), password);
         setMode('login'); setPassword(''); setRecoveryPassphrase('');
         setNotice('Password changed. Sign in with your new password.');
       }
     } catch (authError) {
-      setFormError(authError instanceof Error ? authError.message : 'Unable to complete sign-in.');
+      const context = mode === 'login' ? 'sign-in'
+        : mode === 'create' ? 'create-account'
+          : mode === 'recover' ? 'password-recovery'
+            : 'account-migration';
+      if (authError instanceof AuthValidationError && authError.field) {
+        setFieldErrors({ [authError.field]: authError.message });
+        setFormError(null);
+      } else {
+        setFormError(authErrorMessage(authError, context));
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   const changeMode = (next: 'login' | 'create' | 'recover' | 'migrate') => {
-    setMode(next); setFormError(null); setNotice(null); setPassword(''); setConfirmPassword(''); setRecoveryPassphrase(''); setRecoveryPassphraseConfirmation('');
+    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setConfirmPassword(''); setRecoveryPassphrase(''); setRecoveryPassphraseConfirmation('');
   };
 
   const title = mode === 'create' ? 'Create your private space.' : mode === 'recover' ? 'Reset your password.' : mode === 'migrate' ? 'Keep your existing space.' : 'Welcome back.';
@@ -246,19 +286,34 @@ function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthentica
       <Text style={styles.authEyebrow}>Teddy Bud</Text>
       <Text style={styles.authTitle}>{title}</Text>
       <Text style={styles.authBody}>{mode === 'create' ? 'Create a strong password and a recovery passphrase you can keep safe. Your account opens your private space on this device.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in to open your private space on this device.'}</Text>
-      {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" style={styles.authErrorText}>{formError || error}</Text></View>}
-      {!!notice && <View style={styles.authNotice}><Text style={styles.authNoticeText}>{notice}</Text></View>}
-      {mode !== 'migrate' && <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
-      {mode === 'recover' && <TextInput accessibilityLabel="Recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={setRecoveryPassphrase} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
-      <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry value={password} onChangeText={setPassword} placeholder={mode === 'recover' ? 'New password (6+ characters)' : 'Password (6+ characters)'} placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
-      {(mode === 'create' || mode === 'migrate') && <>
-        <TextInput accessibilityLabel="Confirm password" autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
-        <Text style={styles.authKeyLabel}>RECOVERY PASSPHRASE</Text>
-        <TextInput accessibilityLabel="Choose recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={setRecoveryPassphrase} placeholder="At least 10 characters" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
-        <Text style={styles.authFootnote}>Choose a unique recovery passphrase of at least 10 characters and keep it somewhere safe. You will need it with your email to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
-        <TextInput accessibilityLabel="Confirm recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphraseConfirmation} onChangeText={setRecoveryPassphraseConfirmation} placeholder="Confirm recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
+      {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authErrorText}>{formError || error}</Text></View>}
+      {!!notice && <View style={styles.authNotice}><Text accessibilityLiveRegion="polite" style={styles.authNoticeText}>{notice}</Text></View>}
+      {mode !== 'migrate' && <>
+        <TextInput accessibilityLabel="Email" accessibilityHint={fieldErrors.email} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" value={email} onChangeText={value => { setEmail(value); clearFieldError('email'); }} placeholder="Email address" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.email && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.email && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.email}</Text>}
       </>}
-      <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 10) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())} onPress={submit} style={({ pressed }) => [styles.authButton, (submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 10) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())) && styles.buttonDisabled, pressed && styles.pressed]}>
+      {mode === 'recover' && <>
+        <TextInput accessibilityLabel="Recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.recoveryPassphrase && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
+      </>}
+      <View style={[styles.authPasswordRow, fieldErrors.password && styles.authInputInvalid]}>
+        <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} accessibilityHint={fieldErrors.password} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry={!passwordVisible} value={password} onChangeText={value => { setPassword(value); clearFieldError('password'); }} placeholder={mode === 'recover' ? 'New password (6–128 characters)' : 'Password (6–128 characters)'} placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
+        <Pressable accessibilityRole="button" accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'} accessibilityHint="Changes whether the password text is visible on this screen" disabled={submitting} onPress={() => setPasswordVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}>
+          <Text style={styles.showPasswordText}>{passwordVisible ? 'Hide' : 'Show'}</Text>
+        </Pressable>
+      </View>
+      {fieldErrors.password && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.password}</Text>}
+      {(mode === 'create' || mode === 'migrate') && <>
+        <TextInput accessibilityLabel="Confirm password" accessibilityHint={fieldErrors.confirmPassword} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearFieldError('confirmPassword'); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.confirmPassword && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.confirmPassword && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.confirmPassword}</Text>}
+        <Text style={styles.authKeyLabel}>RECOVERY PASSPHRASE</Text>
+        <TextInput accessibilityLabel="Choose recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="10–128 characters" placeholderTextColor="#938A80" maxLength={128} style={[styles.authInput, fieldErrors.recoveryPassphrase && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
+        <Text style={styles.authFootnote}>Choose a unique recovery passphrase of at least 10 characters and keep it somewhere safe. You will need it with your email to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
+        <TextInput accessibilityLabel="Confirm recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphraseConfirmation} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphraseConfirmation} onChangeText={value => { setRecoveryPassphraseConfirmation(value); clearFieldError('recoveryPassphraseConfirmation'); }} placeholder="Confirm recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={[styles.authInput, fieldErrors.recoveryPassphraseConfirmation && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.recoveryPassphraseConfirmation && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphraseConfirmation}</Text>}
+      </>}
+      <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
       </Pressable>
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
@@ -282,12 +337,18 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [emotionCheckIns, setEmotionCheckIns] = useState<EmotionCheckIn[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [draft, setDraft] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [memoryModal, setMemoryModal] = useState(false);
   const [renameConversationId, setRenameConversationId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [memorySuggestion, setMemorySuggestion] = useState<MemorySuggestion | null>(null);
   const [editing, setEditing] = useState<Memory | null>(null);
   const [memoryDraft, setMemoryDraft] = useState('');
+  const [memorySaving, setMemorySaving] = useState(false);
+  const [memoryActionError, setMemoryActionError] = useState<string | null>(null);
+  const [memoryDeleteRetry, setMemoryDeleteRetry] = useState<Memory | null>(null);
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [rememberInSession, setRememberInSession] = useState(true);
   const rememberPreferenceRef = useRef(true);
   const memorySuggestionRequestId = useRef(0);
@@ -303,6 +364,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [localDataOwner, setLocalDataOwner] = useState<string | null>(null);
   const [localDataError, setLocalDataError] = useState<string | null>(null);
   const [localDataSaveError, setLocalDataSaveError] = useState<string | null>(null);
+  const [pendingLocalAction, setPendingLocalAction] = useState<(() => Promise<void>) | null>(null);
   const [localDataRetry, setLocalDataRetry] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -317,8 +379,45 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const receivedReplyRef = useRef('');
   const responseAbortControllerRef = useRef<AbortController | null>(null);
 
-  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
+  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : page === 'more' ? 'More tools' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
+
+  const persistLocalSnapshot = useCallback(async (overrides: Partial<LocalAppData>) => {
+    const currentSnapshot: LocalAppData = {
+      conversations,
+      activeConversationId,
+      memories,
+      emotionCheckIns,
+      journalEntries,
+      rememberInSession,
+      shareMemories,
+      shareChatHistory,
+      shareAboutMe,
+      aboutMe,
+      assistantName,
+      assistantCharacterId,
+      assistantCharacterNames,
+    };
+    const nextSnapshot: LocalAppData = { ...currentSnapshot, ...overrides };
+    await localDataService.save(owner, nextSnapshot);
+    if ('conversations' in overrides) setConversations(nextSnapshot.conversations);
+    if ('activeConversationId' in overrides) setActiveConversationId(nextSnapshot.activeConversationId);
+    if ('memories' in overrides) setMemories(nextSnapshot.memories);
+    if ('emotionCheckIns' in overrides) setEmotionCheckIns(nextSnapshot.emotionCheckIns ?? []);
+    if ('journalEntries' in overrides) setJournalEntries(nextSnapshot.journalEntries ?? []);
+    if ('rememberInSession' in overrides) {
+      setRememberInSession(nextSnapshot.rememberInSession);
+      rememberPreferenceRef.current = nextSnapshot.rememberInSession;
+    }
+    if ('shareMemories' in overrides) setShareMemories(nextSnapshot.shareMemories);
+    if ('shareChatHistory' in overrides) setShareChatHistory(nextSnapshot.shareChatHistory);
+    if ('shareAboutMe' in overrides) setShareAboutMe(nextSnapshot.shareAboutMe);
+    if ('aboutMe' in overrides) setAboutMe(nextSnapshot.aboutMe);
+    if ('assistantName' in overrides) setAssistantName(nextSnapshot.assistantName);
+    if ('assistantCharacterId' in overrides) setAssistantCharacterId(nextSnapshot.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
+    if ('assistantCharacterNames' in overrides) setAssistantCharacterNames(nextSnapshot.assistantCharacterNames ?? {});
+    if (!pendingLocalAction) setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, pendingLocalAction]);
   const refreshCreditBalance = useCallback(async () => {
     try {
       setCreditBalance(await gatewayService.getCreditBalance(sessionToken));
@@ -383,11 +482,11 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       assistantCharacterId,
       assistantCharacterNames,
     }).then(() => {
-      setLocalDataSaveError(null);
+      if (!pendingLocalAction) setLocalDataSaveError(null);
     }).catch(error => {
       setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
     });
-  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries]);
+  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries, pendingLocalAction]);
 
   const appendConversationMessage = (conversationId: string, message: Message) => {
     const updatedAt = new Date().toISOString();
@@ -414,41 +513,130 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const openMemory = (memory?: Memory) => {
     setEditing(memory ?? null);
     setMemoryDraft(memory?.text ?? '');
+    setMemoryActionError(null);
+    setMemoryDeleteRetry(null);
     setMemoryModal(true);
   };
 
-  const saveMemory = () => {
-    const value = memoryDraft.trim();
-    if (!value) return;
-    if (editing) {
-      setMemories(current => current.map(item => item.id === editing.id ? { ...item, text: value } : item));
-    } else {
-      setMemories(current => [{ id: Date.now(), text: value, date: 'Added just now' }, ...current]);
+  const closeMemoryEditor = () => {
+    if (memorySaving) return;
+    const originalText = editing?.text ?? '';
+    if (memoryDraft.trim() !== originalText) {
+      confirmAction('Discard memory changes?', 'Your unsaved memory text will be discarded.', () => {
+        setMemoryModal(false);
+        setEditing(null);
+        setMemoryDraft('');
+        setMemoryActionError(null);
+      });
+      return;
     }
     setMemoryModal(false);
+    setEditing(null);
+    setMemoryDraft('');
+    setMemoryActionError(null);
+  };
+
+  const saveMemory = async () => {
+    if (memorySaving) return;
+    const value = memoryDraft.trim();
+    if (!value) {
+      setMemoryActionError('Write a memory before saving.');
+      return;
+    }
+    const nextMemories = editing
+      ? memories.map(item => item.id === editing.id ? { ...item, text: value } : item)
+      : [{ id: Date.now(), text: value, date: 'Added just now' }, ...memories];
+    setMemorySaving(true);
+    setMemoryActionError(null);
+    try {
+      await persistLocalSnapshot({ memories: nextMemories });
+      setMemoryModal(false);
+      setEditing(null);
+      setMemoryDraft('');
+      setMemoryDeleteRetry(null);
+      setMemoryActionError(null);
+    } catch {
+      setMemoryActionError('This memory could not be saved. Your text is still in the editor; retry saving before leaving this screen.');
+    } finally {
+      setMemorySaving(false);
+    }
+  };
+
+  const persistForgetMemory = async (memory: Memory) => {
+    setMemoryActionError(null);
+    const nextMemories = memories.filter(item => item.id !== memory.id);
+    try {
+      await persistLocalSnapshot({ memories: nextMemories });
+      setMemoryDeleteRetry(null);
+      setMemoryActionError(null);
+    } catch {
+      setMemoryDeleteRetry(memory);
+      setMemoryActionError('This memory could not be forgotten from saved data. It is still stored on this device; retry the removal.');
+    }
   };
 
   const removeMemory = (memory: Memory) => confirmAction(
     'Forget this memory?',
     'It will be removed from saved memories on this device.',
-    () => setMemories(current => current.filter(item => item.id !== memory.id)),
+    () => { void persistForgetMemory(memory); },
   );
 
+  const retryMemoryDelete = () => {
+    if (memoryDeleteRetry) void persistForgetMemory(memoryDeleteRetry);
+  };
+
   const setConversationPinned = useCallback((conversationId: string, pinned: boolean) => {
-    setConversations(current => current.map(conversation => conversation.id === conversationId ? { ...conversation, pinned } : conversation));
-  }, []);
+    const nextConversations = conversations.map(conversation => conversation.id === conversationId
+      ? { ...conversation, pinned }
+      : conversation);
+    const persistPin = async () => {
+      await persistLocalSnapshot({ conversations: nextConversations });
+    };
+    void persistPin().catch(() => {
+      setPendingLocalAction(() => persistPin);
+      setLocalDataSaveError('This chat change could not be saved. The saved version remains unchanged; retry to apply the change.');
+    });
+  }, [conversations, persistLocalSnapshot]);
 
   const beginRenameConversation = useCallback((conversation: Conversation) => {
     setRenameConversationId(conversation.id);
     setRenameDraft(conversation.title);
+    setRenameError(null);
   }, []);
 
-  const saveConversationRename = () => {
+  const saveConversationRename = async () => {
     const newTitle = renameDraft.trim().slice(0, 80);
-    if (!renameConversationId || !newTitle) return;
-    setConversations(current => current.map(conversation => conversation.id === renameConversationId ? { ...conversation, title: newTitle, updatedAt: new Date().toISOString() } : conversation));
-    setRenameConversationId(null);
-    setRenameDraft('');
+    if (!renameConversationId || !newTitle || renameSaving) return;
+    const nextConversations = conversations.map(conversation => conversation.id === renameConversationId
+      ? { ...conversation, title: newTitle, updatedAt: new Date().toISOString() }
+      : conversation);
+    setRenameSaving(true);
+    setRenameError(null);
+    try {
+      await persistLocalSnapshot({ conversations: nextConversations });
+      setRenameConversationId(null);
+      setRenameDraft('');
+      setRenameError(null);
+    } catch {
+      setRenameError('This chat name could not be saved. Your new name is still in the field; try saving again.');
+    } finally {
+      setRenameSaving(false);
+    }
+  };
+
+  const closeRenameDialog = () => {
+    if (renameSaving) return;
+    const original = conversations.find(conversation => conversation.id === renameConversationId)?.title ?? '';
+    const close = () => {
+      setRenameConversationId(null);
+      setRenameDraft('');
+      setRenameError(null);
+    };
+    if (renameDraft !== original) {
+      confirmAction('Discard chat rename?', 'Your unsaved chat name will be discarded.', close);
+    } else {
+      close();
+    }
   };
 
   const deleteConversation = useCallback((conversation: Conversation) => {
@@ -457,17 +645,25 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       'Delete this chat?',
       `"${conversation.title}" and its messages will be removed from this device for this account.`,
       () => {
-      const remaining = conversations.filter(item => item.id !== conversation.id);
-      setConversations(remaining);
-      if (activeConversationId === conversation.id) {
-        setActiveConversationId(remaining[0]?.id ?? null);
-        setDraft('');
-        setChatError(null);
-        setRetryMessage(null);
-      }
+        const remaining = conversations.filter(item => item.id !== conversation.id);
+        const nextActiveId = activeConversationId === conversation.id
+          ? remaining[0]?.id ?? null
+          : activeConversationId;
+        const persistDelete = async () => {
+          await persistLocalSnapshot({ conversations: remaining, activeConversationId: nextActiveId });
+          if (activeConversationId === conversation.id) {
+            setDraft('');
+            setChatError(null);
+            setRetryMessage(null);
+          }
+        };
+        void persistDelete().catch(() => {
+          setPendingLocalAction(() => persistDelete);
+          setLocalDataSaveError('This chat could not be deleted from saved data. The chat remains available; retry to confirm the removal.');
+        });
       },
     );
-  }, [activeConversationId, conversations, streamingConversationId]);
+  }, [activeConversationId, conversations, streamingConversationId, persistLocalSnapshot]); 
 
   const startNewConversation = useCallback(() => {
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -555,17 +751,73 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const retryLocalData = async () => {
     setLocalDataError(null);
-    setLocalDataSaveError(null);
     if (!localDataReady) {
       setLocalDataRetry(current => current + 1);
       return;
     }
+    if (pendingLocalAction) {
+      const actionToRetry = pendingLocalAction;
+      try {
+        await actionToRetry();
+        setPendingLocalAction(null);
+        setLocalDataSaveError(null);
+      } catch (error) {
+        setPendingLocalAction(() => actionToRetry);
+        setLocalDataSaveError(localDataErrorMessage(error, 'save'));
+      }
+      return;
+    }
+    setLocalDataSaveError(null);
     try {
-      await localDataService.save(owner, { conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames });
+      await localDataService.save(owner, { conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames });
     } catch (error) {
-      setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
+      setLocalDataSaveError(localDataErrorMessage(error, 'save'));
     }
   };
+
+  const saveEmotionCheckIn = useCallback(async (entry: EmotionCheckIn) => {
+    const nextEntries = [entry, ...emotionCheckIns.filter(existing => existing.id !== entry.id)].slice(0, 500);
+    await localDataService.save(owner, {
+      conversations, activeConversationId, memories, emotionCheckIns: nextEntries, journalEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    });
+    setEmotionCheckIns(nextEntries);
+    setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+
+  const deleteEmotionCheckIn = useCallback(async (id: string) => {
+    const nextEntries = emotionCheckIns.filter(entry => entry.id !== id);
+    await localDataService.save(owner, {
+      conversations, activeConversationId, memories, emotionCheckIns: nextEntries, journalEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    });
+    setEmotionCheckIns(nextEntries);
+    setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+
+  const saveJournalEntry = useCallback(async (entry: JournalEntry) => {
+    const nextEntries = [entry, ...journalEntries.filter(existing => existing.id !== entry.id)].slice(0, 1000);
+    await localDataService.save(owner, {
+      conversations, activeConversationId, memories, emotionCheckIns, journalEntries: nextEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    });
+    setJournalEntries(nextEntries);
+    setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+
+  const deleteJournalEntry = useCallback(async (id: string) => {
+    const nextEntries = journalEntries.filter(entry => entry.id !== id);
+    await localDataService.save(owner, {
+      conversations, activeConversationId, memories, emotionCheckIns, journalEntries: nextEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    });
+    setJournalEntries(nextEntries);
+    setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
 
   const exportBackup = (passphrase: string) => createEncryptedBackup({
     conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames,
@@ -573,38 +825,60 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const importBackup = async (fileContents: string, passphrase: string) => {
     const imported = await readEncryptedBackup(fileContents, owner, passphrase);
-    const confirmed = Platform.OS === 'web'
-      // eslint-disable-next-line no-alert -- confirm before replacing the current account's local data.
-      ? typeof window !== 'undefined' && window.confirm("Replace this account's saved chats, memories, emotion check-ins, journal entries, and settings with the backup?")
-      : await new Promise<boolean>(resolve => Alert.alert('Replace saved data?', 'This replaces chats, memories, emotion check-ins, journal entries, and settings for the currently signed-in account on this device.', [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Replace', style: 'destructive', onPress: () => resolve(true) },
+    const backupPreview = [
+      `${imported.conversations.length} conversation${imported.conversations.length === 1 ? '' : 's'}`,
+      `${imported.memories.length} saved memor${imported.memories.length === 1 ? 'y' : 'ies'}`,
+      `${(imported.emotionCheckIns ?? []).length} emotion check-in${(imported.emotionCheckIns ?? []).length === 1 ? '' : 's'}`,
+      `${(imported.journalEntries ?? []).length} journal entr${(imported.journalEntries ?? []).length === 1 ? 'y' : 'ies'}`,
+    ].join(' • ');
+    const previewMessage = `Backup contents: ${backupPreview}.\n\nChoose how to restore this backup. MERGE keeps your current preferences and combines records; REPLACE overwrites saved data on this device. Nothing changes until you confirm.`;
+    let mode: 'merge' | 'replace' | null = null;
+    if (Platform.OS === 'web') {
+      // eslint-disable-next-line no-alert -- a local-only choice is required before changing private saved data.
+      const choice = typeof window !== 'undefined' ? window.prompt(`${previewMessage}\n\nType MERGE or REPLACE. Cancel leaves your data unchanged.`, 'MERGE') : null;
+      if (choice?.trim().toLocaleLowerCase() === 'merge') mode = 'merge';
+      else if (choice?.trim().toLocaleLowerCase() === 'replace') mode = 'replace';
+    } else {
+      mode = await new Promise<'merge' | 'replace' | null>(resolve => Alert.alert('Review backup before restoring', previewMessage, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+        { text: 'Merge records', onPress: () => resolve('merge') },
+        { text: 'Replace data', style: 'destructive', onPress: () => resolve('replace') },
       ]));
-    if (!confirmed) return false;
-    await localDataService.save(owner, imported);
-    setConversations(imported.conversations);
-    setActiveConversationId(imported.activeConversationId);
-    setMemories(imported.memories);
-    setEmotionCheckIns(imported.emotionCheckIns ?? []);
-    setJournalEntries(imported.journalEntries ?? []);
-    setRememberInSession(imported.rememberInSession);
-    rememberPreferenceRef.current = imported.rememberInSession;
-    setShareMemories(imported.shareMemories);
-    setShareChatHistory(imported.shareChatHistory);
-    setShareAboutMe(imported.shareAboutMe);
-    setAboutMe(imported.aboutMe);
-    setAssistantName(imported.assistantName);
-    setAssistantCharacterId(imported.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
-    setAssistantCharacterNames(imported.assistantCharacterNames ?? {});
+    }
+    if (!mode) return false;
+    const currentData = {
+      conversations, activeConversationId, memories, emotionCheckIns, journalEntries,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      assistantName, assistantCharacterId, assistantCharacterNames,
+    };
+    const restored = mode === 'merge' ? mergeLocalAppData(currentData, imported) : imported;
+    // Persist the complete replacement in one storage operation before updating React state.
+    await localDataService.save(owner, restored);
+    setConversations(restored.conversations);
+    setActiveConversationId(restored.activeConversationId);
+    setMemories(restored.memories);
+    setEmotionCheckIns(restored.emotionCheckIns ?? []);
+    setJournalEntries(restored.journalEntries ?? []);
+    setRememberInSession(restored.rememberInSession);
+    rememberPreferenceRef.current = restored.rememberInSession;
+    setShareMemories(restored.shareMemories);
+    setShareChatHistory(restored.shareChatHistory);
+    setShareAboutMe(restored.shareAboutMe);
+    setAboutMe(restored.aboutMe);
+    setAssistantName(restored.assistantName);
+    setAssistantCharacterId(restored.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
+    setAssistantCharacterNames(restored.assistantCharacterNames ?? {});
     setLocalDataReady(true);
     setLocalDataOwner(owner);
     return true;
   };
 
-  const sendMessage = async (messageToRetry?: string, imageDataUrl?: string) => {
+  const sendMessage = async (messageToRetry?: string, imageDataUrl?: string, regenerate = false, replaceFromMessageId?: number) => {
     const text = messageToRetry ?? (draft.trim() || (imageDataUrl ? 'Please describe this image.' : ''));
     if ((!text && !imageDataUrl) || isSending || !localDataReady) return;
     const conversationId = activeConversationId ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const editIndex = replaceFromMessageId === undefined ? -1 : messages.findIndex(message => message.id === replaceFromMessageId);
+    if (replaceFromMessageId !== undefined && editIndex < 0) { setEditingMessageId(null); return; }
     if (!activeConversationId) setActiveConversationId(conversationId);
 
     const userMessage: Message = {
@@ -614,8 +888,14 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     };
 
+    if (replaceFromMessageId !== undefined) {
+      setConversations(current => current.map(conversation => conversation.id === conversationId
+        ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.slice(0, Math.max(0, conversation.messages.findIndex(message => message.id === replaceFromMessageId))) }
+        : conversation));
+    }
     if (!messageToRetry) appendConversationMessage(conversationId, userMessage);
     if (!messageToRetry) setRetryMessage(null);
+    setEditingMessageId(null);
     setDraft('');
     setIsSending(true);
     const abortController = new AbortController();
@@ -630,7 +910,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     setStreamingConversationId(conversationId);
 
     try {
-      const history = messageToRetry ? messages.slice(0, -1) : messages;
+      const history = regenerate ? messages.slice(0, -2) : replaceFromMessageId !== undefined ? messages.slice(0, editIndex) : messageToRetry ? messages.slice(0, -1) : messages;
       const isFirstExchange = !history.some(message => message.author === 'you');
       const conversationBeforeReply = conversations.find(conversation => conversation.id === conversationId);
       const fallbackTitle = text.trim().slice(0, 48) || 'New chat';
@@ -733,7 +1013,11 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             return;
           }
         } catch (restoreError) {
-          const detail = restoreError instanceof Error ? restoreError.message : 'Your session could not be restored.';
+          if ((restoreError as { status?: number }).status === 401) {
+            onLogout();
+            return;
+          }
+          const detail = authErrorMessage(restoreError, 'session-restore');
           setChatError(`Your sign-in could not be refreshed. ${detail}`);
           setChatErrorConversationId(conversationId);
           setRetryMessage(text);
@@ -755,25 +1039,22 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const stopResponse = () => responseAbortControllerRef.current?.abort();
 
   const openCrisisResources = () => {
-    openExternalUrl('https://findahelpline.com/').catch(error => {
-      const detail = error instanceof Error ? error.message : 'The link could not be opened.';
-      setChatError(`Could not open the helpline directory. Visit https://findahelpline.com/ directly. ${detail}`);
+    openExternalUrl('https://findahelpline.com/').catch(() => {
+      setChatError('Could not open the helpline directory. Visit https://findahelpline.com/ directly or try again.');
     });
   };
 
   const openPhoneAction = (scheme: 'tel' | 'sms', number: string, failureMessage: string) => {
-    openExternalUrl(`${scheme}:${number}`).catch(error => {
-      const detail = error instanceof Error ? error.message : 'The phone app could not be opened.';
-      setChatError(`${failureMessage} ${detail}`);
+    openExternalUrl(`${scheme}:${number}`).catch(() => {
+      setChatError(failureMessage);
     });
   };
   const callEmergencyServices = (number: string) => openPhoneAction('tel', number, `Could not start a call. Dial ${number} from your phone, or use the local emergency number.`);
   const callCrisisHelpline = (number: string) => openPhoneAction('tel', number, `Could not call ${number}. Use the local helpline directory instead.`);
   const textCrisisHelpline = (number: string) => openPhoneAction('sms', number, `Could not open a text message to ${number}. Use the local helpline directory instead.`);
   const openHelplineWebsite = (url: string) => {
-    openExternalUrl(url).catch(error => {
-      const detail = error instanceof Error ? error.message : 'The website could not be opened.';
-      setChatError(`Could not open the official helpline website. Visit ${url} directly. ${detail}`);
+    openExternalUrl(url).catch(() => {
+      setChatError(`Could not open the official helpline website. Visit ${url} directly or try again.`);
     });
   };
 
@@ -812,7 +1093,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         <View style={styles.contentArea}>
           {localDataError ? <LocalDataError error={localDataError} onRetry={retryLocalData} onClear={clearUnavailableLocalData} /> : !localDataReady || localDataOwner !== owner ? <LocalDataLoading /> : <>
           {localDataSaveError && <LocalDataSaveWarning error={localDataSaveError} onRetry={retryLocalData} />}
-          {page === 'chat' && <ChatPage wide={wide} assistantName={assistantName} messages={messages} streamingReply={activeConversationId === streamingConversationId ? streamingReply : ''} isThinking={isSending && activeConversationId === streamingConversationId} conversationTitle={activeConversation?.title ?? 'A quiet place to be'} onOpenHistory={() => setPage('history')} onRenameChat={() => { if (activeConversation) beginRenameConversation(activeConversation); }} isPinned={activeConversation?.pinned === true} canManageChat={activeConversation !== null} onTogglePin={() => { if (activeConversation) setConversationPinned(activeConversation.id, !activeConversation.pinned); }} onOpenCrisisResources={openCrisisResources} emergencyCallOption={emergencyCallOption} crisisHelplineOption={crisisHelplineOption} onCallEmergency={callEmergencyServices} onCallHelpline={callCrisisHelpline} onTextHelpline={textCrisisHelpline} onOpenHelplineWebsite={openHelplineWebsite} onSaveOccasion={fact => {
+          {page === 'chat' && <ChatPage key={activeConversationId ?? 'new-chat'} wide={wide} bottomInset={insets.bottom} conversationId={activeConversationId} assistantName={assistantName} messages={messages} streamingReply={activeConversationId === streamingConversationId ? streamingReply : ''} isThinking={isSending && activeConversationId === streamingConversationId} conversationTitle={activeConversation?.title ?? 'A quiet place to be'} onOpenHistory={() => setPage('history')} onRenameChat={() => { if (activeConversation) beginRenameConversation(activeConversation); }} isPinned={activeConversation?.pinned === true} canManageChat={activeConversation !== null} onTogglePin={() => { if (activeConversation) setConversationPinned(activeConversation.id, !activeConversation.pinned); }} onOpenCrisisResources={openCrisisResources} emergencyCallOption={emergencyCallOption} crisisHelplineOption={crisisHelplineOption} onCallEmergency={callEmergencyServices} onCallHelpline={callCrisisHelpline} onTextHelpline={textCrisisHelpline} onOpenHelplineWebsite={openHelplineWebsite} onSaveOccasion={fact => {
             const normalized = fact.trim().slice(0, 500);
             if (normalized && !memories.some(memory => memory.text.toLowerCase() === normalized.toLowerCase())) {
               setMemories(current => [{ id: Date.now(), text: normalized, date: 'Added just now' }, ...current]);
@@ -825,7 +1106,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
                 : [{ id: Date.now(), text: fact, date: 'Added just now' }, ...current]);
             }
             setMemorySuggestion(null);
-          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => sendMessage(undefined, imageDataUrl)} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
+          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => editingMessageId !== null ? sendMessage(undefined, imageDataUrl, false, editingMessageId) : sendMessage(undefined, imageDataUrl)} editingMessageId={editingMessageId} onEditMessage={message => { setEditingMessageId(message.id); setDraft(message.text); }} onCancelEdit={() => { setEditingMessageId(null); setDraft(''); }} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} onRegenerate={() => { const currentMessages = activeConversation?.messages ?? []; const lastMessage = currentMessages[currentMessages.length - 1]; const lastUser = [...currentMessages].reverse().find(message => message.author === 'you'); if (!lastMessage || lastMessage.author !== 'teddy' || !lastUser || isSending) return; setConversations(current => current.map(conversation => conversation.id === activeConversationId ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.filter(message => message.id !== lastMessage.id) } : conversation)); void sendMessage(lastUser.text, undefined, true); }} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
           {page === 'history' && <ChatHistoryPage
             conversations={conversations}
             activeConversationId={activeConversationId}
@@ -833,11 +1114,25 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             onBack={() => setPage('chat')}
             onSelect={selectConversation}
             onNewConversation={startNewConversation}
+            onPin={setConversationPinned}
+            onDelete={deleteConversation}
+            onRename={beginRenameConversation}
           />}
-          {page === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={entry => setJournalEntries(current => [entry, ...current.filter(existing => existing.id !== entry.id)].slice(0, 1000))} onDelete={id => setJournalEntries(current => current.filter(entry => entry.id !== id))} />}
+          {page === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
+            const preparedMessage = `I'd like to talk about this journal entry with you.\\n\\n${entry.title}\\n\\n${entry.body}\\n\\nPlease help me reflect on it.`;
+            if (draft.trim()) {
+              confirmAction('Keep your existing draft?', 'Your current chat draft is not empty. Continuing will append the journal entry so your draft is preserved.', () => {
+                setDraft(current => current.trim() ? `${current}\\n\\n${preparedMessage}` : preparedMessage);
+                setPage('chat');
+              });
+            } else {
+              setDraft(preparedMessage);
+              setPage('chat');
+            }
+          }} />}
           {page === 'studio' && <WellbeingStudio wide={wide} />}
-          {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={entry => setEmotionCheckIns(current => [entry, ...current].slice(0, 500))} onDelete={id => setEmotionCheckIns(current => current.filter(entry => entry.id !== id))} />}
-          {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} />}
+          {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
+          {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
           {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
           {page === 'settings' && <SettingsPage wide={wide} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
             const savedName = name.trim().slice(0, 32);
@@ -846,57 +1141,50 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             setAssistantName(savedName);
             setAssistantCharacterNames(current => ({ ...current, [id]: savedName }));
           }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} />}
+          {page === 'more' && <MorePage wide={wide} onNavigate={setPage} />}
           </>}
         </View>
-        {!wide && <BottomNav page={page} onNavigate={setPage} bottomInset={insets.bottom} />}
+        {!wide && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
       </View>
 
-      <Modal visible={memoryModal} animationType="fade" transparent onRequestClose={() => setMemoryModal(false)}>
+      <Modal visible={memoryModal} animationType="fade" transparent onRequestClose={closeMemoryEditor}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalTopline}>
               <View style={styles.modalIcon}><Text style={styles.modalIconText}>✳</Text></View>
-              <Pressable onPress={() => setMemoryModal(false)} accessibilityRole="button" accessibilityLabel="Close memory editor" style={styles.closeButton}><Text style={styles.closeText}>×</Text></Pressable>
+              <Pressable onPress={closeMemoryEditor} disabled={memorySaving} accessibilityRole="button" accessibilityLabel="Close memory editor" style={[styles.closeButton, memorySaving && styles.buttonDisabled]}><Text style={styles.closeText}>×</Text></Pressable>
             </View>
             <Text style={styles.modalTitle}>{editing ? 'Edit a memory' : 'Keep a small thing in mind'}</Text>
             <Text style={styles.modalBody}>Add a detail to keep on this device. Saved memories are included with future chats sent to the AI provider.</Text>
-            <TextInput autoFocus value={memoryDraft} onChangeText={setMemoryDraft} placeholder="Write a gentle reminder…" placeholderTextColor={C.muted} multiline maxLength={500} style={styles.memoryInput} textAlignVertical="top" />
+            {memoryActionError && <View accessibilityRole="alert" style={styles.authError}><Text accessibilityLiveRegion="polite" style={styles.authErrorText}>{memoryActionError}</Text></View>}
+            <TextInput accessibilityLabel="Memory text" autoFocus value={memoryDraft} onChangeText={value => { setMemoryDraft(value); setMemoryActionError(null); }} placeholder="Write a gentle reminder…" placeholderTextColor={C.muted} multiline maxLength={500} editable={!memorySaving} style={styles.memoryInput} textAlignVertical="top" />
             <View style={styles.modalActions}>
-              <Button label="Cancel" tone="quiet" onPress={() => setMemoryModal(false)} />
-              <Button label={editing ? 'Save changes' : 'Add memory'} onPress={saveMemory} disabled={!memoryDraft.trim()} />
+              <Button label="Cancel" tone="quiet" onPress={closeMemoryEditor} disabled={memorySaving} />
+              <Button label={memorySaving ? 'Saving…' : editing ? 'Save changes' : 'Add memory'} onPress={saveMemory} disabled={memorySaving || !memoryDraft.trim()} />
             </View>
           </View>
         </View>
       </Modal>
-      <Modal visible={renameConversationId !== null} animationType="fade" transparent onRequestClose={() => setRenameConversationId(null)}>
+      <Modal visible={renameConversationId !== null} animationType="fade" transparent onRequestClose={closeRenameDialog}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalTopline}>
               <View style={styles.modalIcon}><Text style={styles.modalIconText}>✎</Text></View>
-              <Pressable onPress={() => setRenameConversationId(null)} accessibilityRole="button" accessibilityLabel="Close rename chat dialog" style={styles.closeButton}><Text style={styles.closeText}>×</Text></Pressable>
+              <Pressable onPress={closeRenameDialog} disabled={renameSaving} accessibilityRole="button" accessibilityLabel="Close rename chat dialog" style={[styles.closeButton, renameSaving && styles.buttonDisabled]}><Text style={styles.closeText}>×</Text></Pressable>
             </View>
             <Text style={styles.modalTitle}>Rename chat</Text>
             <Text style={styles.modalBody}>Choose a short name that helps you find this conversation.</Text>
-            <TextInput autoFocus value={renameDraft} onChangeText={value => setRenameDraft(value.slice(0, 80))} placeholder="Chat name" placeholderTextColor={C.muted} maxLength={80} returnKeyType="done" onSubmitEditing={saveConversationRename} style={styles.settingsTextInput} accessibilityLabel="Chat name" />
+            {renameError && <View accessibilityRole="alert" style={styles.authError}><Text accessibilityLiveRegion="polite" style={styles.authErrorText}>{renameError}</Text></View>}
+            <TextInput accessibilityLabel="Chat name" autoFocus value={renameDraft} onChangeText={value => { setRenameDraft(value.slice(0, 80)); setRenameError(null); }} editable={!renameSaving} placeholder="Chat name" placeholderTextColor={C.muted} maxLength={80} returnKeyType="done" onSubmitEditing={saveConversationRename} style={styles.settingsTextInput} />
             <View style={styles.modalActions}>
-              <Button label="Cancel" tone="quiet" onPress={() => setRenameConversationId(null)} />
-              <Button label="Save name" onPress={saveConversationRename} disabled={!renameDraft.trim()} />
+              <Button label="Cancel" tone="quiet" onPress={closeRenameDialog} disabled={renameSaving} />
+              <Button label={renameSaving ? 'Saving…' : 'Save name'} onPress={saveConversationRename} disabled={renameSaving || !renameDraft.trim()} />
             </View>
           </View>
         </View>
       </Modal>
     </View>
   );
-}
-
-function chatErrorMessage(error: unknown): string {
-  const detail = error instanceof Error ? error.message : '';
-  const status = (error as { status?: unknown } | null)?.status;
-  if (error instanceof DOMException && error.name === 'AbortError') return 'The conversation service took too long to respond. Check your connection and try again.';
-  if (/failed to fetch|network request failed|fetch failed|load failed/i.test(detail)) return "Teddy Bud couldn't reach the conversation service. Check your internet connection and try again.";
-  if (status === 429) return 'The conversation service is busy right now. Please wait a moment and try again.';
-  if (typeof status === 'number' && status >= 500) return 'The conversation service is temporarily unavailable. Your message is saved; try again shortly.';
-  return detail || 'The conversation service is unavailable right now.';
 }
 
 function ConversationHistoryList({ conversations, activeConversationId, busyConversationId, onSelect, onPin, onDelete, onRename }: {
@@ -932,37 +1220,69 @@ function ConversationHistoryList({ conversations, activeConversationId, busyConv
     {onPin && onDelete && <Pressable accessibilityRole="button" accessibilityLabel={`Chat options for ${conversation.title}`} accessibilityState={{ expanded: openMenuId === conversation.id }} onPress={() => setOpenMenuId(value => value === conversation.id ? null : conversation.id)} style={({ pressed }) => [styles.chatMenuTrigger, pressed && styles.pressed]}><Text style={styles.chatMenuDots}>•••</Text></Pressable>}
     </View>
     {openMenuId === conversation.id && onPin && onDelete && <View style={styles.chatActionMenu} accessibilityRole="menu">
-      {onRename && <Pressable accessibilityRole="menuitem" onPress={() => { setOpenMenuId(null); onRename(conversation); }} style={({ pressed }) => [styles.chatActionItem, pressed && styles.pressed]}><Text style={styles.chatActionText}>Rename chat</Text></Pressable>}
-      <Pressable accessibilityRole="menuitem" onPress={() => { onPin(conversation.id, !conversation.pinned); setOpenMenuId(null); }} style={({ pressed }) => [styles.chatActionItem, pressed && styles.pressed]}><Text style={styles.chatActionText}>{conversation.pinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
-      <Pressable accessibilityRole="menuitem" accessibilityState={{ disabled: busyConversationId === conversation.id }} disabled={busyConversationId === conversation.id} onPress={() => { setOpenMenuId(null); onDelete(conversation); }} style={({ pressed }) => [styles.chatActionItem, styles.chatActionDelete, busyConversationId === conversation.id && styles.buttonDisabled, pressed && styles.pressed]}><Text style={[styles.chatActionText, styles.chatActionDeleteText]}>Delete chat</Text></Pressable>
+      {onRename && <Pressable accessibilityRole="menuitem" accessibilityLabel={`Rename chat ${conversation.title}`} onPress={() => { setOpenMenuId(null); onRename(conversation); }} style={({ pressed }) => [styles.chatActionItem, pressed && styles.pressed]}><Text style={styles.chatActionText}>Rename chat</Text></Pressable>}
+      <Pressable accessibilityRole="menuitem" accessibilityLabel={conversation.pinned ? `Unpin chat ${conversation.title}` : `Pin chat ${conversation.title}`} onPress={() => { onPin(conversation.id, !conversation.pinned); setOpenMenuId(null); }} style={({ pressed }) => [styles.chatActionItem, pressed && styles.pressed]}><Text style={styles.chatActionText}>{conversation.pinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
+      <Pressable accessibilityRole="menuitem" accessibilityLabel={`Delete chat ${conversation.title}`} accessibilityState={{ disabled: busyConversationId === conversation.id }} disabled={busyConversationId === conversation.id} onPress={() => { setOpenMenuId(null); onDelete(conversation); }} style={({ pressed }) => [styles.chatActionItem, styles.chatActionDelete, busyConversationId === conversation.id && styles.buttonDisabled, pressed && styles.pressed]}><Text style={[styles.chatActionText, styles.chatActionDeleteText]}>Delete chat</Text></Pressable>
     </View>}
     </View>;
   }) : <Text style={styles.historyEmpty}>Your chats will appear here as you talk with Teddy Bud.</Text>;
 }
 
-function ChatHistoryPage({ conversations, activeConversationId, busyConversationId, onBack, onSelect, onNewConversation }: {
+export function ChatHistoryPage({ conversations, activeConversationId, busyConversationId, onBack, onSelect, onNewConversation, onPin, onDelete, onRename }: {
   conversations: Conversation[];
   activeConversationId: string | null;
   busyConversationId?: string | null;
   onBack: () => void;
   onSelect: (id: string) => void;
   onNewConversation: () => void;
+  onPin: (id: string, pinned: boolean) => void;
+  onDelete: (conversation: Conversation) => void;
+  onRename: (conversation: Conversation) => void;
 }) {
+  const [search, setSearch] = useState('');
+  const visibleConversations = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    if (!query) return conversations;
+    return conversations.filter(conversation => {
+      const latestMessage = conversation.messages[conversation.messages.length - 1]?.text ?? '';
+      return `${conversation.title} ${latestMessage}`.toLocaleLowerCase().includes(query);
+    });
+  }, [conversations, search]);
+
   return <View style={styles.mobileHistoryPage}>
     <View style={styles.historyPageHeader}>
-      <View>
+      <View style={styles.historyPageHeaderCopy}>
         <Text style={styles.eyebrow}>YOUR SPACE</Text>
         <Text style={styles.pageTitle}>Your chats</Text>
+        <Text style={styles.pageDescription}>{conversations.length} saved {conversations.length === 1 ? 'conversation' : 'conversations'}</Text>
       </View>
       <Button label="Back to chat" onPress={onBack} tone="quiet" />
     </View>
     <Button label="New chat" onPress={onNewConversation} />
-    <ScrollView style={styles.mobileHistoryList} keyboardShouldPersistTaps="handled">
-      <ConversationHistoryList conversations={conversations} activeConversationId={activeConversationId} busyConversationId={busyConversationId} onSelect={onSelect} />
+    <TextInput
+      accessibilityLabel="Search chats"
+      value={search}
+      onChangeText={setSearch}
+      placeholder="Search chats and recent messages"
+      placeholderTextColor={C.muted}
+      returnKeyType="search"
+      style={styles.mobileHistorySearch}
+    />
+    <ScrollView style={styles.mobileHistoryList} contentContainerStyle={styles.mobileHistoryListContent} keyboardShouldPersistTaps="handled">
+      {visibleConversations.length > 0
+        ? <ConversationHistoryList
+          conversations={visibleConversations}
+          activeConversationId={activeConversationId}
+          busyConversationId={busyConversationId}
+          onSelect={onSelect}
+          onPin={onPin}
+          onDelete={onDelete}
+          onRename={onRename}
+        />
+        : <Text style={styles.historyEmpty}>{search.trim() ? 'No chats match your search. Try a different word.' : 'Your chats will appear here as you talk with Teddy Bud.'}</Text>}
     </ScrollView>
   </View>;
 }
-
 function LocalDataLoading() {
   return <View style={styles.localLoadingScreen} accessibilityRole="progressbar" accessibilityLabel="Loading your saved chats">
     <Text style={styles.localLoadingTitle}>Opening your saved space…</Text>
@@ -979,7 +1299,7 @@ function LocalDataLoading() {
 
 function LocalDataSaveWarning({ error, onRetry }: { error: string; onRetry: () => void }) {
   return <View accessibilityRole="alert" style={styles.saveWarning}>
-    <Text style={styles.saveWarningText}>Your chat is still available, but this change could not be saved. {error}</Text>
+    <Text style={styles.saveWarningText}>{localDataErrorMessage(error, 'save')}</Text>
     <Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.saveWarningButton, pressed && styles.pressed]}>
       <Text style={styles.saveWarningButtonText}>Try again</Text>
     </Pressable>
@@ -987,7 +1307,7 @@ function LocalDataSaveWarning({ error, onRetry }: { error: string; onRetry: () =
 }
 
 function LocalDataError({ error, onRetry, onClear }: { error: string; onRetry: () => void; onClear: () => void }) {
-  return <View style={styles.authScreen}><View style={styles.authCard}><Text style={styles.authTitle}>Your saved space needs attention.</Text><Text style={styles.authBody}>{error}</Text><Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.authButton, pressed && styles.pressed]}><Text style={styles.authButtonText}>Retry local storage</Text></Pressable><Pressable accessibilityRole="button" onPress={onClear} style={styles.authToggle}><Text style={styles.authToggleText}>Clear local data and start over</Text></Pressable><Text style={styles.authFootnote}>Your messages are paused until local storage is available.</Text></View></View>;
+  return <View style={styles.authScreen}><View style={styles.authCard}><Text style={styles.authTitle}>Your saved space needs attention.</Text><Text style={styles.authBody}>{localDataErrorMessage(error, 'load')}</Text><Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.authButton, pressed && styles.pressed]}><Text style={styles.authButtonText}>Retry local storage</Text></Pressable><Pressable accessibilityRole="button" onPress={onClear} style={styles.authToggle}><Text style={styles.authToggleText}>Clear local data and start over</Text></Pressable><Text style={styles.authFootnote}>Your messages are paused until local storage is available.</Text></View></View>;
 }
 
 function confirmAction(title: string, message: string, onConfirm: () => void) {
@@ -1132,33 +1452,219 @@ function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }:
   </Pressable>;
 }
 
-function BottomNav({ page, onNavigate, bottomInset }: { page: Page; onNavigate: (page: Page) => void; bottomInset: number }) {
-  return <View style={[styles.bottomNav, { paddingBottom: Math.max(bottomInset, 8) }]}>{mobileNavItems.map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{ selected: item.id === page }} onPress={() => onNavigate(item.id)} style={styles.bottomNavItem}>
-    <Text style={[styles.bottomIcon, item.id === page && styles.bottomIconActive]}>{item.icon}</Text><Text style={[styles.bottomLabel, item.id === page && styles.bottomLabelActive]}>{item.label}</Text>
-  </Pressable>)}</View>;
+function useReducedMotionPreference() {
+  const [reduceMotion, setReduceMotion] = useState(true);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+        setReduceMotion(false);
+        return undefined;
+      }
+      const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReduceMotion(preference.matches);
+      const update = (event: MediaQueryListEvent) => setReduceMotion(event.matches);
+      preference.addEventListener('change', update);
+      return () => preference.removeEventListener('change', update);
+    }
+
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(setEnabled => {
+      if (mounted) setReduceMotion(setEnabled);
+    }).catch(() => {
+      if (mounted) setReduceMotion(false);
+    });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  return reduceMotion;
 }
 
-export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, onStop, onRetry, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; onStop: () => void; onRetry: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
+export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
+  const reduceMotion = useReducedMotionPreference();
+  const items: { id: Page; icon: string; label: string; description: string }[] = [
+    { id: 'history', icon: '▤', label: 'Chat history', description: 'Find a conversation from earlier' },
+    { id: 'journal', icon: '▤', label: 'Journal', description: 'Write, search, and export private reflections' },
+    { id: 'emotions', icon: '◉', label: 'Emotions', description: 'Check in with how you feel' },
+    { id: 'studio', icon: '☼', label: 'Wellbeing', description: 'Gentle exercises you can use offline' },
+    { id: 'privacy', icon: '⌑', label: 'Privacy', description: 'Choose what stays local and what is shared' },
+    { id: 'settings', icon: '⚙', label: 'Settings', description: 'Your companion, backup, and account' },
+  ];
+
+  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
+    <View style={styles.pageIntro}>
+      <Text style={styles.eyebrow}>YOUR SPACE, YOUR WAY</Text>
+      <Text style={styles.pageTitle}>More tools</Text>
+      <Text style={styles.pageDescription}>Everything else, in one calm place. Your everyday essentials stay close at hand.</Text>
+    </View>
+    <View style={styles.moreList}>
+      {items.map(item => <Pressable
+        key={item.id}
+        accessibilityRole="button"
+        accessibilityLabel={item.label}
+        accessibilityHint={item.description}
+        onPress={() => onNavigate(item.id)}
+        style={({ pressed }) => [styles.moreItem, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}
+      >
+        <View style={styles.moreItemIconWrap}><Text style={styles.moreItemIcon}>{item.icon}</Text></View>
+        <View style={styles.moreItemCopy}>
+          <Text style={styles.moreItemTitle}>{item.label}</Text>
+          <Text style={styles.moreItemDescription}>{item.description}</Text>
+        </View>
+        <Text accessibilityElementsHidden style={styles.moreItemChevron}>›</Text>
+      </Pressable>)}
+    </View>
+  </ScrollView>;
+}
+
+export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
+  const reduceMotion = useReducedMotionPreference();
+  const moreSelected = page === 'more' || page === 'journal' || page === 'emotions' || page === 'studio' || page === 'privacy' || page === 'settings';
+  const isSelected = (item: (typeof mobileNavItems)[number]) => {
+    if (item.id === 'chat') return page === 'chat' || page === 'history';
+    if (item.id === 'more') return moreSelected;
+    return item.id === page;
+  };
+  const renderItem = (item: (typeof mobileNavItems)[number]) => {
+    const selected = isSelected(item);
+    return <Pressable
+      key={item.id}
+      accessibilityRole="button"
+      accessibilityLabel={item.label}
+      accessibilityHint={item.id === 'more' ? 'Open wellbeing, privacy, settings, and chat history' : undefined}
+      accessibilityState={{ selected }}
+      onPress={() => onNavigate(item.id)}
+      style={({ pressed }) => [
+        styles.bottomNavItem,
+        selected && styles.bottomNavItemActive,
+        pressed && styles.pressed,
+        pressed && !reduceMotion && styles.squeezePressed,
+      ]}
+    >
+      <Text style={[styles.bottomIcon, selected && styles.bottomIconActive]}>{item.icon}</Text>
+      <Text numberOfLines={1} style={[styles.bottomLabel, selected && styles.bottomLabelActive]}>{item.label}</Text>
+    </Pressable>;
+  };
+
+  return <View style={[styles.bottomNav, { paddingBottom: Math.max(bottomInset, 8) }]}>
+    {renderItem(mobileNavItems[0])}
+    {renderItem(mobileNavItems[1])}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Start a new chat"
+      accessibilityHint="Creates a new conversation and opens the message composer"
+      onPress={onNewConversation}
+      style={({ pressed }) => [
+        styles.bottomNavPlusAction,
+        pressed && styles.pressed,
+        pressed && !reduceMotion && styles.squeezePressed,
+      ]}
+    >
+      <View style={styles.bottomNavPlusBox}><Text style={styles.bottomNavPlusGlyph}>+</Text></View>
+    </Pressable>
+    {renderItem(mobileNavItems[2])}
+  </View>;
+}
+
+export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, editingMessageId, onEditMessage, onCancelEdit, onStop, onRetry, onRegenerate, retryPending, isSending, chatError }: { wide: boolean; bottomInset?: number; conversationId?: string | null; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; editingMessageId?: number | null; onEditMessage?: (message: Message) => void; onCancelEdit?: () => void; onStop: () => void; onRetry: () => void; onRegenerate?: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
+  const [chatActionsOpen, setChatActionsOpen] = useState(false);
+  const reduceMotion = useReducedMotionPreference();
   const canSend = (!!draft.trim() || !!selectedImage) && !isSending;
   const [composerFocused, setComposerFocused] = useState(false);
   const [manualCrisisSupport, setManualCrisisSupport] = useState(false);
   const [occasionOpen, setOccasionOpen] = useState(false);
   const [occasionDraft, setOccasionDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const hasSafetyConcern = messages.some(message => message.author === 'you' && hasCrisisSignal(message.text));
-  useEffect(() => { scrollRef.current?.scrollToEnd({ animated: !streamingReply }); }, [messages.length, streamingReply, isSending]);
-  const submitMessage = () => { if (!canSend) return; onSend(selectedImage?.dataUrl); setSelectedImage(null); };
+
+  const jumpToLatest = () => {
+    shouldAutoScrollRef.current = true;
+    setShowJumpToLatest(false);
+    scrollRef.current?.scrollToEnd({ animated: true });
+  };
+
+  const handleChatScroll = (event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const atBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 96;
+    shouldAutoScrollRef.current = atBottom;
+    setShowJumpToLatest(current => current === !atBottom ? current : !atBottom);
+  };
+
+  const handleChatContentSizeChange = () => {
+    if (shouldAutoScrollRef.current) {
+      scrollRef.current?.scrollToEnd({ animated: false });
+      setShowJumpToLatest(false);
+    }
+  };
+
+  useEffect(() => {
+    shouldAutoScrollRef.current = true;
+    setShowJumpToLatest(false);
+    scrollRef.current?.scrollToEnd({ animated: false });
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (shouldAutoScrollRef.current && (messages.length > 0 || streamingReply)) {
+      scrollRef.current?.scrollToEnd({ animated: !isSending });
+    }
+  }, [messages.length, isSending]);
+
+  const submitMessage = () => {
+    if (!canSend) return;
+    shouldAutoScrollRef.current = true;
+    setShowJumpToLatest(false);
+    onSend(selectedImage?.dataUrl);
+    setSelectedImage(null);
+  };
   return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={[styles.chatHeader, wide && styles.chatHeaderWide]}>
       <View style={styles.chatHeaderCopy}><Text style={styles.pageTitle} numberOfLines={1}>{conversationTitle}</Text></View>
       <View style={styles.headerActions}>
-        {!wide && <Pressable accessibilityRole="button" accessibilityLabel="View chats" onPress={onOpenHistory} style={({ pressed }) => [styles.headerTextButton, pressed && styles.pressed]}><Text style={styles.headerActionLabel}>Chats</Text></Pressable>}
-        <Pressable accessibilityRole="button" accessibilityLabel="Rename chat" disabled={isSending || !canManageChat} onPress={onRenameChat} style={({ pressed }) => [styles.headerTextButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed]}><Text style={styles.headerActionLabel}>{wide ? 'Rename chat' : 'Rename'}</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={isPinned ? 'Unpin chat' : 'Pin chat'} accessibilityState={{ checked: isPinned }} disabled={isSending || !canManageChat} onPress={onTogglePin} style={({ pressed }) => [styles.headerTextButton, isPinned && styles.headerPinnedButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed]}><Text style={[styles.headerActionLabel, isPinned && styles.headerPinnedButtonLabel]}>{wide ? (isPinned ? 'Unpin chat' : 'Pin chat') : (isPinned ? 'Unpin' : 'Pin')}</Text></Pressable>
+        {!wide && <Pressable accessibilityRole="button" accessibilityLabel="View chats" onPress={onOpenHistory} style={({ pressed }) => [styles.headerTextButton, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.headerActionLabel}>Chats</Text></Pressable>}
+        {wide ? <>
+          <Pressable accessibilityRole="button" accessibilityLabel="Rename chat" disabled={isSending || !canManageChat} onPress={onRenameChat} style={({ pressed }) => [styles.headerTextButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.headerActionLabel}>Rename chat</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={isPinned ? 'Unpin chat' : 'Pin chat'} accessibilityState={{ checked: isPinned }} disabled={isSending || !canManageChat} onPress={onTogglePin} style={({ pressed }) => [styles.headerTextButton, isPinned && styles.headerPinnedButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={[styles.headerActionLabel, isPinned && styles.headerPinnedButtonLabel]}>{isPinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
+        </> : <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open chat actions"
+          accessibilityHint="Rename or pin this conversation"
+          accessibilityState={{ expanded: chatActionsOpen }}
+          disabled={isSending || !canManageChat}
+          onPress={() => setChatActionsOpen(true)}
+          style={({ pressed }) => [styles.chatActionsMenuButton, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}
+        ><Text style={styles.chatActionsMenuGlyph}>···</Text></Pressable>}
       </View>
     </View>
-    <ScrollView ref={scrollRef} style={styles.chatScroll} contentContainerStyle={[styles.chatContent, wide && styles.chatContentWide, messages.length === 0 && styles.emptyContent]} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+    {!wide && <Modal transparent visible={chatActionsOpen} animationType="fade" onRequestClose={() => setChatActionsOpen(false)}>
+      <View style={styles.chatActionsModalRoot}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close chat actions" onPress={() => setChatActionsOpen(false)} style={styles.chatActionsScrim} />
+        <View accessibilityViewIsModal style={[styles.chatActionsSheet, { paddingBottom: Math.max(bottomInset, 18) }]}>
+          <View style={styles.chatActionsSheetHeader}>
+            <Text style={styles.chatActionsSheetTitle}>Chat options</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Dismiss chat options" onPress={() => setChatActionsOpen(false)} style={({ pressed }) => [styles.chatActionsDismiss, pressed && styles.pressed]}><Text style={styles.chatActionsDismissText}>Done</Text></Pressable>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Rename chat" disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onRenameChat(); }} style={({ pressed }) => [styles.chatActionsSheetItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.chatActionsSheetItemText}>Rename chat</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={isPinned ? 'Unpin chat' : 'Pin chat'} accessibilityState={{ checked: isPinned }} disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onTogglePin(); }} style={({ pressed }) => [styles.chatActionsSheetItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.chatActionsSheetItemText}>{isPinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
+        </View>
+      </View>
+    </Modal>}
+    <View style={styles.chatScrollWrap}>
+    <ScrollView
+      ref={scrollRef}
+      style={styles.chatScroll}
+      contentContainerStyle={[styles.chatContent, wide && styles.chatContentWide, messages.length === 0 && styles.emptyContent]}
+      keyboardShouldPersistTaps="handled"
+      onScroll={handleChatScroll}
+      scrollEventThrottle={16}
+      onContentSizeChange={handleChatContentSizeChange}
+    >
       {messages.length === 0 ? <View style={styles.emptyState}>
         <View style={styles.emptyHeroMark}><Image source={assistantIcon} style={styles.emptyHeroLogo} accessibilityLabel={assistantName} /></View>
         <Text style={styles.emptyGreeting}>What's on your mind?</Text>
@@ -1175,6 +1681,17 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
             {message.author === 'teddy' && <View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View>}
             <View style={[styles.messageBubble, message.author === 'you' ? styles.userBubble : styles.teddyBubble]}>{message.author === 'teddy' ? <MarkdownReply content={message.text} /> : <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>}<Text style={[styles.messageTime, message.author === 'you' && styles.userMessageTime]}>{message.time}</Text></View>
           </View>
+          {message.author === 'you' && messages.filter(item => item.author === 'you').slice(-1)[0]?.id === message.id && onEditMessage && <Pressable accessibilityRole="button" accessibilityLabel="Edit and resend your last message" disabled={isSending} onPress={() => onEditMessage(message)} style={{ alignSelf: 'flex-end', marginRight: 4, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Edit & resend</Text></Pressable>}
+          {message.author === 'teddy' && messages[messages.length - 1]?.id === message.id && onRegenerate && <Pressable accessibilityRole="button" accessibilityLabel="Generate another reply" disabled={isSending} onPress={onRegenerate} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Try another reply</Text></Pressable>}
+          {message.author === 'teddy' && <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === 'web' ? 'Copy Teddy Bud reply' : 'Share Teddy Bud reply'} onPress={() => {
+            if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+              void navigator.clipboard.writeText(message.text)
+                .then(() => Alert.alert('Reply copied', 'Teddy Bud’s reply was copied to your clipboard.'))
+                .catch(() => Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.')));
+              return;
+            }
+            void Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.'));
+          }} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4' }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>{Platform.OS === 'web' ? 'Copy reply' : 'Share reply'}</Text></Pressable>}
           {message.author === 'teddy' && memorySuggestion?.messageId === message.id && <MemorySuggestionCard fact={memorySuggestion.fact} onSave={onSaveMemorySuggestion} onDismiss={onDismissMemorySuggestion} />}
         </View>)}
         {isThinking && (streamingReply
@@ -1191,9 +1708,18 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
         setOccasionDraft('');
       }} onDismiss={() => { setOccasionOpen(false); setOccasionDraft(''); }} />}
     </ScrollView>
+    {showJumpToLatest && <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Jump to latest message"
+      onPress={jumpToLatest}
+      style={({ pressed }) => [styles.jumpToLatestButton, pressed && styles.pressed]}
+    >
+      <Text style={styles.jumpToLatestText}>↓ Latest</Text>
+    </Pressable>}
+    </View>
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
       <View style={styles.chatTools}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Attach an image" onPress={async () => { try { setSelectedImage(await pickChatImage()); } catch (error) { Alert.alert('Could not add image', error instanceof Error ? error.message : 'Please try again.'); } }} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Attach an image" onPress={async () => { try { setSelectedImage(await pickChatImage()); } catch (error) { Alert.alert('Could not add image', imagePickerErrorMessage(error)); } }} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
           <Text style={styles.chatToolIcon}>＋</Text><Text style={styles.chatToolLabel}>Add image · 1 credit</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Open crisis support" onPress={() => setManualCrisisSupport(true)} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
@@ -1204,6 +1730,7 @@ export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingRep
         </Pressable>}
       </View>
       {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={{ width: 42, height: 42, borderRadius: 9, marginRight: 8 }} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
+      {editingMessageId !== null && editingMessageId !== undefined && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={{ padding: 6 }}><Text style={{ color: C.cocoa, fontWeight: '700' }}>Cancel</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         {isSending
@@ -1316,7 +1843,10 @@ function renderInlineMarkdown(value: string): React.ReactNode[] {
     if (current.index > cursor) result.push(value.slice(cursor, current.index));
     if (current[1] && current[2]) {
       const url = current[2];
-      result.push(<Text key={`link-${current.index}`} accessibilityRole="link" style={styles.markdownLink} onPress={() => openExternalUrl(url).catch(() => undefined)}>{current[1]}</Text>);
+      result.push(<Text key={`link-${current.index}`} accessibilityRole="link" style={styles.markdownLink} onPress={() => openExternalUrl(url).catch(() => {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert('Could not open this link. Copy it and try again in your browser.');
+        else Alert.alert('Could not open link', 'Copy the link and try again in your browser.');
+      })}>{current[1]}</Text>);
     } else if (current[4] !== undefined) result.push(<Text key={`strong-${current.index}`} style={styles.markdownStrong}>{current[4]}</Text>);
     else if (current[5] !== undefined) result.push(<Text key={`strike-${current.index}`} style={styles.markdownStrike}>{current[5]}</Text>);
     else if (current[6] !== undefined) result.push(<Text key={`italic-${current.index}`} style={styles.markdownItalic}>{current[6]}</Text>);
@@ -1420,9 +1950,16 @@ function StarterCard({ icon, title, description, onPress, wide }: { icon: string
   </Pressable>;
 }
 
-function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete }: { wide: boolean; memories: Memory[]; memoryEnabled: boolean; onAdd: () => void; onEdit: (memory: Memory) => void; onDelete: (memory: Memory) => void }) {
+function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete, actionError, onDismissActionError, canRetryDelete, onRetryDelete }: { wide: boolean; memories: Memory[]; memoryEnabled: boolean; onAdd: () => void; onEdit: (memory: Memory) => void; onDelete: (memory: Memory) => void; actionError: string | null; onDismissActionError: () => void; canRetryDelete: boolean; onRetryDelete: () => void }) {
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>THE THINGS THAT MATTER</Text><Text style={styles.pageTitle}>Your memories</Text><Text style={styles.pageDescription}>Little details you choose to keep close. You can change or forget any of them, whenever you like.</Text></View>
+    {actionError && <View accessibilityRole="alert" style={styles.authError}>
+      <Text accessibilityLiveRegion="polite" style={styles.authErrorText}>{actionError}</Text>
+      <View style={styles.memoryErrorActions}>
+        {canRetryDelete && <Pressable accessibilityRole="button" onPress={onRetryDelete} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Retry removal</Text></Pressable>}
+        <Pressable accessibilityRole="button" onPress={onDismissActionError} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>
+      </View>
+    </View>}
     <View style={styles.memoryNotice}><View style={styles.noticeIcon}><Text style={styles.noticeGlyph}>⌑</Text></View><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{memoryEnabled ? 'Saved on this device' : 'Saved memories are off'}</Text><Text style={styles.noticeBody}>{memoryEnabled ? "Memories stay in this app's local database across restarts and are included with future chats sent to the AI provider." : 'Turn on "Keep memories on this device" in Privacy settings to add memories.'}</Text></View></View>
     <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>SAVED MEMORIES <Text style={styles.countText}>{memories.length}</Text></Text><Pressable accessibilityRole="button" accessibilityLabel="Add a memory" disabled={!memoryEnabled} onPress={onAdd} style={styles.addLink}><Text style={[styles.addLinkText, !memoryEnabled && styles.disabledText]}>{memoryEnabled ? 'Add a memory' : 'Memory is off'}</Text></Pressable></View>
     {memories.length ? memories.map(memory => <View key={memory.id} style={styles.memoryCard}><View style={styles.memoryMark}><Text style={styles.memoryMarkText}>✳</Text></View><View style={styles.memoryCopy}><Text style={styles.memoryText}>{memory.text}</Text><Text style={styles.memoryDate}>{memory.date}</Text></View><View style={styles.memoryActions}><Pressable accessibilityRole="button" accessibilityLabel="Edit memory" onPress={() => onEdit(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Edit</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Forget memory" onPress={() => onDelete(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Forget</Text></Pressable></View></View>) : <View style={styles.emptyCard}><View style={styles.emptyMark}><Text style={styles.emptyGlyph}>✳</Text></View><Text style={styles.emptyTitle}>{memoryEnabled ? 'A fresh page' : 'Memories are off'}</Text><Text style={styles.emptyBody}>{memoryEnabled ? "Nothing saved right now. Add a small detail you'd like to hold onto." : 'Turn on "Keep memories on this device" in Privacy settings when you are ready.'}</Text>{memoryEnabled && <Button label="Add your first memory" onPress={onAdd} />}</View>}
@@ -1432,38 +1969,243 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete }
 
 
 
-function JournalPage({wide,entries,onSave,onDelete}:{wide:boolean;entries:JournalEntry[];onSave:(entry:JournalEntry)=>void;onDelete:(id:string)=>void}) {
-  const [title,setTitle]=useState(''); const [body,setBody]=useState(''); const [prompt,setPrompt]=useState('Free reflection'); const [editing,setEditing]=useState<string|null>(null); const [search,setSearch]=useState('');
-  const prompts=['Free reflection','What felt heavy today?','What is one small thing I appreciate?','What do I need more of right now?','What would I tell a friend in this situation?'];
-  const save=()=>{if(!body.trim())return;onSave({id:editing??(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),createdAt:editing?(entries.find(e=>e.id===editing)?.createdAt??new Date().toISOString()):new Date().toISOString(),title:title.trim().slice(0,160)||prompt,body:body.trim().slice(0,30000),prompt});setTitle('');setBody('');setEditing(null);};
-  const visible=entries.filter(e=>(e.title+' '+e.body+' '+e.prompt).toLowerCase().includes(search.toLowerCase()));
-  return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36}}>
-    <Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A page just for you</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>Your journal stays in this device's local app storage. It is never added to Teddy's context unless you deliberately copy and share text yourself.</Text>
-    <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:18}}>
-      <Text style={{fontSize:18,fontWeight:'700',color:C.cocoaDark}}>{editing?'Edit your entry':'Write a little'}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginVertical:10}}>{prompts.map(p=><Pressable key={p} onPress={()=>setPrompt(p)} style={{backgroundColor:prompt===p?'#E7D0C2':'#F5ECE5',padding:10,borderRadius:12,marginRight:7}}><Text style={{fontSize:12,color:C.cocoaDark}}>{p}</Text></Pressable>)}</ScrollView>
-      <TextInput value={title} onChangeText={setTitle} placeholder="Title (optional)" placeholderTextColor={C.muted} style={{borderWidth:1,borderColor:C.line,borderRadius:12,padding:12,color:C.cocoaDark,marginBottom:9}} />
-      <TextInput value={body} onChangeText={setBody} multiline placeholder="Start wherever you are…" placeholderTextColor={C.muted} style={{minHeight:140,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,textAlignVertical:'top'}} />
-      <Pressable onPress={save} style={{backgroundColor:C.cocoaDark,borderRadius:14,padding:13,alignItems:'center',marginTop:12}}><Text style={{color:'#FFF',fontWeight:'700'}}>{editing?'Save changes':'Save privately'}</Text></Pressable>{editing?<Pressable onPress={()=>{setEditing(null);setTitle('');setBody('');setPrompt('Free reflection')}} style={{alignItems:'center',padding:10}}><Text style={{color:C.muted}}>Cancel editing</Text></Pressable>:null}
+export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
+  wide: boolean;
+  entries: JournalEntry[];
+  onSave: (entry: JournalEntry) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onShare: (entry: JournalEntry) => void;
+}) {
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [prompt, setPrompt] = useState('Free reflection');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const prompts = ['Free reflection', 'What felt heavy today?', 'What is one small thing I appreciate?', 'What do I need more of right now?', 'What would I tell a friend in this situation?'];
+
+  const save = async () => {
+    const normalizedBody = body.trim();
+    if (!normalizedBody || saving) {
+      if (!normalizedBody) setActionError('Write a little in your entry before saving.');
+      return;
+    }
+    const entry: JournalEntry = {
+      id: editing ?? (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)),
+      createdAt: editing ? (entries.find(item => item.id === editing)?.createdAt ?? new Date().toISOString()) : new Date().toISOString(),
+      title: title.trim().slice(0, 160) || prompt,
+      body: normalizedBody.slice(0, 30000),
+      prompt,
+    };
+    setSaving(true);
+    setActionError(null);
+    setActionNotice(null);
+    try {
+      await onSave(entry);
+      setTitle('');
+      setBody('');
+      setEditing(null);
+      setPrompt('Free reflection');
+      setActionNotice('Saved privately on this device.');
+    } catch {
+      setActionError('This entry could not be saved to this device. Your text is still in the editor; retry saving before leaving this page.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const beginDelete = (entry: JournalEntry) => {
+    confirmAction(
+      'Delete journal entry?',
+      `“${entry.title}” will be removed from this device. This cannot be undone.`,
+      () => {
+        setDeletingId(entry.id);
+        setActionError(null);
+        setActionNotice(null);
+        onDelete(entry.id).then(() => {
+          if (editing === entry.id) {
+            setEditing(null);
+            setTitle('');
+            setBody('');
+            setPrompt('Free reflection');
+          }
+        }).catch(() => {
+          setActionError('This entry could not be deleted from saved data. The entry remains available; try again.');
+        }).finally(() => setDeletingId(null));
+      },
+    );
+  };
+
+  const exportJournal = async () => {
+    if (!entries.length || exporting) {
+      if (!entries.length) setActionError('Write a journal entry before exporting.');
+      return;
+    }
+    setExporting(true);
+    setActionError(null);
+    setActionNotice(null);
+    const content = entries.map(entry => `# ${entry.title}\n${new Date(entry.createdAt).toLocaleString()} · ${entry.prompt}\n\n${entry.body}`).join('\n\n---\n\n');
+    try {
+      if (Platform.OS === 'web') {
+        await savePlainTextFile(content, `teddy-bud-journal-${new Date().toISOString().slice(0, 10)}.txt`);
+        setActionNotice('Your journal text download has started.');
+      } else {
+        const result = await Share.share({ title: 'Teddy Bud private journal export', message: content });
+        setActionNotice(result.action === Share.dismissedAction
+          ? 'Export canceled. Your journal entries remain saved on this device.'
+          : 'The share sheet opened. Choose where you would like to keep your journal text.');
+      }
+    } catch {
+      setActionError('Teddy Bud could not export the journal text. Try again, or select and copy the entries you want to keep.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setTitle('');
+    setBody('');
+    setPrompt('Free reflection');
+    setActionError(null);
+    setActionNotice(null);
+  };
+  const visible = entries.filter(entry => (entry.title + ' ' + entry.body + ' ' + entry.prompt).toLowerCase().includes(search.toLowerCase()));
+
+  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
+    <View style={styles.pageIntro}>
+      <Text style={styles.eyebrow}>PRIVATE REFLECTION</Text>
+      <Text style={styles.pageTitle}>A page just for you</Text>
+      <Text style={styles.pageDescription}>Your journal stays in this device's local app storage. It is never added to Teddy's context unless you choose “Discuss with Teddy” and then send the prepared message yourself.</Text>
     </View>
-    <Pressable onPress={()=>{if(!entries.length){Alert.alert('Journal is empty','Write an entry before exporting.');return;}const content=entries.map(entry=>'# '+entry.title+'\n'+new Date(entry.createdAt).toLocaleString()+' · '+entry.prompt+'\n\n'+entry.body).join('\n\n---\n\n');void Share.share({title:'Teddy Bud private journal export',message:content});}} style={{alignSelf:'flex-start',paddingVertical:12,paddingHorizontal:14,backgroundColor:'#E7D0C2',borderRadius:12,marginTop:12}}><Text style={{color:C.cocoaDark,fontWeight:'700'}}>Export journal text</Text></Pressable>
-    <TextInput value={search} onChangeText={setSearch} placeholder="Search journal entries" placeholderTextColor={C.muted} style={{borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:18}} />
-    {visible.map(entry=><View key={entry.id} style={{padding:15,borderWidth:1,borderColor:C.line,borderRadius:17,marginTop:10,backgroundColor:C.paper}}><Text style={{fontWeight:'700',color:C.cocoaDark,fontSize:16}}>{entry.title}</Text><Text style={{fontSize:12,color:C.muted,marginTop:4}}>{new Date(entry.createdAt).toLocaleString()} · {entry.prompt}</Text><Pressable onPress={()=>{setTitle(entry.title);setBody(entry.body);setPrompt(entry.prompt);setEditing(entry.id);}} style={{alignSelf:'flex-start',paddingVertical:8}}><Text style={{color:'#895B43',fontWeight:'700'}}>Edit entry</Text></Pressable><Text selectable style={{color:C.cocoaDark,lineHeight:21,marginTop:9}}>{entry.body}</Text><Pressable onPress={()=>Alert.alert('Delete journal entry?','This cannot be undone.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>onDelete(entry.id)}])} style={{alignSelf:'flex-end',padding:8}}><Text style={{color:'#98594B',fontWeight:'600'}}>Delete</Text></Pressable></View>)}
-    {visible.length===0?<Text style={{color:C.muted,marginTop:18}}>No matching entries yet.</Text>:null}
+    {(actionError || actionNotice) && <View accessibilityRole={actionError ? 'alert' : 'summary'} style={actionError ? styles.authError : styles.journalNotice}>
+      <Text accessibilityLiveRegion="polite" style={actionError ? styles.authErrorText : styles.journalNoticeText}>{actionError || actionNotice}</Text>
+      {actionError && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss journal notice" onPress={() => setActionError(null)} style={styles.journalDismiss}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>}
+    </View>}
+    <View style={styles.journalEditorCard}>
+      <Text style={styles.sectionTitle}>{editing ? 'Edit your entry' : 'Write a little'}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.journalPrompts}>{prompts.map(value => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: prompt === value }} onPress={() => { setPrompt(value); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [styles.journalPromptChip, prompt === value && styles.journalPromptChipSelected, pressed && styles.pressed]}><Text style={styles.journalPromptText}>{value}</Text></Pressable>)}</ScrollView>
+      <TextInput accessibilityLabel="Journal title (optional)" value={title} onChangeText={setTitle} maxLength={160} placeholder="Title (optional)" placeholderTextColor={C.muted} style={styles.journalTextInput} editable={!saving} />
+      <TextInput accessibilityLabel="Journal entry" accessibilityHint="Your entry is stored locally and is not sent to the AI unless you choose to discuss it and then send the prepared chat message." value={body} onChangeText={value => { setBody(value); setActionError(null); setActionNotice(null); }} maxLength={30000} multiline placeholder="Start wherever you are…" placeholderTextColor={C.muted} style={[styles.journalTextInput, styles.journalBodyInput]} editable={!saving} textAlignVertical="top" />
+      <View style={styles.journalEditorActions}>
+        <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Save journal changes' : 'Save privately'} disabled={saving} onPress={save} style={({ pressed }) => [styles.journalSaveButton, saving && styles.buttonDisabled, pressed && styles.pressed]}>
+          <Text style={styles.journalSaveButtonText}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Save privately'}</Text>
+        </Pressable>
+        {editing && <Pressable accessibilityRole="button" disabled={saving} onPress={cancelEdit} style={({ pressed }) => [styles.journalCancelButton, pressed && styles.pressed]}><Text style={styles.journalCancelButtonText}>Cancel edit</Text></Pressable>}
+      </View>
+    </View>
+    <Pressable accessibilityRole="button" disabled={exporting} onPress={exportJournal} style={({ pressed }) => [styles.journalExportButton, exporting && styles.buttonDisabled, pressed && styles.pressed]}>
+      <Text style={styles.journalExportButtonText}>{exporting ? 'Preparing export…' : 'Export journal text'}</Text>
+    </Pressable>
+    <TextInput accessibilityLabel="Search journal entries" value={search} onChangeText={setSearch} placeholder="Search journal entries" placeholderTextColor={C.muted} style={styles.journalSearchInput} />
+    {visible.map(entry => <View key={entry.id} style={styles.journalEntryCard}>
+      <Text style={styles.journalEntryTitle}>{entry.title}</Text>
+      <Text style={styles.journalEntryMeta}>{new Date(entry.createdAt).toLocaleString()} · {entry.prompt}</Text>
+      <View style={styles.journalEntryActions}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Edit journal entry ${entry.title}`} disabled={saving || deletingId !== null} onPress={() => { setTitle(entry.title); setBody(entry.body); setPrompt(entry.prompt); setEditing(entry.id); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [styles.journalInlineButton, pressed && styles.pressed]}>
+          <Text style={styles.journalInlineButtonText}>Edit entry</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Discuss journal entry ${entry.title} with Teddy`} onPress={() => {
+          confirmAction('Share this entry with Teddy?', 'The entry will be copied into your chat draft. It will not be sent until you review it and tap Send.', () => onShare(entry));
+        }} style={({ pressed }) => [styles.journalInlineButton, pressed && styles.pressed]}>
+          <Text style={styles.journalInlineButtonText}>Discuss with Teddy</Text>
+        </Pressable>
+      </View>
+      <Text selectable style={styles.journalEntryBody}>{entry.body}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Delete journal entry ${entry.title}`} disabled={deletingId !== null} onPress={() => beginDelete(entry)} style={({ pressed }) => [styles.journalDeleteButton, deletingId === entry.id && styles.buttonDisabled, pressed && styles.pressed]}>
+        <Text style={styles.journalDeleteButtonText}>{deletingId === entry.id ? 'Deleting…' : 'Delete'}</Text>
+      </Pressable>
+    </View>)}
+    {visible.length === 0 && <Text style={styles.journalEmptyText}>{search ? 'No entries match your search.' : 'Your journal is empty. Write a little whenever you are ready.'}</Text>}
   </ScrollView>;
 }
 function WellbeingStudio({wide}:{wide:boolean}) {
  const [mode,setMode]=useState<'breathe'|'ground'|'focus'|'rest'>('breathe'); const [step,setStep]=useState(0);
  const content={breathe:{title:'Gentle breathing',description:'Try a comfortable pace. Stop whenever you want.',steps:['Breathe in gently','Breathe out slowly','Relax your shoulders']},ground:{title:'Grounding pause',description:'Notice what is around you, without needing to change anything.',steps:['Name 5 things you can see','Notice 4 things you can feel','Listen for 3 sounds','Notice 2 scents','Name 1 kind thing you can tell yourself']},focus:{title:'Small focus break',description:'A short reset, not another task to complete.',steps:['Put both feet somewhere comfortable','Choose one small next step','Give yourself permission to pause']},rest:{title:'Bedtime wind-down',description:'A quiet offline routine. No streaks, pressure, or score.',steps:['Lower the brightness if comfortable','Let your jaw and shoulders soften','Put tomorrow’s first thought on paper']}} as const;
- return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36}}><Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A softer moment</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>These gentle exercises work offline. They are optional wellbeing tools, not medical treatment.</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:18}}>{([{id:'breathe',label:'Breathe'},{id:'ground',label:'Grounding'},{id:'focus',label:'Focus break'},{id:'rest',label:'Wind down'}] as const).map(item=><Pressable key={item.id} onPress={()=>{setMode(item.id);setStep(0)}} style={{padding:12,borderRadius:14,backgroundColor:mode===item.id?'#E7D0C2':C.paper,borderWidth:1,borderColor:C.line}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{item.label}</Text></Pressable>)}</View><View style={{backgroundColor:C.paper,borderRadius:24,borderWidth:1,borderColor:C.line,padding:22,marginTop:14,alignItems:'center'}}><View style={{width:120,height:120,borderRadius:60,backgroundColor:'#E7D0C2',alignItems:'center',justifyContent:'center',marginBottom:18}}><Text style={{fontSize:34,color:C.cocoaDark}}>{mode==='breathe'?'◌':mode==='ground'?'⌂':mode==='focus'?'✳':'☾'}</Text></View><Text style={{fontSize:21,fontWeight:'700',color:C.cocoaDark}}>{content[mode].title}</Text><Text style={{textAlign:'center',color:C.muted,lineHeight:21,marginTop:8}}>{content[mode].description}</Text><Text style={{fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',marginTop:24,minHeight:54}}>{content[mode].steps[step]}</Text><View style={{flexDirection:'row',gap:10,marginTop:18}}><Pressable onPress={()=>setStep(s=>Math.max(0,s-1))} style={{padding:13,borderRadius:13,backgroundColor:'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>Previous</Text></Pressable><Pressable onPress={()=>setStep(s=>(s+1)%content[mode].steps.length)} style={{padding:13,borderRadius:13,backgroundColor:C.cocoaDark}}><Text style={{color:'#FFF',fontWeight:'700'}}>{step===content[mode].steps.length-1?'Start again':'Next step'}</Text></Pressable></View></View></ScrollView>;
+ return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}><Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A softer moment</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>These gentle exercises work offline. They are optional wellbeing tools, not medical treatment.</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:18}}>{([{id:'breathe',label:'Breathe'},{id:'ground',label:'Grounding'},{id:'focus',label:'Focus break'},{id:'rest',label:'Wind down'}] as const).map(item=><Pressable key={item.id} onPress={()=>{setMode(item.id);setStep(0)}} style={{padding:12,borderRadius:14,backgroundColor:mode===item.id?'#E7D0C2':C.paper,borderWidth:1,borderColor:C.line}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{item.label}</Text></Pressable>)}</View><View style={{backgroundColor:C.paper,borderRadius:24,borderWidth:1,borderColor:C.line,padding:22,marginTop:14,alignItems:'center'}}><View style={{width:120,height:120,borderRadius:60,backgroundColor:'#E7D0C2',alignItems:'center',justifyContent:'center',marginBottom:18}}><Text style={{fontSize:34,color:C.cocoaDark}}>{mode==='breathe'?'◌':mode==='ground'?'⌂':mode==='focus'?'✳':'☾'}</Text></View><Text style={{fontSize:21,fontWeight:'700',color:C.cocoaDark}}>{content[mode].title}</Text><Text style={{textAlign:'center',color:C.muted,lineHeight:21,marginTop:8}}>{content[mode].description}</Text><Text style={{fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',marginTop:24,minHeight:54}}>{content[mode].steps[step]}</Text><View style={{flexDirection:'row',gap:10,marginTop:18}}><Pressable onPress={()=>setStep(s=>Math.max(0,s-1))} style={{padding:13,borderRadius:13,backgroundColor:'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>Previous</Text></Pressable><Pressable onPress={()=>setStep(s=>(s+1)%content[mode].steps.length)} style={{padding:13,borderRadius:13,backgroundColor:C.cocoaDark}}><Text style={{color:'#FFF',fontWeight:'700'}}>{step===content[mode].steps.length-1?'Start again':'Next step'}</Text></Pressable></View></View></ScrollView>;
 }
-function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entries: EmotionCheckIn[]; onSave: (entry: EmotionCheckIn) => void; onDelete: (id: string) => void }) {
+export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entries: EmotionCheckIn[]; onSave: (entry: EmotionCheckIn) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [energy, setEnergy] = useState(3);
   const [support, setSupport] = useState<EmotionCheckIn['support']>('listen');
   const [note, setNote] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const latest = entries[0];
+
+  const resetForm = () => {
+    setRatings({});
+    setEnergy(3);
+    setSupport('listen');
+    setNote('');
+    setShowForm(false);
+  };
+
+  const hasUnsavedCheckIn = Object.keys(ratings).length > 0 || Boolean(note.trim()) || energy !== 3 || support !== 'listen';
+
+  const toggleForm = () => {
+    if (!showForm) {
+      setShowForm(true);
+      setActionError(null);
+      setActionNotice(null);
+      return;
+    }
+    if (hasUnsavedCheckIn) {
+      confirmAction('Discard this check-in?', 'Your unfinished ratings and note will be discarded.', resetForm);
+    } else {
+      setShowForm(false);
+    }
+  };
+
+  const saveCheckIn = async () => {
+    if (saving) return;
+    const entry: EmotionCheckIn = {
+      id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2),
+      createdAt: new Date().toISOString(),
+      emotions: ratings,
+      energy,
+      support,
+      ...(note.trim() ? { note: note.trim().slice(0, 2000) } : {}),
+    };
+    setSaving(true);
+    setActionError(null);
+    setActionNotice(null);
+    try {
+      await onSave(entry);
+      resetForm();
+      setActionNotice('Check-in saved privately on this device.');
+    } catch {
+      setActionError('This check-in could not be saved. Your ratings and note are still here; retry saving before leaving this screen.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteCheckIn = (entry: EmotionCheckIn) => {
+    confirmAction('Delete check-in?', 'This removes this entry from this device.', () => {
+      setDeletingId(entry.id);
+      setActionError(null);
+      setActionNotice(null);
+      onDelete(entry.id).then(() => {
+        setActionNotice('Check-in deleted from this device.');
+      }).catch(() => {
+        setActionError('This check-in could not be deleted from saved data. The entry is still available; try again.');
+      }).finally(() => setDeletingId(null));
+    });
+  };
+  const weekEntries = entries.filter(entry => { const age = Date.now() - new Date(entry.createdAt).getTime(); return age >= 0 && age <= 7 * 24 * 60 * 60 * 1000; });
+  const weekEnergy = weekEntries.length ? weekEntries.reduce((sum, entry) => sum + entry.energy, 0) / weekEntries.length : 0;
+  const weekEmotionAverages = EMOTION_AXES.map(axis => {
+    const rated = weekEntries.filter(entry => typeof entry.emotions[axis.id] === 'number');
+    return { label: axis.label, average: rated.length ? rated.reduce((sum, entry) => sum + (entry.emotions[axis.id] ?? 0), 0) / rated.length : null, count: rated.length };
+  }).filter(item => item.average !== null).sort((a, b) => (b.average ?? 0) - (a.average ?? 0));
   const axisCount = EMOTION_AXES.length;
   const size = wide ? 340 : 290;
   const center = size / 2;
@@ -1496,28 +2238,40 @@ function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entr
     <View style={{maxWidth:760,width:'100%',alignSelf:'center'}}>
       <Text style={{fontSize:wide?30:25,fontWeight:'700',color:C.cocoaDark}}>Your emotional landscape</Text>
       <Text style={{fontSize:14,lineHeight:21,color:C.muted,marginTop:8}}>A private snapshot of how you feel. Rate only what feels relevant; there is no good or bad shape.</Text>
+      {(actionError || actionNotice) && <View accessibilityRole={actionError ? 'alert' : 'summary'} style={actionError ? styles.authError : styles.journalNotice}>
+        <Text accessibilityLiveRegion="polite" style={actionError ? styles.authErrorText : styles.journalNoticeText}>{actionError || actionNotice}</Text>
+        {actionError && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss check-in notice" onPress={() => setActionError(null)} style={styles.journalDismiss}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>}
+      </View>}
       <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:24,padding:16,marginTop:20}}>
         <Text style={{fontSize:17,fontWeight:'700',color:C.cocoaDark}}>{latest ? 'Latest check-in' : 'Your emotion web'}</Text>
         {renderWeb(latest?.emotions)}
         <Text accessibilityRole="text" style={{textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}}>{latest ? 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString() : 'Your web appears after your first check-in.'}</Text>
         {latest ? <Text style={{fontSize:13,lineHeight:20,color:C.cocoaDark,marginTop:8}}>Highest ratings: {EMOTION_AXES.filter(a=>(latest.emotions[a.id]??0)>0).sort((a,b)=>(latest.emotions[b.id]??0)-(latest.emotions[a.id]??0)).slice(0,3).map(a=>a.label+' '+latest.emotions[a.id]+'/5').join(' · ') || 'No emotions rated'} · Energy {latest.energy}/5</Text> : null}
-        <Pressable accessibilityRole="button" onPress={()=>setShowForm(v=>!v)} style={{backgroundColor:C.cocoaDark,borderRadius:15,padding:14,alignItems:'center',marginTop:16}}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={showForm ? 'Close check-in form' : 'Add a check-in'} onPress={toggleForm} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:16 }, pressed && styles.pressed]}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
       </View>
       {showForm ? <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:14}}>
         <Text style={{fontSize:19,fontWeight:'700',color:C.cocoaDark,marginBottom:6}}>How are you feeling?</Text>
         <Text style={{fontSize:13,color:C.muted,marginBottom:12}}>Tap a number from 0 (not present) to 5 (very strong). You can leave any emotion unrated.</Text>
         {EMOTION_AXES.map(axis=><View key={axis.id} style={{paddingVertical:9,borderBottomWidth:1,borderBottomColor:C.line}}>
           <Text style={{color:C.cocoaDark,fontWeight:'600',marginBottom:8}}>{axis.label}</Text>
-          <View style={{flexDirection:'row',gap:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} accessibilityRole="button" accessibilityLabel={axis.label+' '+n+' out of 5'} onPress={()=>setRatings(current=>({...current,[axis.id]:n}))} style={{width:36,height:36,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:ratings[axis.id]===n?'#B87862':'#F5ECE5',borderWidth:ratings[axis.id]===n?2:0,borderColor:C.cocoaDark}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{n}</Text></Pressable>)}</View>
+          <View style={{flexDirection:'row',gap:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} accessibilityRole="button" accessibilityLabel={axis.label+' '+n+' out of 5'} accessibilityState={{ selected: ratings[axis.id] === n }} onPress={()=>{ setRatings(current=>({...current,[axis.id]:n})); setActionError(null); setActionNotice(null); }} style={{flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:ratings[axis.id]===n?'#B87862':'#F5ECE5',borderWidth:ratings[axis.id]===n?2:0,borderColor:C.cocoaDark}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{n}</Text></Pressable>)}</View>
         </View>)}
         <Text style={{color:C.cocoaDark,fontWeight:'600',marginTop:14}}>Energy: {energy}/5</Text>
-        <View style={{flexDirection:'row',gap:8,marginTop:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} onPress={()=>setEnergy(n)} style={{width:36,height:36,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:energy===n?'#B87862':'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>{n}</Text></Pressable>)}</View>
+        <View style={{flexDirection:'row',gap:8,marginTop:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} accessibilityRole="button" accessibilityLabel={`Energy ${n} out of 5`} accessibilityState={{ selected: energy === n }} onPress={()=>{ setEnergy(n); setActionError(null); setActionNotice(null); }} style={{flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:energy===n?'#B87862':'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>{n}</Text></Pressable>)}</View>
         <Text style={{color:C.cocoaDark,fontWeight:'600',marginTop:14,marginBottom:8}}>What would help right now?</Text>
-        <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{([{id:'listen',label:'Just listen'},{id:'advice',label:'Practical advice'},{id:'encouragement',label:'Encouragement'},{id:'unsure',label:'Not sure'}] as const).map(option=><Pressable key={option.id} onPress={()=>setSupport(option.id)} style={{paddingVertical:9,paddingHorizontal:12,borderRadius:14,backgroundColor:support===option.id?'#E7D0C2':'#F5ECE5',borderWidth:support===option.id?1:0,borderColor:'#B87862'}}><Text style={{color:C.cocoaDark}}>{option.label}</Text></Pressable>)}</View>
+        <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{([{id:'listen',label:'Just listen'},{id:'advice',label:'Practical advice'},{id:'encouragement',label:'Encouragement'},{id:'unsure',label:'Not sure'}] as const).map(option=><Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: support === option.id }} onPress={()=>{ setSupport(option.id); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [{ minHeight:48, paddingVertical:9, paddingHorizontal:12, borderRadius:14, backgroundColor:support===option.id?'#E7D0C2':'#F5ECE5', borderWidth:support===option.id?1:0, borderColor:'#B87862' }, pressed && styles.pressed, pressed && styles.squeezePressed]}><Text style={{color:C.cocoaDark}}>{option.label}</Text></Pressable>)}</View>
         <Text style={{fontSize:12,color:C.muted,marginTop:12}}>Optional note (saved only on this device)</Text>
-        <TextInput value={note} onChangeText={setNote} multiline placeholder="Anything you want to remember about this moment…" placeholderTextColor={C.muted} style={{minHeight:76,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:7,textAlignVertical:'top'}} />
-        <Pressable onPress={()=>{onSave({id:Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),createdAt:new Date().toISOString(),emotions:ratings,energy,support,note:note.trim()||undefined});setRatings({});setEnergy(3);setSupport('listen');setNote('');setShowForm(false);}} style={{backgroundColor:C.cocoaDark,borderRadius:15,padding:14,alignItems:'center',marginTop:14}}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>Save privately on this device</Text></Pressable>
+        <TextInput accessibilityLabel="Emotion check-in note (optional)" value={note} onChangeText={value => { setNote(value.slice(0, 2000)); setActionError(null); setActionNotice(null); }} multiline maxLength={2000} placeholder="Anything you want to remember about this moment…" placeholderTextColor={C.muted} style={{minHeight:76,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:7,textAlignVertical:'top'}} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Save emotion check-in" disabled={saving} onPress={saveCheckIn} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:14 }, saving && styles.buttonDisabled, pressed && styles.pressed]}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{saving ? 'Saving check-in…' : 'Save privately on this device'}</Text></Pressable>
       </View> : null}
+      <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:18,padding:15,marginTop:18}}>
+        <Text style={{fontSize:16,fontWeight:'700',color:C.cocoaDark}}>Your week in reflection</Text>
+        {weekEntries.length >= 2 ? <>
+          <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>A local summary of {weekEntries.length} check-ins from the last seven days. This uses only ratings you entered and is not a diagnosis or prediction.</Text>
+          <Text style={{fontSize:14,color:C.cocoaDark,marginTop:10}}>Average energy: {weekEnergy.toFixed(1)}/5</Text>
+          {weekEmotionAverages.length ? <Text style={{fontSize:14,color:C.cocoaDark,marginTop:6}}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={{fontSize:13,color:C.muted,marginTop:6}}>No emotion ratings were recorded in these check-ins.</Text>}
+        </> : <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>Add at least two check-ins within seven days to see a summary. It stays on this device and never labels or scores your mental health.</Text>}
+      </View>
       {entries.length >= 2 ? <View style={{backgroundColor:'#F4ECE6',borderRadius:18,padding:15,marginTop:18}}>
         <Text style={{fontSize:16,fontWeight:'700',color:C.cocoaDark}}>Your recent pattern</Text>
         <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
@@ -1528,7 +2282,7 @@ function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entr
         <Text style={{color:C.cocoaDark,fontWeight:'700'}}>{new Date(entry.createdAt).toLocaleString()}</Text>
         <Text style={{color:C.muted,fontSize:13,marginTop:5}}>{EMOTION_AXES.filter(a=>entry.emotions[a.id]!==undefined).sort((a,b)=>(entry.emotions[b.id]??0)-(entry.emotions[a.id]??0)).slice(0,4).map(a=>a.label+' '+entry.emotions[a.id]+'/5').join(' · ') || 'No emotion ratings'} · Energy {entry.energy}/5</Text>
         {entry.note ? <Text style={{color:C.cocoaDark,marginTop:6}}>{entry.note}</Text> : null}
-        <Pressable accessibilityRole="button" onPress={()=>Alert.alert('Delete check-in?','This removes this entry from this device.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:()=>onDelete(entry.id)}])} style={{alignSelf:'flex-end',padding:8}}><Text style={{color:'#98594B',fontWeight:'600'}}>Delete</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Delete check-in from ${new Date(entry.createdAt).toLocaleString()}`} disabled={deletingId !== null} onPress={()=>deleteCheckIn(entry)} style={({ pressed }) => [{ minHeight:48, alignSelf:'flex-end', justifyContent:'center', paddingHorizontal:12 }, deletingId === entry.id && styles.buttonDisabled, pressed && styles.pressed]}><Text style={{color:'#98594B',fontWeight:'600'}}>{deletingId === entry.id ? 'Deleting…' : 'Delete'}</Text></Pressable>
       </View>)}
       <Text style={{fontSize:12,color:C.muted,lineHeight:18,marginTop:10}}>These ratings are self-reported reflections, not a clinical assessment. No emotions are inferred from your chats.</Text>
     </View>
@@ -1562,7 +2316,7 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
     </View>
     <Text style={styles.settingsSectionLabel}>DATA</Text>
     <View style={styles.settingsCard}>
-      <View style={styles.clearRow}><View style={styles.clearIcon}><Text style={styles.clearGlyph}>⌫</Text></View><View style={styles.settingText}><Text style={styles.settingTitle}>Clear local data</Text><Text style={styles.settingDescription}>Remove saved chat history and memories from this device.</Text></View><Pressable accessibilityRole="button" onPress={onClear} style={styles.clearButton}><Text style={styles.clearButtonText}>Clear</Text></Pressable></View>
+      <View style={styles.clearRow}><View style={styles.clearIcon}><Text style={styles.clearGlyph}>⌫</Text></View><View style={styles.settingText}><Text style={styles.settingTitle}>Clear local data</Text><Text style={styles.settingDescription}>Remove saved chat history and memories from this device.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Clear local data" accessibilityHint="Permanently removes saved chats, memories, emotion check-ins, and journal entries from this device after confirmation." onPress={onClear} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}><Text style={styles.clearButtonText}>Clear</Text></Pressable></View>
     </View>
     <Text style={styles.settingsSectionLabel}>POLICIES</Text>
     <View style={styles.settingsCardForm}>
@@ -1609,7 +2363,7 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
       const saved = await saveBackupFile(fileContents);
       setBackupStatus(saved ? 'Encrypted backup saved. Keep the passphrase somewhere safe; it cannot be recovered.' : 'Backup export cancelled.');
     } catch (error) {
-      setBackupStatus(error instanceof Error ? error.message : 'The backup could not be created.');
+      setBackupStatus(backupErrorMessage(error, 'export'));
     } finally {
       setBackupBusy(false);
     }
@@ -1628,7 +2382,7 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
     }).then(imported => {
       if (typeof imported === 'boolean') setBackupStatus(imported ? 'Backup restored for this account on this device.' : 'Import cancelled. Your saved data was not changed.');
     }).catch(error => {
-      setBackupStatus(error instanceof Error ? error.message : 'The backup could not be loaded.');
+      setBackupStatus(backupErrorMessage(error, 'import'));
     }).finally(() => setBackupBusy(false));
   };
 
@@ -1713,16 +2467,31 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
 
 function SettingRow({ icon, title, description, value, onChange }: { icon: string; title: string; description: string; value: boolean; onChange: (value: boolean) => void }) {
   const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
+  const reduceMotion = useReducedMotionPreference();
   useEffect(() => {
-    Animated.timing(progress, { toValue: value ? 1 : 0, duration: 190, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
-  }, [progress, value]);
+    progress.stopAnimation();
+    if (reduceMotion) {
+      progress.setValue(value ? 1 : 0);
+      return undefined;
+    }
+    const animation = Animated.timing(progress, { toValue: value ? 1 : 0, duration: 190, easing: Easing.out(Easing.cubic), useNativeDriver: false });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, value, reduceMotion]);
   const thumbPosition = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 17] });
   const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: ['#DED8D0', C.cocoa] });
-  return <View style={styles.settingRow}><View style={styles.settingIcon}><Text style={styles.settingGlyph}>{icon}</Text></View><View style={styles.settingText}><Text style={styles.settingTitle}>{title}</Text><Text style={styles.settingDescription}>{description}</Text></View><Pressable accessibilityRole="switch" accessibilityState={{ checked: value }} accessibilityLabel={title} onPress={() => onChange(!value)} style={styles.switchHitArea}><Animated.View style={[styles.switchTrack, { backgroundColor: trackColor }]}><Animated.View style={[styles.switchThumb, { transform: [{ translateX: thumbPosition }] }]} /></Animated.View></Pressable></View>;
+  return <View style={styles.settingRow}><View style={styles.settingIcon}><Text style={styles.settingGlyph}>{icon}</Text></View><View style={styles.settingText}><Text style={styles.settingTitle}>{title}</Text><Text style={styles.settingDescription}>{description}</Text></View><Pressable accessibilityRole="switch" accessibilityState={{ checked: value }} accessibilityLabel={title} accessibilityHint={description} onPress={() => onChange(!value)} style={({ pressed }) => [styles.switchHitArea, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Animated.View style={[styles.switchTrack, { backgroundColor: trackColor }]}><Animated.View style={[styles.switchThumb, { transform: [{ translateX: thumbPosition }] }]} /></Animated.View></Pressable></View>;
 }
 
 function Button({ label, onPress, tone = 'primary', disabled = false }: { label: string; onPress: () => void; tone?: 'primary' | 'quiet'; disabled?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.button, tone === 'quiet' && styles.buttonQuiet, disabled && styles.buttonDisabled, pressed && styles.pressed]}><Text style={[styles.buttonText, tone === 'quiet' && styles.buttonTextQuiet]}>{label}</Text></Pressable>;
+  const reduceMotion = useReducedMotionPreference();
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} style={({ pressed }) => [
+    styles.button,
+    tone === 'quiet' && styles.buttonQuiet,
+    disabled && styles.buttonDisabled,
+    pressed && styles.pressed,
+    pressed && !reduceMotion && styles.squeezePressed,
+  ]}><Text style={[styles.buttonText, tone === 'quiet' && styles.buttonTextQuiet]}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -1748,6 +2517,8 @@ const styles = StyleSheet.create({
   authLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' },
   authNotice: { backgroundColor: '#E8EFE5', borderRadius: 12, padding: 11, marginBottom: 14 },
   authNoticeText: { color: '#435943', fontSize: 12, lineHeight: 16, textAlign: 'center' },
+  authInputInvalid: { borderColor: C.rose, borderWidth: 1.5 },
+  authFieldError: { color: C.rose, fontSize: 12, lineHeight: 17, marginTop: -9, marginBottom: 10 },
   authPasswordRow: { height: 50, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.line, borderRadius: 14, backgroundColor: '#FDFCFA', marginBottom: 14 },
   authPasswordInput: { flex: 1, height: '100%', paddingHorizontal: 14, color: C.ink, fontSize: 13 },
   showPasswordButton: { minWidth: 55, height: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
@@ -1759,7 +2530,7 @@ const styles = StyleSheet.create({
   authToggleText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
   authScreen: { flex: 1, backgroundColor: C.canvas }, authScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 24, justifyContent: 'flex-start' }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 22 }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 20 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
   root: { flex: 1, flexDirection: 'row', backgroundColor: C.canvas }, main: { flex: 1, minWidth: 0 },
-  newChatButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatButtonCollapsed: { paddingHorizontal: 0, justifyContent: 'center' }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
+  newChatButton: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatButtonCollapsed: { paddingHorizontal: 0, justifyContent: 'center' }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
   headerPinnedButton: { backgroundColor: '#EEE5DB' }, headerPinnedButtonLabel: { color: C.cocoaDark },
   accountCard: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, borderRadius: 14 }, accountCardCollapsed: { justifyContent: 'center', paddingHorizontal: 0 }, accountAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#E4DDD4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, accountAvatarImage: { width: 34, height: 34 }, accountAvatarText: { color: C.cocoaDark, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 }, accountCopy: { flex: 1 }, accountTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, accountSubtitle: { color: C.muted, fontSize: 11, marginTop: 3 }, accountArrow: { color: '#938A80', fontSize: 22 },
   sidebar: { width: 258, minWidth: 0, flexShrink: 0, overflow: 'hidden', backgroundColor: '#F3F2EF', borderRightWidth: 1, borderRightColor: '#E9E8E4', paddingHorizontal: 18, paddingTop: 24, paddingBottom: 16 }, sidebarCollapseButton: { width: 34, height: 34, borderRadius: 11, marginLeft: 'auto', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAE8E3' }, sidebarCollapseButtonCollapsed: { marginLeft: 0 }, sidebarCollapseGlyph: { color: C.cocoa, fontSize: 23, lineHeight: 25, fontWeight: '500' },
@@ -1768,14 +2539,14 @@ const styles = StyleSheet.create({
   sidebarBottom: { marginTop: 'auto' }, sidebarRule: { height: 1, backgroundColor: '#E2D9CD', marginBottom: 20 }, localNoteIcon: { width: 32, height: 32, backgroundColor: '#E7E5E0', borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }, localNoteGlyph: { color: C.cocoa, fontSize: 17 }, localNoteTitle: { color: C.ink, fontSize: 12, fontWeight: '700', marginBottom: 5 }, localNoteBody: { color: C.muted, fontSize: 11, lineHeight: 17 },
   topbar: { height: 66, borderBottomWidth: 1, borderBottomColor: '#ECEBE7', paddingHorizontal: 28, flexDirection: 'row', alignItems: 'center', backgroundColor: C.paper }, mobileTopbar: { height: 64, paddingHorizontal: 18 }, topbarContext: { marginLeft: 28, paddingLeft: 28, borderLeftWidth: 1, borderLeftColor: C.line, color: C.muted, fontSize: 13, flex: 1 }, accountSettingsButton: { minHeight: 40, borderRadius: 20, backgroundColor: C.peachLight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14, marginLeft: 'auto' }, accountSettingsIcon: { color: C.cocoaDark, fontSize: 17, lineHeight: 20 }, accountSettingsLabel: { color: C.cocoaDark, fontSize: 13, fontWeight: '600' }, brandSub: { color: C.muted, fontSize: 11, marginTop: 2 },
   contentArea: { flex: 1, minHeight: 0 }, chatPage: { flex: 1 }, chatHeader: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, chatHeaderWide: { paddingHorizontal: 48, paddingTop: 20, paddingBottom: 14 }, chatHeaderCopy: { flex: 1 }, chatSubtitle: { color: C.muted, fontSize: 12, marginTop: 6 }, privatePill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#E6E5E1', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: C.paper }, privateDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#7A9875' }, privateLabel: { color: C.green, fontSize: 10, fontWeight: '600' }, eyebrow: { color: C.cocoa, fontSize: 9, letterSpacing: 1.7, fontWeight: '700', marginBottom: 7 }, pageTitle: { color: C.ink, fontSize: 22, fontWeight: '600', letterSpacing: -0.55 }, headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },   servicePill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, serviceDot: { width: 6, height: 6, backgroundColor: '#BC9E79', borderRadius: 4 }, serviceText: { color: C.muted, fontSize: 10, fontWeight: '600' }, moreButton: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line }, moreGlyph: { color: C.muted, fontSize: 20, lineHeight: 23, marginTop: -10 }, historyGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 },
-  chatScroll: { flex: 1 }, chatContent: { paddingHorizontal: 20, paddingBottom: 26, flexGrow: 1 }, chatContentWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64 }, emptyContent: { justifyContent: 'center' }, emptyState: { width: '100%', maxWidth: 720, alignSelf: 'center', alignItems: 'center', paddingTop: 14, paddingBottom: 20 }, emptyHeroMark: { width: 60, height: 60, borderRadius: 30, overflow: 'hidden', backgroundColor: '#FAF6ED', alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: C.cocoa, shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 }, emptyHeroLogo: { width: 90, height: 90 }, emptyGreeting: { color: C.ink, fontSize: 30, lineHeight: 38, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, emptyDescription: { maxWidth: 440, color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 9, marginBottom: 28 }, starterGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }, starterCard: { width: '31.8%', minWidth: 175, minHeight: 92, borderRadius: 18, borderWidth: 1, borderColor: '#E7E4DE', backgroundColor: '#FFFFFF', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#302821', shadowOpacity: 0.025, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, starterCardMobile: { width: '48%', minWidth: 120, minHeight: 78, padding: 10, gap: 7 }, starterCardPressed: { backgroundColor: '#F8F6F2', borderColor: '#D4C8BA' }, starterIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F3F0EB', alignItems: 'center', justifyContent: 'center' }, starterIconText: { color: C.cocoa, fontSize: 17 }, starterCopy: { flex: 1 }, starterTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, starterDescription: { color: C.muted, fontSize: 10, lineHeight: 14, marginTop: 4 }, starterArrow: { color: '#6F6256', fontSize: 13, alignSelf: 'flex-start' }, conversationColumn: { width: '100%', maxWidth: 760, alignSelf: 'center' }, dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 10, marginBottom: 24 }, dividerLine: { height: 1, backgroundColor: C.line, flex: 1 }, dayText: { color: '#75665A', fontSize: 9, letterSpacing: 1.5, fontWeight: '700' },
+  chatActionsMenuButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 13, paddingHorizontal: 8 }, chatActionsMenuGlyph: { color: C.cocoaDark, fontSize: 24, lineHeight: 27, fontWeight: '700' }, chatActionsModalRoot: { flex: 1, justifyContent: 'flex-end' }, chatActionsScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(35, 29, 24, 0.28)' }, chatActionsSheet: { paddingHorizontal: 20, paddingTop: 18, backgroundColor: C.paper, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderColor: C.line, gap: 8 }, chatActionsSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }, chatActionsSheetTitle: { fontSize: 16, fontWeight: '700', color: C.cocoaDark }, chatActionsDismiss: { minHeight: 40, paddingHorizontal: 10, justifyContent: 'center' }, chatActionsDismissText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, chatActionsSheetItem: { minHeight: 48, justifyContent: 'center', borderRadius: 13, backgroundColor: C.paperAlt, paddingHorizontal: 14 }, chatActionsSheetItemText: { fontSize: 13, fontWeight: '600', color: C.cocoaDark }, chatScrollWrap: { flex: 1, minHeight: 0, position: 'relative' }, chatScroll: { flex: 1 }, jumpToLatestButton: { position: 'absolute', alignSelf: 'center', bottom: 10, minHeight: 40, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: '#DDD4C9', backgroundColor: C.paper, shadowColor: '#302821', shadowOpacity: 0.1, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 3 }, jumpToLatestText: { color: C.cocoaDark, fontSize: 12, fontWeight: '700' }, chatContent: { paddingHorizontal: 20, paddingBottom: 26, flexGrow: 1 }, chatContentWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64 }, emptyContent: { justifyContent: 'center' }, emptyState: { width: '100%', maxWidth: 720, alignSelf: 'center', alignItems: 'center', paddingTop: 14, paddingBottom: 20 }, emptyHeroMark: { width: 60, height: 60, borderRadius: 30, overflow: 'hidden', backgroundColor: '#FAF6ED', alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: C.cocoa, shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 }, emptyHeroLogo: { width: 90, height: 90 }, emptyGreeting: { color: C.ink, fontSize: 30, lineHeight: 38, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, emptyDescription: { maxWidth: 440, color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 9, marginBottom: 28 }, starterGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }, starterCard: { width: '31.8%', minWidth: 175, minHeight: 92, borderRadius: 18, borderWidth: 1, borderColor: '#E7E4DE', backgroundColor: '#FFFFFF', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#302821', shadowOpacity: 0.025, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, starterCardMobile: { width: '48%', minWidth: 120, minHeight: 78, padding: 10, gap: 7 }, starterCardPressed: { backgroundColor: '#F8F6F2', borderColor: '#D4C8BA' }, starterIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F3F0EB', alignItems: 'center', justifyContent: 'center' }, starterIconText: { color: C.cocoa, fontSize: 17 }, starterCopy: { flex: 1 }, starterTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, starterDescription: { color: C.muted, fontSize: 10, lineHeight: 14, marginTop: 4 }, starterArrow: { color: '#6F6256', fontSize: 13, alignSelf: 'flex-start' }, conversationColumn: { width: '100%', maxWidth: 760, alignSelf: 'center' }, dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 10, marginBottom: 24 }, dividerLine: { height: 1, backgroundColor: C.line, flex: 1 }, dayText: { color: '#75665A', fontSize: 9, letterSpacing: 1.5, fontWeight: '700' },
   connectCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2ECE3', borderRadius: 16, padding: 14, marginTop: 22, marginLeft: 44, gap: 12, maxWidth: 555 }, connectIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center' }, connectIconText: { color: C.cocoa, fontSize: 17 }, connectCopy: { flex: 1 }, connectTitle: { fontSize: 12, fontWeight: '700', color: C.ink, marginBottom: 4 }, connectBody: { fontSize: 11, color: C.muted, lineHeight: 16 }, connectArrow: { color: C.cocoa, fontSize: 24 }, promptWrap: { marginTop: 22, marginLeft: 44 }, promptHeading: { color: '#796D62', fontSize: 11, fontWeight: '600', marginBottom: 10, marginLeft: 2 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, promptChip: { borderWidth: 1, borderColor: '#E3D9CD', backgroundColor: '#FBF8F3', borderRadius: 18, paddingHorizontal: 14, minHeight: 38, justifyContent: 'center' }, promptChipText: { color: C.cocoaDark, fontSize: 11, fontWeight: '500' },
   messageRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 14 }, messageRowYou: { justifyContent: 'flex-end' }, messageBubble: { maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 }, teddyBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: C.cocoa, borderBottomRightRadius: 4 }, messageText: { color: C.ink, fontSize: 14, lineHeight: 21 }, markdownReply: { gap: 2 }, markdownStrong: { color: C.ink, fontWeight: '700' }, markdownItalic: { fontStyle: 'italic' }, markdownStrike: { textDecorationLine: 'line-through' }, markdownInlineCode: { color: '#61492F', backgroundColor: '#F2EDE4', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }, markdownLink: { color: '#76552F', textDecorationLine: 'underline' }, markdownHeading: { fontWeight: '700', marginTop: 5, marginBottom: 5 }, markdownHeadingLarge: { fontSize: 19 }, markdownListRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 }, markdownListText: { flex: 1 }, markdownFence: { color: C.ink, backgroundColor: '#F5F2ED', borderRadius: 8, padding: 10, marginVertical: 5, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, lineHeight: 18 }, markdownQuote: { borderLeftColor: '#D9B879', borderLeftWidth: 3, paddingLeft: 10, marginLeft: 0, marginVertical: 4 }, markdownRule: { height: 1, backgroundColor: C.line, marginVertical: 7 }, userMessageText: { color: C.white }, messageTime: { color: C.muted, fontSize: 9, textAlign: 'right', marginTop: 5 }, userMessageTime: { color: '#E8D9CC' }, sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, marginBottom: 8 }, typingBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }, typingText: { color: C.muted, fontSize: 12, fontWeight: '600' }, errorBanner: { backgroundColor: '#FCE9E3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 }, errorText: { color: '#8D473F', fontSize: 11, lineHeight: 16 }, retryButton: { alignSelf: 'flex-start', marginTop: 8, minHeight: 30, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#FFFFFF' }, retryButtonText: { color: '#8D473F', fontSize: 11, fontWeight: '700' },
   composerWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 68, maxWidth: 760, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 9, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDDCD6', borderRadius: 24, paddingHorizontal: 11, paddingVertical: 8, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerCardFocused: { borderColor: '#B49A83', shadowColor: C.cocoa, shadowOpacity: 0.14, shadowRadius: 17, shadowOffset: { width: 0, height: 0 }, elevation: 3 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, maxWidth: 760, alignSelf: 'center', width: '100%', marginBottom: 7 }, chatToolButton: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', paddingHorizontal: 10 }, chatToolIcon: { color: C.cocoa, fontSize: 13 }, chatToolLabel: { color: C.cocoaDark, fontSize: 10, fontWeight: '600' }, toolIconButton: { width: 31, height: 31, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { flex: 1, minWidth: 0, color: C.ink, fontSize: 14, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 7, maxHeight: 110, minHeight: 46 }, sendButton: { flexShrink: 0, width: 46, height: 46, borderRadius: 17, backgroundColor: '#B9A797', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: C.cocoa }, sendButtonDisabled: { opacity: 0.72 }, sendArrowIcon: { width: 20, height: 20, position: 'relative' }, sendArrowShaft: { position: 'absolute', left: 2, top: 9, width: 15, height: 1.7, borderRadius: 1, backgroundColor: C.white, transform: [{ rotate: '-45deg' }] }, sendArrowTop: { position: 'absolute', left: 9, top: 3, width: 8, height: 1.7, borderRadius: 1, backgroundColor: C.white }, sendArrowRight: { position: 'absolute', right: 3, top: 3, width: 1.7, height: 8, borderRadius: 1, backgroundColor: C.white }, composerFootnote: { color: '#706458', fontSize: 11, textAlign: 'center', marginTop: 8, lineHeight: 14 },
-  bottomNav: { height: 62, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }, bottomNavItem: { flex: 1, minWidth: 0, height: 54, alignItems: 'center', justifyContent: 'center', gap: 2 }, bottomIcon: { fontSize: 19, color: '#75685C', lineHeight: 22 }, bottomIconActive: { color: C.cocoa }, bottomLabel: { fontSize: 10, color: '#6F6256', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' },
+  bottomNav: { minHeight: 70, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingTop: 5, paddingHorizontal: 3 }, bottomNavItem: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 13, paddingHorizontal: 1, paddingVertical: 3 }, bottomNavItemActive: { backgroundColor: '#F6F0E9' }, bottomIcon: { fontSize: 19, color: '#75685C', lineHeight: 23 }, bottomIconActive: { color: C.cocoaDark }, bottomLabel: { fontSize: 10, color: '#6F6256', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' }, bottomNavPlusAction: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center' }, bottomNavPlusBox: { width: 46, height: 46, borderRadius: 14, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', shadowColor: '#302821', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 }, bottomNavPlusGlyph: { color: C.white, fontSize: 29, lineHeight: 32, fontWeight: '400', includeFontPadding: false }, squeezePressed: { transform: [{ scale: 0.965 }] },
   pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#6F6256', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#75685C', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#6E6054', fontSize: 17 }, deleteGlyph: { color: '#855748', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
   privacyBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: C.greenLight, borderRadius: 16, marginBottom: 27 }, privacyShield: { width: 35, height: 35, backgroundColor: '#D7E3D4', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, shieldGlyph: { color: C.green, fontSize: 19 }, privacyCopy: { flex: 1 }, privacyTitle: { color: '#435943', fontSize: 13, fontWeight: '700', marginBottom: 5 }, privacyBody: { color: '#65745F', fontSize: 12, lineHeight: 17 }, settingsSectionLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginTop: 3 }, settingsCard: { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, paddingHorizontal: 15, marginBottom: 23 }, settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 }, settingIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' }, settingGlyph: { color: C.cocoa, fontSize: 15 }, settingText: { flex: 1 }, settingTitle: { color: C.ink, fontSize: 12, fontWeight: '700', lineHeight: 17 }, settingDescription: { color: C.muted, fontSize: 12, lineHeight: 15, marginTop: 3 }, switchHitArea: { padding: 2 }, switchTrack: { width: 42, height: 25, borderRadius: 14, padding: 3, justifyContent: 'center' }, switchThumb: { width: 19, height: 19, borderRadius: 10, backgroundColor: C.white }, settingSeparator: { height: 1, backgroundColor: C.line, marginLeft: 44 }, gatewaySection: { borderRadius: 18 }, gatewaySectionFocused: { borderWidth: 1, borderColor: '#D6BAA5', padding: 10, marginHorizontal: -10, marginBottom: 14, backgroundColor: '#F8F0E8' }, gatewayIntro: { flexDirection: 'row', gap: 11, paddingTop: 16, paddingBottom: 14 }, gatewayIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, gatewayGlyph: { color: C.cocoa, fontSize: 16 }, inputLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.1, fontWeight: '700', marginBottom: 7 }, gatewayInput: { height: 45, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 12 }, gatewayActions: { paddingTop: 11, paddingBottom: 15, gap: 9 }, connectionStatus: { color: C.muted, fontSize: 11, lineHeight: 15 }, connectionReady: { color: C.green }, connectionError: { color: C.rose }, clearRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15 }, clearIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#F8EAE5', alignItems: 'center', justifyContent: 'center' }, clearGlyph: { color: C.rose, fontSize: 16 }, clearButton: { minHeight: 36, minWidth: 54, borderRadius: 11, borderWidth: 1, borderColor: '#E7D8D2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 }, clearButtonText: { color: C.rose, fontSize: 11, fontWeight: '700' }, versionText: { textAlign: 'center', color: '#6E6258', fontSize: 10, letterSpacing: 1.4, marginTop: 2, marginBottom: 16 },
-  button: { minHeight: 42, backgroundColor: C.cocoa, borderRadius: 13, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 17 }, buttonQuiet: { backgroundColor: '#F2ECE4' }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: C.white, fontSize: 11, fontWeight: '700' }, buttonTextQuiet: { color: C.cocoaDark }, pressed: { opacity: 0.75 }, disabledText: { color: '#6E6258' },
+  button: { minHeight: 48, backgroundColor: C.cocoa, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, buttonQuiet: { backgroundColor: '#F2ECE4' }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: C.white, fontSize: 12, fontWeight: '700' }, buttonTextQuiet: { color: C.cocoaDark }, pressed: { opacity: 0.88 }, disabledText: { color: '#6E6258' },
   localLoadingScreen: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: C.canvas },
   localLoadingTitle: { color: C.ink, fontSize: 21, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
   localLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: 8 },
@@ -1805,7 +2576,10 @@ const styles = StyleSheet.create({
   memorySuggestionActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 11 },
   mobileHistoryPage: { flex: 1, paddingHorizontal: 20, paddingTop: 26, paddingBottom: 20 },
   historyPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20 },
+  historyPageHeaderCopy: { flex: 1, minWidth: 0 },
+  mobileHistorySearch: { minHeight: 48, marginTop: 12, marginBottom: 4, borderWidth: 1, borderColor: C.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: C.paper, color: C.ink, fontSize: 14 },
   mobileHistoryList: { flex: 1, marginTop: 12 },
+  mobileHistoryListContent: { paddingBottom: 18 },
   profileTextButton: { width: 'auto', minWidth: 66, paddingHorizontal: 10 },
   settingsCardForm: { width: '100%', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, padding: 16, marginBottom: 20, gap: 10 },
   characterChoices: { gap: 8, marginVertical: 4 },
@@ -1831,6 +2605,44 @@ const styles = StyleSheet.create({
   typingIndicator: { minWidth: 48, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 12 },
   typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.muted },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(45, 36, 29, 0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 }, modalCard: { width: '100%', maxWidth: 460, backgroundColor: C.paper, borderRadius: 22, padding: 22 }, modalTopline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }, modalIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, modalIconText: { color: C.cocoa, fontSize: 18 }, closeButton: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.paperAlt }, closeText: { color: C.muted, fontSize: 22, lineHeight: 24 }, modalTitle: { color: C.ink, fontWeight: '700', fontSize: 20, letterSpacing: -0.4 }, modalBody: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 7, marginBottom: 16 }, memoryInput: { minHeight: 100, maxHeight: 180, backgroundColor: '#F9F6F1', borderColor: C.line, borderWidth: 1, borderRadius: 14, padding: 13, color: C.ink, fontSize: 13, lineHeight: 19 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 17 }, suggestedFact: { color: C.ink, fontSize: 15, lineHeight: 22, fontWeight: '600', backgroundColor: '#F9F6F1', borderRadius: 14, padding: 13, marginTop: 12 }, historyCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: C.paper, borderRadius: 22, padding: 22 }, historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 }, historyList: { maxHeight: 430, marginTop: 14 }, historyItemWrap: { position: 'relative', width: '100%', minWidth: 0, marginBottom: 6 }, historyItem: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 3, paddingHorizontal: 4, paddingVertical: 4, borderRadius: 13, borderWidth: 1, borderColor: 'transparent' }, historyItemOpen: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, borderRadius: 10 }, historyItemSelected: { backgroundColor: '#F2E5C9', borderColor: '#D9B879' }, chatMenuTrigger: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, chatMenuDots: { color: C.muted, fontSize: 16, fontWeight: '700', letterSpacing: 1 }, chatActionMenu: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 12, padding: 5, marginHorizontal: 5, marginTop: -1, shadowColor: '#302821', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, chatActionItem: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8 }, chatActionText: { color: C.ink, fontSize: 12, fontWeight: '500' }, chatActionDelete: { backgroundColor: '#FCF5F2' }, chatActionDeleteText: { color: C.rose }, historyItemCopy: { flex: 1, minWidth: 0 }, historyItemTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, historyItemTitleSelected: { color: '#5A422C' }, historyItemPreview: { color: C.muted, fontSize: 11, marginTop: 5 }, historyEmpty: { textAlign: 'center', color: C.muted, fontSize: 12, lineHeight: 19, padding: 20 }, memorySuggestionError: { color: C.rose, fontSize: 11, lineHeight: 16, paddingHorizontal: 8, paddingVertical: 8 },
+  journalNotice: { backgroundColor: C.greenLight, borderRadius: 12, padding: 12, marginBottom: 12 },
+  journalNoticeText: { color: C.green, fontSize: 12, lineHeight: 17 },
+  journalDismiss: { alignSelf: 'flex-end', paddingVertical: 4, paddingHorizontal: 8 },
+  journalDismissText: { color: C.cocoaDark, fontSize: 11, fontWeight: '700' },
+  journalEditorCard: { borderWidth: 1, borderColor: C.line, borderRadius: 22, padding: 16, marginTop: 4, backgroundColor: C.paper },
+  journalPrompts: { marginVertical: 10 },
+  journalPromptChip: { paddingVertical: 10, paddingHorizontal: 11, borderRadius: 12, marginRight: 7, borderWidth: 1, borderColor: C.line, backgroundColor: '#F5ECE5' },
+  journalPromptChipSelected: { backgroundColor: '#E7D0C2', borderColor: '#D6BBA9' },
+  journalPromptText: { fontSize: 12, color: C.cocoaDark },
+  journalTextInput: { minHeight: 48, borderWidth: 1, borderColor: C.line, borderRadius: 13, padding: 12, color: C.cocoaDark, marginBottom: 10, backgroundColor: '#FDFCFA', fontSize: 14 },
+  journalBodyInput: { minHeight: 160, lineHeight: 21 },
+  journalEditorActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 2 },
+  journalSaveButton: { minHeight: 48, borderRadius: 14, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: C.cocoaDark },
+  journalSaveButtonText: { color: C.white, fontSize: 12, fontWeight: '700' },
+  journalCancelButton: { minHeight: 44, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
+  journalCancelButtonText: { color: C.cocoaDark, fontSize: 12, fontWeight: '600' },
+  journalExportButton: { alignSelf: 'flex-start', minHeight: 46, justifyContent: 'center', paddingVertical: 11, paddingHorizontal: 14, backgroundColor: '#E7D0C2', borderRadius: 13, marginTop: 12 },
+  journalExportButtonText: { color: C.cocoaDark, fontWeight: '700', fontSize: 12 },
+  journalSearchInput: { minHeight: 48, borderWidth: 1, borderColor: C.line, borderRadius: 14, padding: 12, color: C.cocoaDark, marginTop: 18, backgroundColor: C.paper, fontSize: 14 },
+  journalEntryCard: { padding: 15, borderWidth: 1, borderColor: C.line, borderRadius: 17, marginTop: 10, backgroundColor: C.paper },
+  journalEntryTitle: { fontWeight: '700', color: C.cocoaDark, fontSize: 16 },
+  journalEntryMeta: { fontSize: 12, color: C.muted, marginTop: 4 },
+  journalEntryActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
+  journalInlineButton: { minHeight: 42, justifyContent: 'center', paddingVertical: 8 },
+  journalInlineButtonText: { color: '#895B43', fontWeight: '700', fontSize: 12 },
+  journalEntryBody: { color: C.cocoaDark, lineHeight: 21, marginTop: 9, fontSize: 14 },
+  journalDeleteButton: { minHeight: 42, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: 12 },
+  journalDeleteButtonText: { color: '#98594B', fontWeight: '600', fontSize: 12 },
+  journalEmptyText: { color: C.muted, marginTop: 18, lineHeight: 21 },
+  memoryErrorActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 4 },
+  moreList: { gap: 10 },
+  moreItem: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 17, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper },
+  moreItemIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  moreItemIcon: { color: C.cocoaDark, fontSize: 21, lineHeight: 25 },
+  moreItemCopy: { flex: 1, minWidth: 0, gap: 3 },
+  moreItemTitle: { color: C.ink, fontSize: 14, fontWeight: '700' },
+  moreItemDescription: { color: C.muted, fontSize: 12, lineHeight: 17 },
+  moreItemChevron: { color: C.muted, fontSize: 25, lineHeight: 29, paddingHorizontal: 4 },
   stopButton: { backgroundColor: '#7B453E' },
   stopIcon: { width: 15, height: 15, borderRadius: 3, backgroundColor: C.white },
 });

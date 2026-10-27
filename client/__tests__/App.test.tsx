@@ -4,8 +4,8 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { Animated, Modal, Text } from 'react-native';
-import { ChatPage } from '../App';
+import { Animated, Modal, ScrollView, Share, Text } from 'react-native';
+import { ChatPage, EmotionsPage, JournalPage } from '../App';
 
 jest.mock('@react-native-documents/picker', () => ({
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
@@ -102,11 +102,15 @@ test('chat composer sends on Enter and keeps the send button available after a f
   });
   expect(onOpenHistory).toHaveBeenCalledTimes(1);
 
+  const mobileActions = renderer.root.findByProps({ accessibilityLabel: 'Open chat actions' });
+  await ReactTestRenderer.act(async () => mobileActions.props.onPress());
   const renameButton = renderer.root.findByProps({ accessibilityLabel: 'Rename chat' });
-  await ReactTestRenderer.act(async () => {
-    renameButton.props.onPress();
-  });
+  await ReactTestRenderer.act(async () => renameButton.props.onPress());
   expect(onRenameChat).toHaveBeenCalledTimes(1);
+
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Open chat actions' }).props.onPress();
+  });
   const pinButton = renderer.root.findByProps({ accessibilityLabel: 'Pin chat' });
   await ReactTestRenderer.act(async () => pinButton.props.onPress());
   expect(onTogglePin).toHaveBeenCalledTimes(1);
@@ -337,7 +341,7 @@ test('memory suggestion appears beside its reply and requires explicit approval'
   expect(renderer.root.findByProps({ accessibilityRole: 'summary' }).findAllByType(Text).map(node => node.props.children))
     .toContain('Would you like Teddy Bud to remember this?');
   expect(renderer.root.findByProps({ accessibilityLabel: 'Add to memories' })).toBeDefined();
-  expect(renderer.root.findAllByType(Modal)).toHaveLength(0);
+  expect(renderer.root.findAllByType(Modal).filter(node => node.props.visible === true)).toHaveLength(0);
 
   const saveButton = renderer.root.findByProps({ accessibilityLabel: 'Add to memories' });
   await ReactTestRenderer.act(async () => saveButton.props.onPress());
@@ -345,3 +349,263 @@ test('memory suggestion appears beside its reply and requires explicit approval'
   await ReactTestRenderer.act(async () => renderer.unmount());
   expect(onDismiss).not.toHaveBeenCalled();
 });
+
+
+test('assistant replies can be shared through the platform share sheet', async () => {
+  const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+  const onRegenerate = jest.fn();
+  const noop = jest.fn();
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  try {
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ChatPage
+          wide={false}
+          messages={[{ id: 2, author: 'teddy', text: 'Take a breath. You can go one step at a time.', time: 'Now' }]}
+          conversationTitle="A little room to breathe"
+          onOpenHistory={noop}
+          onRenameChat={noop}
+          isPinned={false}
+          onTogglePin={noop}
+          onOpenCrisisResources={noop}
+          emergencyCallOption={null}
+          crisisHelplineOption={null}
+          onCallEmergency={noop}
+          onCallHelpline={noop}
+          onTextHelpline={noop}
+          onOpenHelplineWebsite={noop}
+          memorySuggestion={null}
+          onSaveMemorySuggestion={noop}
+          onDismissMemorySuggestion={noop}
+          draft=""
+          setDraft={noop}
+          onSend={noop}
+          onStop={noop}
+          onRetry={noop}
+          onRegenerate={onRegenerate}
+          retryPending={false}
+          isSending={false}
+          chatError={null}
+        />,
+      );
+    });
+    const shareButton = renderer.root.findByProps({ accessibilityLabel: 'Share Teddy Bud reply' });
+    await ReactTestRenderer.act(async () => shareButton.props.onPress());
+    expect(shareSpy).toHaveBeenCalledWith({ title: 'Teddy Bud reply', message: 'Take a breath. You can go one step at a time.' });
+    const regenerateButton = renderer.root.findByProps({ accessibilityLabel: 'Generate another reply' });
+    await ReactTestRenderer.act(async () => regenerateButton.props.onPress());
+    expect(onRegenerate).toHaveBeenCalledTimes(1);
+  } finally {
+    await ReactTestRenderer.act(async () => renderer?.unmount());
+    shareSpy.mockRestore();
+  }
+}, 15000);
+
+
+test('the latest user message can be edited and resent', async () => {
+  const onEditMessage = jest.fn();
+  const noop = jest.fn();
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <ChatPage
+        wide={false}
+        messages={[
+          { id: 11, author: 'you', text: 'I feel overwhelmed.', time: 'Now' },
+          { id: 12, author: 'teddy', text: 'Let us take one small step.', time: 'Now' },
+        ]}
+        conversationTitle="A little room to breathe"
+        onOpenHistory={noop}
+        onRenameChat={noop}
+        isPinned={false}
+        onTogglePin={noop}
+        onOpenCrisisResources={noop}
+        emergencyCallOption={null}
+        crisisHelplineOption={null}
+        onCallEmergency={noop}
+        onCallHelpline={noop}
+        onTextHelpline={noop}
+        onOpenHelplineWebsite={noop}
+        memorySuggestion={null}
+        onSaveMemorySuggestion={noop}
+        onDismissMemorySuggestion={noop}
+        draft=""
+        setDraft={noop}
+        onSend={noop}
+        onStop={noop}
+        onRetry={noop}
+        onEditMessage={onEditMessage}
+        onRegenerate={noop}
+        retryPending={false}
+        isSending={false}
+        chatError={null}
+      />,
+    );
+  });
+  const editButton = renderer.root.findByProps({ accessibilityLabel: 'Edit and resend your last message' });
+  await ReactTestRenderer.act(async () => editButton.props.onPress());
+  expect(onEditMessage).toHaveBeenCalledWith({ id: 11, author: 'you', text: 'I feel overwhelmed.', time: 'Now' });
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);
+
+
+test('chat preserves an older reading position during streaming and exposes jump-to-latest', async () => {
+  const noop = jest.fn();
+  const messages = [
+    { id: 1, author: 'you' as const, text: 'Earlier question', time: '9:00 AM' },
+    { id: 2, author: 'teddy' as const, text: 'Earlier answer', time: '9:01 AM' },
+    { id: 3, author: 'you' as const, text: 'Another question', time: '9:02 AM' },
+    { id: 4, author: 'teddy' as const, text: 'Another answer', time: '9:03 AM' },
+  ];
+  const renderChat = (streamingReply = '') => (
+    <ChatPage
+      wide={false}
+      conversationId="scroll-test"
+      messages={messages}
+      streamingReply={streamingReply}
+      conversationTitle="Scroll test"
+      onOpenHistory={noop}
+      onRenameChat={noop}
+      isPinned={false}
+      onTogglePin={noop}
+      onOpenCrisisResources={noop}
+      emergencyCallOption={null}
+      crisisHelplineOption={null}
+      onCallEmergency={noop}
+      onCallHelpline={noop}
+      onTextHelpline={noop}
+      onOpenHelplineWebsite={noop}
+      memorySuggestion={null}
+      onSaveMemorySuggestion={noop}
+      onDismissMemorySuggestion={noop}
+      draft=""
+      setDraft={noop}
+      onSend={noop}
+      onStop={noop}
+      onRetry={noop}
+      retryPending={false}
+      isSending={Boolean(streamingReply)}
+      chatError={null}
+    />
+  );
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(renderChat());
+  });
+
+  const chatScroll = renderer.root.findAllByType(ScrollView).find(node => node.props.scrollEventThrottle === 16);
+  expect(chatScroll).toBeTruthy();
+  await ReactTestRenderer.act(async () => {
+    chatScroll!.props.onScroll({
+      nativeEvent: {
+        contentOffset: { y: 0 },
+        contentSize: { height: 2000, width: 360 },
+        layoutMeasurement: { height: 500, width: 360 },
+      },
+    });
+  });
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Jump to latest message' })).toBeTruthy();
+
+  await ReactTestRenderer.act(async () => {
+    renderer.update(renderChat('A streaming continuation'));
+  });
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Jump to latest message' })).toBeTruthy();
+
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Jump to latest message' }).props.onPress();
+  });
+  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Jump to latest message' })).toHaveLength(0);
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);
+
+
+test('journal preserves edited text and explains a failed local save', async () => {
+  const onSave = jest.fn().mockRejectedValue(new Error('SQLite internal stack details'));
+  const noop = jest.fn(async () => undefined);
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <JournalPage wide={false} entries={[]} onSave={onSave} onDelete={noop} onShare={jest.fn()} />,
+    );
+  });
+
+  const entryField = renderer.root.findByProps({ accessibilityLabel: 'Journal entry' });
+  await ReactTestRenderer.act(async () => {
+    entryField.props.onChangeText('A private entry I do not want to lose.');
+  });
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Save privately' }).props.onPress();
+  });
+
+  expect(onSave).toHaveBeenCalledTimes(1);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Journal entry' }).props.value)
+    .toBe('A private entry I do not want to lose.');
+  const alert = renderer.root.findByProps({ accessibilityRole: 'alert' });
+  expect(alert.findAllByType(Text).map(node => node.props.children).join(' '))
+    .toMatch(/your text is still in the editor/i);
+  expect(alert.findAllByType(Text).map(node => node.props.children).join(' '))
+    .not.toMatch(/SQLite internal stack details/i);
+
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);
+
+test('journal explains an empty save attempt instead of silently blocking it', async () => {
+  const onSave = jest.fn(async () => undefined);
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <JournalPage wide={false} entries={[]} onSave={onSave} onDelete={jest.fn(async () => undefined)} onShare={jest.fn()} />,
+    );
+  });
+
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Save privately' }).props.onPress();
+  });
+  const alert = renderer.root.findByProps({ accessibilityRole: 'alert' });
+  expect(alert.findAllByType(Text).map(node => node.props.children).join(' '))
+    .toMatch(/write a little in your entry before saving/i);
+  expect(onSave).not.toHaveBeenCalled();
+
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);
+
+
+test('emotion check-in keeps ratings and note visible when local persistence fails', async () => {
+  const onSave = jest.fn().mockRejectedValue(new Error('SQLCipher native detail'));
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <EmotionsPage wide={false} entries={[]} onSave={onSave} onDelete={jest.fn(async () => undefined)} />,
+    );
+  });
+
+  const pressable = (label: string) => renderer.root
+    .findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')
+    .find(node => typeof node.props.onPress === 'function');
+
+  await ReactTestRenderer.act(async () => {
+    pressable('Add a check-in')!.props.onPress();
+  });
+  await ReactTestRenderer.act(async () => {
+    pressable('Anxious 5 out of 5')!.props.onPress();
+  });
+  const noteField = renderer.root.findByProps({ accessibilityLabel: 'Emotion check-in note (optional)' });
+  await ReactTestRenderer.act(async () => noteField.props.onChangeText('A note I need to keep.'));
+  await ReactTestRenderer.act(async () => {
+    pressable('Save emotion check-in')!.props.onPress();
+  });
+
+  expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+    emotions: expect.objectContaining({ anxious: 5 }),
+    note: 'A note I need to keep.',
+  }));
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Anxious 5 out of 5' }).props.accessibilityState.selected).toBe(true);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Emotion check-in note (optional)' }).props.value)
+    .toBe('A note I need to keep.');
+  const alert = renderer.root.findByProps({ accessibilityRole: 'alert' });
+  const message = alert.findAllByType(Text).map(node => node.props.children).join(' ');
+  expect(message).toMatch(/your ratings and note are still here/i);
+  expect(message).not.toMatch(/SQLCipher native detail/i);
+
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);

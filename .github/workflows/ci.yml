@@ -104,16 +104,29 @@ jobs:
           - name: Windows x64 installer
             os: windows-latest
             command: desktop:windows
-            artifact: teddy-bud-windows
+            artifact: teddy-bud-windows-x64
             files: |
               dist/desktop/TeddyBud.v.1.0-win-x64.exe
               dist/desktop/TeddyBud.v.1.0-win-x64.exe.blockmap
+          - name: Windows ARM64 installer
+            os: windows-11-arm
+            command: desktop:windows
+            artifact: teddy-bud-windows-arm64
+            files: |
+              dist/desktop/TeddyBud.v.1.0-win-arm64.exe
+              dist/desktop/TeddyBud.v.1.0-win-arm64.exe.blockmap
           - name: macOS Apple Silicon DMG
             os: macos-15
             command: desktop:macos
             artifact: teddy-bud-macos-arm64
             files: |
               dist/desktop/TeddyBud.v.1.0-mac-arm64.dmg
+          - name: macOS Intel DMG
+            os: macos-15-intel
+            command: desktop:macos
+            artifact: teddy-bud-macos-x64
+            files: |
+              dist/desktop/TeddyBud.v.1.0-mac-x64.dmg
           - name: Linux Debian and AppImage
             os: ubuntu-24.04
             command: desktop:linux
@@ -216,7 +229,10 @@ jobs:
           test -s dist/android/TeddyBud.v.1.0-Android-arm64.apk
           test -s dist/desktop/TeddyBud.v.1.0-win-x64.exe
           test -s dist/desktop/TeddyBud.v.1.0-win-x64.exe.blockmap
+          test -s dist/desktop/TeddyBud.v.1.0-win-arm64.exe
+          test -s dist/desktop/TeddyBud.v.1.0-win-arm64.exe.blockmap
           test -s dist/desktop/TeddyBud.v.1.0-mac-arm64.dmg
+          test -s dist/desktop/TeddyBud.v.1.0-mac-x64.dmg
           test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
           test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
           find dist -type f -printf '%P %s bytes\n' | sort

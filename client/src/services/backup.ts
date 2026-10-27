@@ -178,3 +178,69 @@ export async function readEncryptedBackup(text: string, owner: string, passphras
     throw new Error('The backup could not be unlocked. Check your passphrase and try again.');
   }
 }
+
+
+/**
+ * Merge a validated backup into existing local data without replacing the
+ * user's current preferences. Records with stable IDs are deduplicated;
+ * conflicting memory IDs are reassigned so separate memories remain editable.
+ * When the same conversation exists in both sources, keep the newer snapshot.
+ */
+export function mergeLocalAppData(current: LocalAppData, imported: LocalAppData): LocalAppData {
+  const conversationsById = new Map(current.conversations.map(item => [item.id, item]));
+  for (const incoming of imported.conversations) {
+    const existing = conversationsById.get(incoming.id);
+    if (!existing || incoming.updatedAt > existing.updatedAt) {
+      conversationsById.set(incoming.id, incoming);
+    }
+  }
+  const conversations = [...conversationsById.values()]
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const activeConversationId = current.activeConversationId && conversationsById.has(current.activeConversationId)
+    ? current.activeConversationId
+    : imported.activeConversationId && conversationsById.has(imported.activeConversationId)
+      ? imported.activeConversationId
+      : conversations[0]?.id ?? null;
+
+  const memories = [...current.memories];
+  const memoryKeys = new Set(memories.map(item => `${item.text.trim().toLocaleLowerCase()}\u0000${item.date}`));
+  let nextMemoryId = memories.reduce((maximum, item) => Math.max(maximum, item.id), 0) + 1;
+  for (const incoming of imported.memories) {
+    const identity = `${incoming.text.trim().toLocaleLowerCase()}\u0000${incoming.date}`;
+    if (memoryKeys.has(identity)) continue;
+    const idInUse = memories.some(item => item.id === incoming.id);
+    if (idInUse) {
+      while (memories.some(item => item.id === nextMemoryId)) nextMemoryId += 1;
+      memories.push({ ...incoming, id: nextMemoryId });
+      nextMemoryId += 1;
+    } else {
+      memories.push(incoming);
+    }
+    memoryKeys.add(identity);
+  }
+
+  const currentCheckIns = current.emotionCheckIns ?? [];
+  const checkInIds = new Set(currentCheckIns.map(item => item.id));
+  const emotionCheckIns = [...currentCheckIns, ...(imported.emotionCheckIns ?? []).filter(item => {
+    if (checkInIds.has(item.id)) return false;
+    checkInIds.add(item.id);
+    return true;
+  })];
+
+  const currentJournal = current.journalEntries ?? [];
+  const journalIds = new Set(currentJournal.map(item => item.id));
+  const journalEntries = [...currentJournal, ...(imported.journalEntries ?? []).filter(item => {
+    if (journalIds.has(item.id)) return false;
+    journalIds.add(item.id);
+    return true;
+  })];
+
+  return normalizeLocalAppData({
+    ...current,
+    conversations,
+    activeConversationId,
+    memories,
+    emotionCheckIns,
+    journalEntries,
+  });
+}
