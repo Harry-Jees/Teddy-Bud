@@ -35,6 +35,7 @@ import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import { authErrorMessage, AuthServiceError, AuthValidationError } from './src/services/authErrors';
+import type { AuthField } from './src/services/authErrors';
 import { chatErrorMessage, localDataErrorMessage } from './src/services/userFacingErrors';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
@@ -206,25 +207,36 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   const [recoveryPassphraseConfirmation, setRecoveryPassphraseConfirmation] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
+
+  const clearFieldError = (field: AuthField) => {
+    setFieldErrors(current => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+    setFormError(null);
+  };
 
   const submit = async () => {
     if (submitting) return;
-    setSubmitting(true); setFormError(null); setNotice(null);
+    setSubmitting(true); setFormError(null); setFieldErrors({}); setNotice(null);
     try {
       if (mode !== 'migrate' && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim())) {
-        throw new AuthValidationError('Enter a valid email address.');
+        throw new AuthValidationError('Enter a valid email address.', 'email');
       }
-      if (mode === 'login' && !password) throw new AuthValidationError('Enter your password.');
+      if (mode === 'login' && !password) throw new AuthValidationError('Enter your password.', 'password');
 
       if (mode === 'login') {
         onAuthenticated(await browserAuthService.signIn(email.trim(), password));
       } else if (mode === 'create') {
-        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.');
-        if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.');
+        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.', 'password');
+        if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.', 'confirmPassword');
         const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.');
-        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.');
+        if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.', 'recoveryPassphrase');
+        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.', 'recoveryPassphraseConfirmation');
         onAuthenticated(await browserAuthService.createAccount(email.trim(), password, phrase));
       } else if (mode === 'migrate') {
         if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.');
@@ -234,8 +246,8 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
         if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.');
         onAuthenticated(await browserAuthService.migrateLegacyAccount(password, phrase));
       } else {
-        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a new password between 6 and 128 characters.');
-        if (recoveryPassphrase.trim().length < 10) throw new AuthValidationError('Enter the recovery passphrase you chose when you created your account.');
+        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a new password between 6 and 128 characters.', 'password');
+        if (recoveryPassphrase.trim().length < 10) throw new AuthValidationError('Enter the recovery passphrase you chose when you created your account.', 'recoveryPassphrase');
         await browserAuthService.recoverPassword(email.trim(), recoveryPassphrase.trim(), password);
         setMode('login'); setPassword(''); setRecoveryPassphrase('');
         setNotice('Password changed. Sign in with your new password.');
@@ -245,14 +257,19 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
         : mode === 'create' ? 'create-account'
           : mode === 'recover' ? 'password-recovery'
             : 'account-migration';
-      setFormError(authErrorMessage(authError, context));
+      if (authError instanceof AuthValidationError && authError.field) {
+        setFieldErrors({ [authError.field]: authError.message });
+        setFormError(null);
+      } else {
+        setFormError(authErrorMessage(authError, context));
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   const changeMode = (next: 'login' | 'create' | 'recover' | 'migrate') => {
-    setMode(next); setFormError(null); setNotice(null); setPassword(''); setConfirmPassword(''); setRecoveryPassphrase(''); setRecoveryPassphraseConfirmation('');
+    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setConfirmPassword(''); setRecoveryPassphrase(''); setRecoveryPassphraseConfirmation('');
   };
 
   const title = mode === 'create' ? 'Create your private space.' : mode === 'recover' ? 'Reset your password.' : mode === 'migrate' ? 'Keep your existing space.' : 'Welcome back.';
@@ -267,17 +284,27 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       <Text style={styles.authBody}>{mode === 'create' ? 'Create a strong password and a recovery passphrase you can keep safe. Your account opens your private space on this device.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in to open your private space on this device.'}</Text>
       {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authErrorText}>{formError || error}</Text></View>}
       {!!notice && <View style={styles.authNotice}><Text accessibilityLiveRegion="polite" style={styles.authNoticeText}>{notice}</Text></View>}
-      {mode !== 'migrate' && <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" value={email} onChangeText={value => { setEmail(value); setFormError(null); }} placeholder="Email address" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
-      {mode === 'recover' && <TextInput accessibilityLabel="Recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); setFormError(null); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
-      <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry value={password} onChangeText={value => { setPassword(value); setFormError(null); }} placeholder={mode === 'recover' ? 'New password (6+ characters)' : 'Password (6+ characters)'} placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
-      {(mode === 'create' || mode === 'migrate') && <>
-        <TextInput accessibilityLabel="Confirm password" autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry value={confirmPassword} onChangeText={value => { setConfirmPassword(value); setFormError(null); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
-        <Text style={styles.authKeyLabel}>RECOVERY PASSPHRASE</Text>
-        <TextInput accessibilityLabel="Choose recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={setRecoveryPassphrase} placeholder="At least 10 characters" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
-        <Text style={styles.authFootnote}>Choose a unique recovery passphrase of at least 10 characters and keep it somewhere safe. You will need it with your email to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
-        <TextInput accessibilityLabel="Confirm recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphraseConfirmation} onChangeText={value => { setRecoveryPassphraseConfirmation(value); setFormError(null); }} placeholder="Confirm recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
+      {mode !== 'migrate' && <>
+        <TextInput accessibilityLabel="Email" accessibilityHint={fieldErrors.email} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" value={email} onChangeText={value => { setEmail(value); clearFieldError('email'); }} placeholder="Email address" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.email && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.email && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.email}</Text>}
       </>}
-      <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 10) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())} onPress={submit} style={({ pressed }) => [styles.authButton, (submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 10) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())) && styles.buttonDisabled, pressed && styles.pressed]}>
+      {mode === 'recover' && <>
+        <TextInput accessibilityLabel="Recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.recoveryPassphrase && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
+      </>}
+      <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} accessibilityHint={fieldErrors.password} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry value={password} onChangeText={value => { setPassword(value); clearFieldError('password'); }} placeholder={mode === 'recover' ? 'New password (6–128 characters)' : 'Password (6–128 characters)'} placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.password && styles.authInputInvalid]} editable={!submitting} />
+      {fieldErrors.password && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.password}</Text>}
+      {(mode === 'create' || mode === 'migrate') && <>
+        <TextInput accessibilityLabel="Confirm password" accessibilityHint={fieldErrors.confirmPassword} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearFieldError('confirmPassword'); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.confirmPassword && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.confirmPassword && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.confirmPassword}</Text>}
+        <Text style={styles.authKeyLabel}>RECOVERY PASSPHRASE</Text>
+        <TextInput accessibilityLabel="Choose recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="10–128 characters" placeholderTextColor="#938A80" maxLength={128} style={[styles.authInput, fieldErrors.recoveryPassphrase && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
+        <Text style={styles.authFootnote}>Choose a unique recovery passphrase of at least 10 characters and keep it somewhere safe. You will need it with your email to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
+        <TextInput accessibilityLabel="Confirm recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphraseConfirmation} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphraseConfirmation} onChangeText={value => { setRecoveryPassphraseConfirmation(value); clearFieldError('recoveryPassphraseConfirmation'); }} placeholder="Confirm recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={[styles.authInput, fieldErrors.recoveryPassphraseConfirmation && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.recoveryPassphraseConfirmation && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphraseConfirmation}</Text>}
+      </>}
+      <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
       </Pressable>
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
@@ -1936,6 +1963,8 @@ const styles = StyleSheet.create({
   authLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' },
   authNotice: { backgroundColor: '#E8EFE5', borderRadius: 12, padding: 11, marginBottom: 14 },
   authNoticeText: { color: '#435943', fontSize: 12, lineHeight: 16, textAlign: 'center' },
+  authInputInvalid: { borderColor: C.rose, borderWidth: 1.5 },
+  authFieldError: { color: C.rose, fontSize: 12, lineHeight: 17, marginTop: -9, marginBottom: 10 },
   authPasswordRow: { height: 50, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.line, borderRadius: 14, backgroundColor: '#FDFCFA', marginBottom: 14 },
   authPasswordInput: { flex: 1, height: '100%', paddingHorizontal: 14, color: C.ink, fontSize: 13 },
   showPasswordButton: { minWidth: 55, height: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
