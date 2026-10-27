@@ -8,15 +8,15 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 const mockedFetch = jest.fn();
-const originalFetch = global.fetch;
+const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   mockedFetch.mockReset();
-  global.fetch = mockedFetch as typeof fetch;
+  globalThis.fetch = mockedFetch as typeof fetch;
 });
 
 afterAll(() => {
-  global.fetch = originalFetch;
+  globalThis.fetch = originalFetch;
 });
 
 function response(status: number, body: unknown) {
