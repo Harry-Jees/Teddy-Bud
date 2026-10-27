@@ -135,8 +135,13 @@ test('mobile history searches recent messages and retains chat management action
   await ReactTestRenderer.act(async () => {
     renderer.root.findByProps({ accessibilityLabel: 'Chat options for A calm morning' }).props.onPress();
   });
-  const menuItems = renderer.root.findAll(node => node.props.accessibilityRole === 'menuitem');
-  await ReactTestRenderer.act(async () => menuItems[1].props.onPress());
+  const pinMenuItem = renderer.root.findAll(node =>
+    node.props.accessibilityRole === 'menuitem'
+    && node.props.accessibilityLabel === 'Pin chat A calm morning'
+    && typeof node.props.onPress === 'function',
+  ).find(node => typeof node.props.onPress === 'function');
+  expect(pinMenuItem).toBeTruthy();
+  await ReactTestRenderer.act(async () => pinMenuItem!.props.onPress());
   expect(onPin).toHaveBeenCalledWith('calm-chat', true);
 
   await ReactTestRenderer.act(async () => renderer.unmount());
