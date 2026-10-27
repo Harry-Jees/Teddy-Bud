@@ -1118,7 +1118,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
           }} />}
           {page === 'studio' && <WellbeingStudio wide={wide} />}
           {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
-          {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} />}
+          {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
           {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
           {page === 'settings' && <SettingsPage wide={wide} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
             const savedName = name.trim().slice(0, 32);
@@ -1133,19 +1133,20 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
         {!wide && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
       </View>
 
-      <Modal visible={memoryModal} animationType="fade" transparent onRequestClose={() => setMemoryModal(false)}>
+      <Modal visible={memoryModal} animationType="fade" transparent onRequestClose={closeMemoryEditor}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalTopline}>
               <View style={styles.modalIcon}><Text style={styles.modalIconText}>✳</Text></View>
-              <Pressable onPress={() => setMemoryModal(false)} accessibilityRole="button" accessibilityLabel="Close memory editor" style={styles.closeButton}><Text style={styles.closeText}>×</Text></Pressable>
+              <Pressable onPress={closeMemoryEditor} disabled={memorySaving} accessibilityRole="button" accessibilityLabel="Close memory editor" style={[styles.closeButton, memorySaving && styles.buttonDisabled]}><Text style={styles.closeText}>×</Text></Pressable>
             </View>
             <Text style={styles.modalTitle}>{editing ? 'Edit a memory' : 'Keep a small thing in mind'}</Text>
             <Text style={styles.modalBody}>Add a detail to keep on this device. Saved memories are included with future chats sent to the AI provider.</Text>
-            <TextInput autoFocus value={memoryDraft} onChangeText={setMemoryDraft} placeholder="Write a gentle reminder…" placeholderTextColor={C.muted} multiline maxLength={500} style={styles.memoryInput} textAlignVertical="top" />
+            {memoryActionError && <View accessibilityRole="alert" style={styles.authError}><Text accessibilityLiveRegion="polite" style={styles.authErrorText}>{memoryActionError}</Text></View>}
+            <TextInput accessibilityLabel="Memory text" autoFocus value={memoryDraft} onChangeText={value => { setMemoryDraft(value); setMemoryActionError(null); }} placeholder="Write a gentle reminder…" placeholderTextColor={C.muted} multiline maxLength={500} editable={!memorySaving} style={styles.memoryInput} textAlignVertical="top" />
             <View style={styles.modalActions}>
-              <Button label="Cancel" tone="quiet" onPress={() => setMemoryModal(false)} />
-              <Button label={editing ? 'Save changes' : 'Add memory'} onPress={saveMemory} disabled={!memoryDraft.trim()} />
+              <Button label="Cancel" tone="quiet" onPress={closeMemoryEditor} disabled={memorySaving} />
+              <Button label={memorySaving ? 'Saving…' : editing ? 'Save changes' : 'Add memory'} onPress={saveMemory} disabled={memorySaving || !memoryDraft.trim()} />
             </View>
           </View>
         </View>
@@ -1935,9 +1936,16 @@ function StarterCard({ icon, title, description, onPress, wide }: { icon: string
   </Pressable>;
 }
 
-function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete }: { wide: boolean; memories: Memory[]; memoryEnabled: boolean; onAdd: () => void; onEdit: (memory: Memory) => void; onDelete: (memory: Memory) => void }) {
+function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete, actionError, onDismissActionError, canRetryDelete, onRetryDelete }: { wide: boolean; memories: Memory[]; memoryEnabled: boolean; onAdd: () => void; onEdit: (memory: Memory) => void; onDelete: (memory: Memory) => void; actionError: string | null; onDismissActionError: () => void; canRetryDelete: boolean; onRetryDelete: () => void }) {
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>THE THINGS THAT MATTER</Text><Text style={styles.pageTitle}>Your memories</Text><Text style={styles.pageDescription}>Little details you choose to keep close. You can change or forget any of them, whenever you like.</Text></View>
+    {actionError && <View accessibilityRole="alert" style={styles.authError}>
+      <Text accessibilityLiveRegion="polite" style={styles.authErrorText}>{actionError}</Text>
+      <View style={styles.memoryErrorActions}>
+        {canRetryDelete && <Pressable accessibilityRole="button" onPress={onRetryDelete} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Retry removal</Text></Pressable>}
+        <Pressable accessibilityRole="button" onPress={onDismissActionError} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>
+      </View>
+    </View>}
     <View style={styles.memoryNotice}><View style={styles.noticeIcon}><Text style={styles.noticeGlyph}>⌑</Text></View><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{memoryEnabled ? 'Saved on this device' : 'Saved memories are off'}</Text><Text style={styles.noticeBody}>{memoryEnabled ? "Memories stay in this app's local database across restarts and are included with future chats sent to the AI provider." : 'Turn on "Keep memories on this device" in Privacy settings to add memories.'}</Text></View></View>
     <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>SAVED MEMORIES <Text style={styles.countText}>{memories.length}</Text></Text><Pressable accessibilityRole="button" accessibilityLabel="Add a memory" disabled={!memoryEnabled} onPress={onAdd} style={styles.addLink}><Text style={[styles.addLinkText, !memoryEnabled && styles.disabledText]}>{memoryEnabled ? 'Add a memory' : 'Memory is off'}</Text></Pressable></View>
     {memories.length ? memories.map(memory => <View key={memory.id} style={styles.memoryCard}><View style={styles.memoryMark}><Text style={styles.memoryMarkText}>✳</Text></View><View style={styles.memoryCopy}><Text style={styles.memoryText}>{memory.text}</Text><Text style={styles.memoryDate}>{memory.date}</Text></View><View style={styles.memoryActions}><Pressable accessibilityRole="button" accessibilityLabel="Edit memory" onPress={() => onEdit(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Edit</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Forget memory" onPress={() => onDelete(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Forget</Text></Pressable></View></View>) : <View style={styles.emptyCard}><View style={styles.emptyMark}><Text style={styles.emptyGlyph}>✳</Text></View><Text style={styles.emptyTitle}>{memoryEnabled ? 'A fresh page' : 'Memories are off'}</Text><Text style={styles.emptyBody}>{memoryEnabled ? "Nothing saved right now. Add a small detail you'd like to hold onto." : 'Turn on "Keep memories on this device" in Privacy settings when you are ready.'}</Text>{memoryEnabled && <Button label="Add your first memory" onPress={onAdd} />}</View>}
@@ -2612,6 +2620,7 @@ const styles = StyleSheet.create({
   journalDeleteButton: { minHeight: 42, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: 12 },
   journalDeleteButtonText: { color: '#98594B', fontWeight: '600', fontSize: 12 },
   journalEmptyText: { color: C.muted, marginTop: 18, lineHeight: 21 },
+  memoryErrorActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 4 },
   moreList: { gap: 10 },
   moreItem: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 17, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper },
   moreItemIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
