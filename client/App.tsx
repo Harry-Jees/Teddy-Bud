@@ -34,11 +34,12 @@ import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncrypt
 import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
+import { authErrorMessage, AuthValidationError } from './src/services/authErrors';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
 
-type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio';
+type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio' | 'more';
 type Memory = LocalMemory;
 type MemorySuggestion = { conversationId: string; messageId: number; fact: string };
 type Message = LocalMessage;
@@ -61,8 +62,10 @@ const navItems: { id: Page; icon: string; label: string }[] = [
   { id: 'privacy', icon: '⌑', label: 'Privacy' },
 ];
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
-  ...navItems,
-  { id: 'settings', icon: '⚙', label: 'Settings' },
+  { id: 'chat', icon: '◌', label: 'Chats' },
+  { id: 'memories', icon: '✳', label: 'Memories' },
+  { id: 'journal', icon: '▤', label: 'Journal' },
+  { id: 'more', icon: '···', label: 'More' },
 ];
 
 const gatewayService = new GatewayService(GATEWAY_BASE_URL);
@@ -142,7 +145,7 @@ function AccessGate() {
           }
         }
       } catch (restoreError) {
-        if (mounted) setError(restoreError instanceof Error ? restoreError.message : 'Unable to restore your sign-in.');
+        if (mounted) setError(authErrorMessage(restoreError, 'session-restore'));
       } finally {
         if (mounted) setBusy(false);
       }
@@ -175,7 +178,7 @@ function AccessGate() {
   if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
   return <TeddyBud sessionToken={session.accessToken} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
-      setError(logoutError instanceof Error ? logoutError.message : 'Unable to end the server session.');
+      setError(authErrorMessage(logoutError, 'sign-out'));
       setSession(null);
     });
   }} />;
@@ -202,31 +205,40 @@ function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthentica
     if (submitting) return;
     setSubmitting(true); setFormError(null); setNotice(null);
     try {
+      if (mode !== 'migrate' && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim())) {
+        throw new AuthValidationError('Enter a valid email address.');
+      }
+      if (mode === 'login' && !password) throw new AuthValidationError('Enter your password.');
+
       if (mode === 'login') {
         onAuthenticated(await browserAuthService.signIn(email.trim(), password));
       } else if (mode === 'create') {
-        if (password.length < 6) throw new Error('Choose a password with at least 6 characters.');
-        if (password !== confirmPassword) throw new Error('The passwords do not match.');
+        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.');
+        if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.');
         const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 10 || phrase.length > 128) throw new Error('Choose a recovery passphrase with 10 to 128 characters.');
-        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new Error('The recovery passphrases do not match.');
+        if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.');
+        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.');
         onAuthenticated(await browserAuthService.createAccount(email.trim(), password, phrase));
       } else if (mode === 'migrate') {
-        if (password.length < 6) throw new Error('Choose a password with at least 6 characters.');
-        if (password !== confirmPassword) throw new Error('The passwords do not match.');
+        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.');
+        if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.');
         const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 10 || phrase.length > 128) throw new Error('Choose a recovery passphrase with 10 to 128 characters.');
-        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new Error('The recovery passphrases do not match.');
+        if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.');
+        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.');
         onAuthenticated(await browserAuthService.migrateLegacyAccount(password, phrase));
       } else {
-        if (password.length < 6) throw new Error('Choose a new password with at least 6 characters.');
-        if (recoveryPassphrase.trim().length < 10) throw new Error('Enter the recovery passphrase you chose when you created your account.');
+        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a new password between 6 and 128 characters.');
+        if (recoveryPassphrase.trim().length < 10) throw new AuthValidationError('Enter the recovery passphrase you chose when you created your account.');
         await browserAuthService.recoverPassword(email.trim(), recoveryPassphrase.trim(), password);
         setMode('login'); setPassword(''); setRecoveryPassphrase('');
         setNotice('Password changed. Sign in with your new password.');
       }
     } catch (authError) {
-      setFormError(authError instanceof Error ? authError.message : 'Unable to complete sign-in.');
+      const context = mode === 'login' ? 'sign-in'
+        : mode === 'create' ? 'create-account'
+          : mode === 'recover' ? 'password-recovery'
+            : 'account-migration';
+      setFormError(authErrorMessage(authError, context));
     } finally {
       setSubmitting(false);
     }
@@ -246,8 +258,8 @@ function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthentica
       <Text style={styles.authEyebrow}>Teddy Bud</Text>
       <Text style={styles.authTitle}>{title}</Text>
       <Text style={styles.authBody}>{mode === 'create' ? 'Create a strong password and a recovery passphrase you can keep safe. Your account opens your private space on this device.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in to open your private space on this device.'}</Text>
-      {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" style={styles.authErrorText}>{formError || error}</Text></View>}
-      {!!notice && <View style={styles.authNotice}><Text style={styles.authNoticeText}>{notice}</Text></View>}
+      {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authErrorText}>{formError || error}</Text></View>}
+      {!!notice && <View style={styles.authNotice}><Text accessibilityLiveRegion="polite" style={styles.authNoticeText}>{notice}</Text></View>}
       {mode !== 'migrate' && <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
       {mode === 'recover' && <TextInput accessibilityLabel="Recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={setRecoveryPassphrase} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
       <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry value={password} onChangeText={setPassword} placeholder={mode === 'recover' ? 'New password (6+ characters)' : 'Password (6+ characters)'} placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
@@ -318,7 +330,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const receivedReplyRef = useRef('');
   const responseAbortControllerRef = useRef<AbortController | null>(null);
 
-  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
+  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : page === 'more' ? 'More tools' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
   const refreshCreditBalance = useCallback(async () => {
     try {
@@ -762,7 +774,11 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             return;
           }
         } catch (restoreError) {
-          const detail = restoreError instanceof Error ? restoreError.message : 'Your session could not be restored.';
+          if ((restoreError as { status?: number }).status === 401) {
+            onLogout();
+            return;
+          }
+          const detail = authErrorMessage(restoreError, 'session-restore');
           setChatError(`Your sign-in could not be refreshed. ${detail}`);
           setChatErrorConversationId(conversationId);
           setRetryMessage(text);
@@ -875,9 +891,10 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             setAssistantName(savedName);
             setAssistantCharacterNames(current => ({ ...current, [id]: savedName }));
           }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} />}
+          {page === 'more' && <MorePage wide={wide} onNavigate={setPage} />}
           </>}
         </View>
-        {!wide && <BottomNav page={page} onNavigate={setPage} bottomInset={insets.bottom} />}
+        {!wide && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
       </View>
 
       <Modal visible={memoryModal} animationType="fade" transparent onRequestClose={() => setMemoryModal(false)}>
@@ -1161,10 +1178,121 @@ function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }:
   </Pressable>;
 }
 
-function BottomNav({ page, onNavigate, bottomInset }: { page: Page; onNavigate: (page: Page) => void; bottomInset: number }) {
-  return <View style={[styles.bottomNav, { paddingBottom: Math.max(bottomInset, 8) }]}>{mobileNavItems.map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={item.label} accessibilityState={{ selected: item.id === page }} onPress={() => onNavigate(item.id)} style={styles.bottomNavItem}>
-    <Text style={[styles.bottomIcon, item.id === page && styles.bottomIconActive]}>{item.icon}</Text><Text style={[styles.bottomLabel, item.id === page && styles.bottomLabelActive]}>{item.label}</Text>
-  </Pressable>)}</View>;
+function useReducedMotionPreference() {
+  const [reduceMotion, setReduceMotion] = useState(true);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+        setReduceMotion(false);
+        return undefined;
+      }
+      const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReduceMotion(preference.matches);
+      const update = (event: MediaQueryListEvent) => setReduceMotion(event.matches);
+      preference.addEventListener('change', update);
+      return () => preference.removeEventListener('change', update);
+    }
+
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(setEnabled => {
+      if (mounted) setReduceMotion(setEnabled);
+    }).catch(() => {
+      if (mounted) setReduceMotion(false);
+    });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  return reduceMotion;
+}
+
+function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
+  const items: { id: Page; icon: string; label: string; description: string }[] = [
+    { id: 'history', icon: '▤', label: 'Chat history', description: 'Find a conversation from earlier' },
+    { id: 'emotions', icon: '◉', label: 'Emotions', description: 'Check in with how you feel' },
+    { id: 'studio', icon: '☼', label: 'Wellbeing', description: 'Gentle exercises you can use offline' },
+    { id: 'privacy', icon: '⌑', label: 'Privacy', description: 'Choose what stays local and what is shared' },
+    { id: 'settings', icon: '⚙', label: 'Settings', description: 'Your companion, backup, and account' },
+  ];
+
+  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
+    <View style={styles.pageIntro}>
+      <Text style={styles.eyebrow}>YOUR SPACE, YOUR WAY</Text>
+      <Text style={styles.pageTitle}>More tools</Text>
+      <Text style={styles.pageDescription}>Everything else, in one calm place. Your everyday essentials stay close at hand.</Text>
+    </View>
+    <View style={styles.moreList}>
+      {items.map(item => <Pressable
+        key={item.id}
+        accessibilityRole="button"
+        accessibilityLabel={item.label}
+        accessibilityHint={item.description}
+        onPress={() => onNavigate(item.id)}
+        style={({ pressed }) => [styles.moreItem, pressed && styles.pressed]}
+      >
+        <View style={styles.moreItemIconWrap}><Text style={styles.moreItemIcon}>{item.icon}</Text></View>
+        <View style={styles.moreItemCopy}>
+          <Text style={styles.moreItemTitle}>{item.label}</Text>
+          <Text style={styles.moreItemDescription}>{item.description}</Text>
+        </View>
+        <Text accessibilityElementsHidden style={styles.moreItemChevron}>›</Text>
+      </Pressable>)}
+    </View>
+  </ScrollView>;
+}
+
+function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
+  const reduceMotion = useReducedMotionPreference();
+  const moreSelected = page === 'more' || page === 'emotions' || page === 'studio' || page === 'privacy' || page === 'settings';
+  const isSelected = (item: (typeof mobileNavItems)[number]) => {
+    if (item.id === 'chat') return page === 'chat' || page === 'history';
+    if (item.id === 'more') return moreSelected;
+    return item.id === page;
+  };
+  const renderItem = (item: (typeof mobileNavItems)[number]) => {
+    const selected = isSelected(item);
+    return <Pressable
+      key={item.id}
+      accessibilityRole="button"
+      accessibilityLabel={item.label}
+      accessibilityHint={item.id === 'more' ? 'Open wellbeing, privacy, settings, and chat history' : undefined}
+      accessibilityState={{ selected }}
+      onPress={() => onNavigate(item.id)}
+      style={({ pressed }) => [
+        styles.bottomNavItem,
+        selected && styles.bottomNavItemActive,
+        pressed && styles.pressed,
+        pressed && !reduceMotion && styles.squeezePressed,
+      ]}
+    >
+      <Text style={[styles.bottomIcon, selected && styles.bottomIconActive]}>{item.icon}</Text>
+      <Text numberOfLines={1} style={[styles.bottomLabel, selected && styles.bottomLabelActive]}>{item.label}</Text>
+    </Pressable>;
+  };
+
+  return <View style={[styles.bottomNav, { paddingBottom: Math.max(bottomInset, 8) }]}>
+    {renderItem(mobileNavItems[0])}
+    {renderItem(mobileNavItems[1])}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Start a new chat"
+      accessibilityHint="Creates a new conversation and opens the message composer"
+      onPress={onNewConversation}
+      style={({ pressed }) => [
+        styles.bottomNavPlusAction,
+        pressed && styles.pressed,
+        pressed && !reduceMotion && styles.squeezePressed,
+      ]}
+    >
+      <View style={styles.bottomNavPlusBox}><Text style={styles.bottomNavPlusGlyph}>+</Text></View>
+    </Pressable>
+    {renderItem(mobileNavItems[2])}
+    {renderItem(mobileNavItems[3])}
+  </View>;
 }
 
 export function ChatPage({ wide, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, editingMessageId, onEditMessage, onCancelEdit, onStop, onRetry, onRegenerate, retryPending, isSending, chatError }: { wide: boolean; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; editingMessageId?: number | null; onEditMessage?: (message: Message) => void; onCancelEdit?: () => void; onStop: () => void; onRetry: () => void; onRegenerate?: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
@@ -1777,7 +1905,14 @@ function SettingRow({ icon, title, description, value, onChange }: { icon: strin
 }
 
 function Button({ label, onPress, tone = 'primary', disabled = false }: { label: string; onPress: () => void; tone?: 'primary' | 'quiet'; disabled?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.button, tone === 'quiet' && styles.buttonQuiet, disabled && styles.buttonDisabled, pressed && styles.pressed]}><Text style={[styles.buttonText, tone === 'quiet' && styles.buttonTextQuiet]}>{label}</Text></Pressable>;
+  const reduceMotion = useReducedMotionPreference();
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} style={({ pressed }) => [
+    styles.button,
+    tone === 'quiet' && styles.buttonQuiet,
+    disabled && styles.buttonDisabled,
+    pressed && styles.pressed,
+    pressed && !reduceMotion && styles.squeezePressed,
+  ]}><Text style={[styles.buttonText, tone === 'quiet' && styles.buttonTextQuiet]}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
@@ -1827,7 +1962,7 @@ const styles = StyleSheet.create({
   connectCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2ECE3', borderRadius: 16, padding: 14, marginTop: 22, marginLeft: 44, gap: 12, maxWidth: 555 }, connectIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center' }, connectIconText: { color: C.cocoa, fontSize: 17 }, connectCopy: { flex: 1 }, connectTitle: { fontSize: 12, fontWeight: '700', color: C.ink, marginBottom: 4 }, connectBody: { fontSize: 11, color: C.muted, lineHeight: 16 }, connectArrow: { color: C.cocoa, fontSize: 24 }, promptWrap: { marginTop: 22, marginLeft: 44 }, promptHeading: { color: '#796D62', fontSize: 11, fontWeight: '600', marginBottom: 10, marginLeft: 2 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, promptChip: { borderWidth: 1, borderColor: '#E3D9CD', backgroundColor: '#FBF8F3', borderRadius: 18, paddingHorizontal: 14, minHeight: 38, justifyContent: 'center' }, promptChipText: { color: C.cocoaDark, fontSize: 11, fontWeight: '500' },
   messageRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 14 }, messageRowYou: { justifyContent: 'flex-end' }, messageBubble: { maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 }, teddyBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: C.cocoa, borderBottomRightRadius: 4 }, messageText: { color: C.ink, fontSize: 14, lineHeight: 21 }, markdownReply: { gap: 2 }, markdownStrong: { color: C.ink, fontWeight: '700' }, markdownItalic: { fontStyle: 'italic' }, markdownStrike: { textDecorationLine: 'line-through' }, markdownInlineCode: { color: '#61492F', backgroundColor: '#F2EDE4', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }, markdownLink: { color: '#76552F', textDecorationLine: 'underline' }, markdownHeading: { fontWeight: '700', marginTop: 5, marginBottom: 5 }, markdownHeadingLarge: { fontSize: 19 }, markdownListRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 }, markdownListText: { flex: 1 }, markdownFence: { color: C.ink, backgroundColor: '#F5F2ED', borderRadius: 8, padding: 10, marginVertical: 5, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, lineHeight: 18 }, markdownQuote: { borderLeftColor: '#D9B879', borderLeftWidth: 3, paddingLeft: 10, marginLeft: 0, marginVertical: 4 }, markdownRule: { height: 1, backgroundColor: C.line, marginVertical: 7 }, userMessageText: { color: C.white }, messageTime: { color: C.muted, fontSize: 9, textAlign: 'right', marginTop: 5 }, userMessageTime: { color: '#E8D9CC' }, sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, marginBottom: 8 }, typingBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }, typingText: { color: C.muted, fontSize: 12, fontWeight: '600' }, errorBanner: { backgroundColor: '#FCE9E3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 }, errorText: { color: '#8D473F', fontSize: 11, lineHeight: 16 }, retryButton: { alignSelf: 'flex-start', marginTop: 8, minHeight: 30, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#FFFFFF' }, retryButtonText: { color: '#8D473F', fontSize: 11, fontWeight: '700' },
   composerWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 68, maxWidth: 760, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 9, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDDCD6', borderRadius: 24, paddingHorizontal: 11, paddingVertical: 8, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerCardFocused: { borderColor: '#B49A83', shadowColor: C.cocoa, shadowOpacity: 0.14, shadowRadius: 17, shadowOffset: { width: 0, height: 0 }, elevation: 3 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, maxWidth: 760, alignSelf: 'center', width: '100%', marginBottom: 7 }, chatToolButton: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', paddingHorizontal: 10 }, chatToolIcon: { color: C.cocoa, fontSize: 13 }, chatToolLabel: { color: C.cocoaDark, fontSize: 10, fontWeight: '600' }, toolIconButton: { width: 31, height: 31, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { flex: 1, minWidth: 0, color: C.ink, fontSize: 14, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 7, maxHeight: 110, minHeight: 46 }, sendButton: { flexShrink: 0, width: 46, height: 46, borderRadius: 17, backgroundColor: '#B9A797', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: C.cocoa }, sendButtonDisabled: { opacity: 0.72 }, sendArrowIcon: { width: 20, height: 20, position: 'relative' }, sendArrowShaft: { position: 'absolute', left: 2, top: 9, width: 15, height: 1.7, borderRadius: 1, backgroundColor: C.white, transform: [{ rotate: '-45deg' }] }, sendArrowTop: { position: 'absolute', left: 9, top: 3, width: 8, height: 1.7, borderRadius: 1, backgroundColor: C.white }, sendArrowRight: { position: 'absolute', right: 3, top: 3, width: 1.7, height: 8, borderRadius: 1, backgroundColor: C.white }, composerFootnote: { color: '#706458', fontSize: 11, textAlign: 'center', marginTop: 8, lineHeight: 14 },
-  bottomNav: { height: 62, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' }, bottomNavItem: { flex: 1, minWidth: 0, height: 54, alignItems: 'center', justifyContent: 'center', gap: 2 }, bottomIcon: { fontSize: 19, color: '#75685C', lineHeight: 22 }, bottomIconActive: { color: C.cocoa }, bottomLabel: { fontSize: 10, color: '#6F6256', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' },
+  bottomNav: { minHeight: 70, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingTop: 5, paddingHorizontal: 3 }, bottomNavItem: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 13, paddingHorizontal: 1, paddingVertical: 3 }, bottomNavItemActive: { backgroundColor: '#F6F0E9' }, bottomIcon: { fontSize: 19, color: '#75685C', lineHeight: 23 }, bottomIconActive: { color: C.cocoaDark }, bottomLabel: { fontSize: 10, color: '#6F6256', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' }, bottomNavPlusAction: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center' }, bottomNavPlusBox: { width: 46, height: 46, borderRadius: 14, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', shadowColor: '#302821', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 }, bottomNavPlusGlyph: { color: C.white, fontSize: 29, lineHeight: 32, fontWeight: '400', includeFontPadding: false }, squeezePressed: { transform: [{ scale: 0.965 }] },
   pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#6F6256', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#75685C', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#6E6054', fontSize: 17 }, deleteGlyph: { color: '#855748', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
   privacyBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: C.greenLight, borderRadius: 16, marginBottom: 27 }, privacyShield: { width: 35, height: 35, backgroundColor: '#D7E3D4', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, shieldGlyph: { color: C.green, fontSize: 19 }, privacyCopy: { flex: 1 }, privacyTitle: { color: '#435943', fontSize: 13, fontWeight: '700', marginBottom: 5 }, privacyBody: { color: '#65745F', fontSize: 12, lineHeight: 17 }, settingsSectionLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginTop: 3 }, settingsCard: { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, paddingHorizontal: 15, marginBottom: 23 }, settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 }, settingIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' }, settingGlyph: { color: C.cocoa, fontSize: 15 }, settingText: { flex: 1 }, settingTitle: { color: C.ink, fontSize: 12, fontWeight: '700', lineHeight: 17 }, settingDescription: { color: C.muted, fontSize: 12, lineHeight: 15, marginTop: 3 }, switchHitArea: { padding: 2 }, switchTrack: { width: 42, height: 25, borderRadius: 14, padding: 3, justifyContent: 'center' }, switchThumb: { width: 19, height: 19, borderRadius: 10, backgroundColor: C.white }, settingSeparator: { height: 1, backgroundColor: C.line, marginLeft: 44 }, gatewaySection: { borderRadius: 18 }, gatewaySectionFocused: { borderWidth: 1, borderColor: '#D6BAA5', padding: 10, marginHorizontal: -10, marginBottom: 14, backgroundColor: '#F8F0E8' }, gatewayIntro: { flexDirection: 'row', gap: 11, paddingTop: 16, paddingBottom: 14 }, gatewayIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, gatewayGlyph: { color: C.cocoa, fontSize: 16 }, inputLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.1, fontWeight: '700', marginBottom: 7 }, gatewayInput: { height: 45, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 12 }, gatewayActions: { paddingTop: 11, paddingBottom: 15, gap: 9 }, connectionStatus: { color: C.muted, fontSize: 11, lineHeight: 15 }, connectionReady: { color: C.green }, connectionError: { color: C.rose }, clearRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15 }, clearIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#F8EAE5', alignItems: 'center', justifyContent: 'center' }, clearGlyph: { color: C.rose, fontSize: 16 }, clearButton: { minHeight: 36, minWidth: 54, borderRadius: 11, borderWidth: 1, borderColor: '#E7D8D2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 }, clearButtonText: { color: C.rose, fontSize: 11, fontWeight: '700' }, versionText: { textAlign: 'center', color: '#6E6258', fontSize: 10, letterSpacing: 1.4, marginTop: 2, marginBottom: 16 },
   button: { minHeight: 42, backgroundColor: C.cocoa, borderRadius: 13, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 17 }, buttonQuiet: { backgroundColor: '#F2ECE4' }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: C.white, fontSize: 11, fontWeight: '700' }, buttonTextQuiet: { color: C.cocoaDark }, pressed: { opacity: 0.75 }, disabledText: { color: '#6E6258' },
@@ -1886,6 +2021,14 @@ const styles = StyleSheet.create({
   typingIndicator: { minWidth: 48, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 12 },
   typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.muted },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(45, 36, 29, 0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 }, modalCard: { width: '100%', maxWidth: 460, backgroundColor: C.paper, borderRadius: 22, padding: 22 }, modalTopline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }, modalIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, modalIconText: { color: C.cocoa, fontSize: 18 }, closeButton: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.paperAlt }, closeText: { color: C.muted, fontSize: 22, lineHeight: 24 }, modalTitle: { color: C.ink, fontWeight: '700', fontSize: 20, letterSpacing: -0.4 }, modalBody: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 7, marginBottom: 16 }, memoryInput: { minHeight: 100, maxHeight: 180, backgroundColor: '#F9F6F1', borderColor: C.line, borderWidth: 1, borderRadius: 14, padding: 13, color: C.ink, fontSize: 13, lineHeight: 19 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 17 }, suggestedFact: { color: C.ink, fontSize: 15, lineHeight: 22, fontWeight: '600', backgroundColor: '#F9F6F1', borderRadius: 14, padding: 13, marginTop: 12 }, historyCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: C.paper, borderRadius: 22, padding: 22 }, historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 }, historyList: { maxHeight: 430, marginTop: 14 }, historyItemWrap: { position: 'relative', width: '100%', minWidth: 0, marginBottom: 6 }, historyItem: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 3, paddingHorizontal: 4, paddingVertical: 4, borderRadius: 13, borderWidth: 1, borderColor: 'transparent' }, historyItemOpen: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, borderRadius: 10 }, historyItemSelected: { backgroundColor: '#F2E5C9', borderColor: '#D9B879' }, chatMenuTrigger: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, chatMenuDots: { color: C.muted, fontSize: 16, fontWeight: '700', letterSpacing: 1 }, chatActionMenu: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 12, padding: 5, marginHorizontal: 5, marginTop: -1, shadowColor: '#302821', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, chatActionItem: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8 }, chatActionText: { color: C.ink, fontSize: 12, fontWeight: '500' }, chatActionDelete: { backgroundColor: '#FCF5F2' }, chatActionDeleteText: { color: C.rose }, historyItemCopy: { flex: 1, minWidth: 0 }, historyItemTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, historyItemTitleSelected: { color: '#5A422C' }, historyItemPreview: { color: C.muted, fontSize: 11, marginTop: 5 }, historyEmpty: { textAlign: 'center', color: C.muted, fontSize: 12, lineHeight: 19, padding: 20 }, memorySuggestionError: { color: C.rose, fontSize: 11, lineHeight: 16, paddingHorizontal: 8, paddingVertical: 8 },
+  moreList: { gap: 10 },
+  moreItem: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 17, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper },
+  moreItemIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  moreItemIcon: { color: C.cocoaDark, fontSize: 21, lineHeight: 25 },
+  moreItemCopy: { flex: 1, minWidth: 0, gap: 3 },
+  moreItemTitle: { color: C.ink, fontSize: 14, fontWeight: '700' },
+  moreItemDescription: { color: C.muted, fontSize: 12, lineHeight: 17 },
+  moreItemChevron: { color: C.muted, fontSize: 25, lineHeight: 29, paddingHorizontal: 4 },
   stopButton: { backgroundColor: '#7B453E' },
   stopIcon: { width: 15, height: 15, borderRadius: 3, backgroundColor: C.white },
 });
