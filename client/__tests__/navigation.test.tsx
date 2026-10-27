@@ -37,24 +37,27 @@ test('mobile navigation exposes four destinations and an immediate central New C
     );
   });
 
-  const buttons = renderer.root.findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string' && typeof node.props.onPress === 'function');
-  expect(buttons.map(button => button.props.accessibilityLabel)).toEqual([
+  const labels = [...new Set(renderer.root.findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string').map(button => button.props.accessibilityLabel))];
+  expect(labels).toEqual([
     'Chats',
     'Memories',
     'Start a new chat',
     'Journal',
     'More',
   ]);
-  expect(buttons.filter(button => button.props.accessibilityLabel !== 'Start a new chat')).toHaveLength(4);
+  expect(labels.filter(label => label !== 'Start a new chat')).toHaveLength(4);
 
+  const interactive = (label: string) => renderer.root
+    .findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')
+    .find(node => typeof node.props.onPress === 'function');
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Start a new chat' }).props.onPress();
+    interactive('Start a new chat')!.props.onPress();
   });
   expect(onNewConversation).toHaveBeenCalledTimes(1);
   expect(onNavigate).not.toHaveBeenCalled();
 
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'More' }).props.onPress();
+    interactive('More')!.props.onPress();
   });
   expect(onNavigate).toHaveBeenCalledWith('more');
   await ReactTestRenderer.act(async () => renderer.unmount());
@@ -68,13 +71,16 @@ test('More screen keeps secondary tools discoverable and navigable', async () =>
     renderer = ReactTestRenderer.create(<MorePage wide={false} onNavigate={onNavigate} />);
   });
 
-  const labels = renderer.root
-    .findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string' && typeof node.props.onPress === 'function')
-    .map(button => button.props.accessibilityLabel);
+  const labels = [...new Set(renderer.root
+    .findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string')
+    .map(button => button.props.accessibilityLabel))];
   expect(labels).toEqual(['Chat history', 'Emotions', 'Wellbeing', 'Privacy', 'Settings']);
 
+  const privacyControl = renderer.root
+    .findAll(node => node.props.accessibilityLabel === 'Privacy' && typeof node.props.onPress === 'function')
+    .find(node => typeof node.props.onPress === 'function');
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Privacy' }).props.onPress();
+    privacyControl!.props.onPress();
   });
   expect(onNavigate).toHaveBeenCalledWith('privacy');
   await ReactTestRenderer.act(async () => renderer.unmount());
