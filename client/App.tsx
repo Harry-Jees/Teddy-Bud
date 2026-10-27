@@ -28,7 +28,7 @@ import { GatewayService } from './src/services/gateway';
 import { browserAuthService } from './src/services/browserAuth';
 import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
-import type { EmotionCheckIn, JournalEntry, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
+import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncryptedBackup } from './src/services/backup';
 import { pickBackupFile, saveBackupFile, savePlainTextFile } from './src/services/backupFiles';
@@ -375,6 +375,43 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
 
   const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : page === 'more' ? 'More tools' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
+
+  const persistLocalSnapshot = useCallback(async (overrides: Partial<LocalAppData>) => {
+    const currentSnapshot: LocalAppData = {
+      conversations,
+      activeConversationId,
+      memories,
+      emotionCheckIns,
+      journalEntries,
+      rememberInSession,
+      shareMemories,
+      shareChatHistory,
+      shareAboutMe,
+      aboutMe,
+      assistantName,
+      assistantCharacterId,
+      assistantCharacterNames,
+    };
+    const nextSnapshot: LocalAppData = { ...currentSnapshot, ...overrides };
+    await localDataService.save(owner, nextSnapshot);
+    if ('conversations' in overrides) setConversations(nextSnapshot.conversations);
+    if ('activeConversationId' in overrides) setActiveConversationId(nextSnapshot.activeConversationId);
+    if ('memories' in overrides) setMemories(nextSnapshot.memories);
+    if ('emotionCheckIns' in overrides) setEmotionCheckIns(nextSnapshot.emotionCheckIns ?? []);
+    if ('journalEntries' in overrides) setJournalEntries(nextSnapshot.journalEntries ?? []);
+    if ('rememberInSession' in overrides) {
+      setRememberInSession(nextSnapshot.rememberInSession);
+      rememberPreferenceRef.current = nextSnapshot.rememberInSession;
+    }
+    if ('shareMemories' in overrides) setShareMemories(nextSnapshot.shareMemories);
+    if ('shareChatHistory' in overrides) setShareChatHistory(nextSnapshot.shareChatHistory);
+    if ('shareAboutMe' in overrides) setShareAboutMe(nextSnapshot.shareAboutMe);
+    if ('aboutMe' in overrides) setAboutMe(nextSnapshot.aboutMe);
+    if ('assistantName' in overrides) setAssistantName(nextSnapshot.assistantName);
+    if ('assistantCharacterId' in overrides) setAssistantCharacterId(nextSnapshot.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
+    if ('assistantCharacterNames' in overrides) setAssistantCharacterNames(nextSnapshot.assistantCharacterNames ?? {});
+    setLocalDataSaveError(null);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
   const refreshCreditBalance = useCallback(async () => {
     try {
       setCreditBalance(await gatewayService.getCreditBalance(sessionToken));
