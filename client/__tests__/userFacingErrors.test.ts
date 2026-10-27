@@ -39,7 +39,7 @@ describe('safe local-data error messages', () => {
   test('gives a storage-space recovery step without suggesting destructive clearing', () => {
     const message = localDataErrorMessage(new Error('ENOSPC quota exceeded'), 'save');
     expect(message).toMatch(/free up space/i);
-    expect(message).not.toMatch(/clear your saved data as a troubleshooting step/i);
+    expect(message).toMatch(/do not clear your saved data as a troubleshooting step/i);
   });
 
   test('keeps local data failures recoverable and encourages retry', () => {
