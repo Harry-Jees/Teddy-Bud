@@ -5,7 +5,7 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Animated, Modal, ScrollView, Share, Text } from 'react-native';
-import { ChatPage, JournalPage } from '../App';
+import { ChatPage, EmotionsPage, JournalPage } from '../App';
 
 jest.mock('@react-native-documents/picker', () => ({
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
@@ -565,6 +565,47 @@ test('journal explains an empty save attempt instead of silently blocking it', a
   expect(alert.findAllByType(Text).map(node => node.props.children).join(' '))
     .toMatch(/write a little in your entry before saving/i);
   expect(onSave).not.toHaveBeenCalled();
+
+  await ReactTestRenderer.act(async () => renderer.unmount());
+}, 15000);
+
+
+test('emotion check-in keeps ratings and note visible when local persistence fails', async () => {
+  const onSave = jest.fn().mockRejectedValue(new Error('SQLCipher native detail'));
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <EmotionsPage wide={false} entries={[]} onSave={onSave} onDelete={jest.fn(async () => undefined)} />,
+    );
+  });
+
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityRole: 'button', children: undefined });
+  }).catch(() => undefined);
+
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findAll(node => node.props.children === 'Add a check-in').at(0)?.props.onPress();
+  });
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Anxious 5 out of 5' }).props.onPress();
+  });
+  const noteField = renderer.root.findByProps({ accessibilityLabel: 'Emotion check-in note (optional)' });
+  await ReactTestRenderer.act(async () => noteField.props.onChangeText('A note I need to keep.'));
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Save emotion check-in' }).props.onPress();
+  });
+
+  expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+    emotions: expect.objectContaining({ anxious: 5 }),
+    note: 'A note I need to keep.',
+  }));
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Anxious 5 out of 5' }).props.accessibilityState.selected).toBe(true);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Emotion check-in note (optional)' }).props.value)
+    .toBe('A note I need to keep.');
+  const alert = renderer.root.findByProps({ accessibilityRole: 'alert' });
+  const message = alert.findAllByType(Text).map(node => node.props.children).join(' ');
+  expect(message).toMatch(/your ratings and note are still here/i);
+  expect(message).not.toMatch(/SQLCipher native detail/i);
 
   await ReactTestRenderer.act(async () => renderer.unmount());
 }, 15000);
