@@ -67,7 +67,6 @@ const navItems: { id: Page; icon: string; label: string }[] = [
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Chats' },
   { id: 'memories', icon: '✳', label: 'Memories' },
-  { id: 'journal', icon: '▤', label: 'Journal' },
   { id: 'more', icon: '···', label: 'More' },
 ];
 
@@ -1313,6 +1312,7 @@ export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (pag
   const reduceMotion = useReducedMotionPreference();
   const items: { id: Page; icon: string; label: string; description: string }[] = [
     { id: 'history', icon: '▤', label: 'Chat history', description: 'Find a conversation from earlier' },
+    { id: 'journal', icon: '▤', label: 'Journal', description: 'Write, search, and export private reflections' },
     { id: 'emotions', icon: '◉', label: 'Emotions', description: 'Check in with how you feel' },
     { id: 'studio', icon: '☼', label: 'Wellbeing', description: 'Gentle exercises you can use offline' },
     { id: 'privacy', icon: '⌑', label: 'Privacy', description: 'Choose what stays local and what is shared' },
@@ -1347,7 +1347,7 @@ export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (pag
 
 export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
   const reduceMotion = useReducedMotionPreference();
-  const moreSelected = page === 'more' || page === 'emotions' || page === 'studio' || page === 'privacy' || page === 'settings';
+  const moreSelected = page === 'more' || page === 'journal' || page === 'emotions' || page === 'studio' || page === 'privacy' || page === 'settings';
   const isSelected = (item: (typeof mobileNavItems)[number]) => {
     if (item.id === 'chat') return page === 'chat' || page === 'history';
     if (item.id === 'more') return moreSelected;
@@ -1391,7 +1391,6 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       <View style={styles.bottomNavPlusBox}><Text style={styles.bottomNavPlusGlyph}>+</Text></View>
     </Pressable>
     {renderItem(mobileNavItems[2])}
-    {renderItem(mobileNavItems[3])}
   </View>;
 }
 
