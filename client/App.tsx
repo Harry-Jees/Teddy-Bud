@@ -162,8 +162,11 @@ function AccessGate() {
   useEffect(() => {
     if (!session) return undefined;
     const expireSession = () => {
-      browserAuthService.clear().catch(() => undefined).then(() => {
+      browserAuthService.clear().then(() => {
         setError('Your one-hour session has expired. Please sign in again.');
+      }).catch(clearError => {
+        setError(authErrorMessage(clearError, 'session-restore'));
+      }).finally(() => {
         setInitialMode('login');
         setSession(null);
       });
@@ -208,6 +211,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   const [recoveryPassphraseConfirmation, setRecoveryPassphraseConfirmation] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -270,7 +274,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   };
 
   const changeMode = (next: 'login' | 'create' | 'recover' | 'migrate') => {
-    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setConfirmPassword(''); setRecoveryPassphrase(''); setRecoveryPassphraseConfirmation('');
+    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setConfirmPassword(''); setRecoveryPassphrase(''); setRecoveryPassphraseConfirmation('');
   };
 
   const title = mode === 'create' ? 'Create your private space.' : mode === 'recover' ? 'Reset your password.' : mode === 'migrate' ? 'Keep your existing space.' : 'Welcome back.';
@@ -293,7 +297,12 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
         <TextInput accessibilityLabel="Recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.recoveryPassphrase && styles.authInputInvalid]} editable={!submitting} />
         {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
       </>}
-      <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} accessibilityHint={fieldErrors.password} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry value={password} onChangeText={value => { setPassword(value); clearFieldError('password'); }} placeholder={mode === 'recover' ? 'New password (6–128 characters)' : 'Password (6–128 characters)'} placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.password && styles.authInputInvalid]} editable={!submitting} />
+      <View style={[styles.authPasswordRow, fieldErrors.password && styles.authInputInvalid]}>
+        <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} accessibilityHint={fieldErrors.password} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry={!passwordVisible} value={password} onChangeText={value => { setPassword(value); clearFieldError('password'); }} placeholder={mode === 'recover' ? 'New password (6–128 characters)' : 'Password (6–128 characters)'} placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
+        <Pressable accessibilityRole="button" accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'} accessibilityHint="Changes whether the password text is visible on this screen" disabled={submitting} onPress={() => setPasswordVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}>
+          <Text style={styles.showPasswordText}>{passwordVisible ? 'Hide' : 'Show'}</Text>
+        </Pressable>
+      </View>
       {fieldErrors.password && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.password}</Text>}
       {(mode === 'create' || mode === 'migrate') && <>
         <TextInput accessibilityLabel="Confirm password" accessibilityHint={fieldErrors.confirmPassword} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearFieldError('confirmPassword'); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.confirmPassword && styles.authInputInvalid]} editable={!submitting} />
