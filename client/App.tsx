@@ -134,8 +134,14 @@ function AccessGate() {
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
+      let restoreTimeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        const current = await browserAuthService.restore();
+        const current = await Promise.race([
+          browserAuthService.restore(),
+          new Promise<never>((_, reject) => {
+            restoreTimeout = setTimeout(() => reject(new Error('Secure session check timed out. Reload the app or sign in again.')), 12_000);
+          }),
+        ]);
         if (mounted) {
           setSession(current);
           if (current) await browserAuthService.markSetupComplete();
@@ -147,6 +153,7 @@ function AccessGate() {
       } catch (restoreError) {
         if (mounted) setError(authErrorMessage(restoreError, 'session-restore'));
       } finally {
+        if (restoreTimeout) clearTimeout(restoreTimeout);
         if (mounted) setBusy(false);
       }
     };
