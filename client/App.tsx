@@ -224,7 +224,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
     if (submitting) return;
     setSubmitting(true); setFormError(null); setFieldErrors({}); setNotice(null);
     try {
-      if (mode !== 'migrate' && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim())) {
+      if (mode !== 'migrate' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
         throw new AuthValidationError('Enter a valid email address.', 'email');
       }
       if (mode === 'login' && !password) throw new AuthValidationError('Enter your password.', 'password');
