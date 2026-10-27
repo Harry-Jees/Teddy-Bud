@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-10-27  
 Working branch: `feature/phase-3-chat-polish`  
-Status: **Implementation in progress; automated verification pending**  
+Status: **Implementation in progress; current merge gate pending CI and platform verification**  
 Scope: Mobile-first UX, all app screens, sign-in/password/recovery flows, error handling, accessibility, cross-platform behavior, regression tests, and release validation.
 
 ## 1. Goal and non-negotiable rules
@@ -20,6 +20,13 @@ Deliver a calmer, more predictable Teddy Bud app without losing access to existi
 - [ ] Every phase needs automated tests. UI completion is not established by a successful build alone.
 - [ ] No production deployment, signing, or release promotion until all release gates in Phase 10 pass.
 
+
+## Merge gate — 2026-10-27
+
+- Pull request: https://github.com/Harry-Jees/Teddy-Bud/pull/12
+- Merge is blocked until a CI run against the latest head passes. Earlier runs tested older snapshots and failed, so they do not validate the final code.
+- No claim of production safety is made until automated checks pass and actual mobile/desktop smoke tests verify existing conversations, switching accounts, storage recovery, backup/restore, and navigation.
+- Existing user chats must remain stored and readable; no migration or cleanup is allowed to reset local conversation records as part of this UI work.
 
 ## Current execution log — 2026-10-27
 
