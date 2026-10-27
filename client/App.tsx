@@ -260,15 +260,15 @@ function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthentica
       <Text style={styles.authBody}>{mode === 'create' ? 'Create a strong password and a recovery passphrase you can keep safe. Your account opens your private space on this device.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in to open your private space on this device.'}</Text>
       {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authErrorText}>{formError || error}</Text></View>}
       {!!notice && <View style={styles.authNotice}><Text accessibilityLiveRegion="polite" style={styles.authNoticeText}>{notice}</Text></View>}
-      {mode !== 'migrate' && <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" value={email} onChangeText={setEmail} placeholder="Email address" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
-      {mode === 'recover' && <TextInput accessibilityLabel="Recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={setRecoveryPassphrase} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
-      <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry value={password} onChangeText={setPassword} placeholder={mode === 'recover' ? 'New password (6+ characters)' : 'Password (6+ characters)'} placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
+      {mode !== 'migrate' && <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" value={email} onChangeText={value => { setEmail(value); setFormError(null); }} placeholder="Email address" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
+      {mode === 'recover' && <TextInput accessibilityLabel="Recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); setFormError(null); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />}
+      <TextInput accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry value={password} onChangeText={value => { setPassword(value); setFormError(null); }} placeholder={mode === 'recover' ? 'New password (6+ characters)' : 'Password (6+ characters)'} placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
       {(mode === 'create' || mode === 'migrate') && <>
-        <TextInput accessibilityLabel="Confirm password" autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
+        <TextInput accessibilityLabel="Confirm password" autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry value={confirmPassword} onChangeText={value => { setConfirmPassword(value); setFormError(null); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={styles.authInput} editable={!submitting} />
         <Text style={styles.authKeyLabel}>RECOVERY PASSPHRASE</Text>
         <TextInput accessibilityLabel="Choose recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={setRecoveryPassphrase} placeholder="At least 10 characters" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
         <Text style={styles.authFootnote}>Choose a unique recovery passphrase of at least 10 characters and keep it somewhere safe. You will need it with your email to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
-        <TextInput accessibilityLabel="Confirm recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphraseConfirmation} onChangeText={setRecoveryPassphraseConfirmation} placeholder="Confirm recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
+        <TextInput accessibilityLabel="Confirm recovery passphrase" autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphraseConfirmation} onChangeText={value => { setRecoveryPassphraseConfirmation(value); setFormError(null); }} placeholder="Confirm recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={styles.authInput} editable={!submitting} />
       </>}
       <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 10) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())} onPress={submit} style={({ pressed }) => [styles.authButton, (submitting || ((mode === 'create' || mode === 'migrate') && recoveryPassphrase.trim().length < 10) || ((mode === 'create' || mode === 'migrate') && recoveryPassphraseConfirmation.trim() !== recoveryPassphrase.trim())) && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
@@ -1210,7 +1210,7 @@ function useReducedMotionPreference() {
   return reduceMotion;
 }
 
-function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
+export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
   const items: { id: Page; icon: string; label: string; description: string }[] = [
     { id: 'history', icon: '▤', label: 'Chat history', description: 'Find a conversation from earlier' },
     { id: 'emotions', icon: '◉', label: 'Emotions', description: 'Check in with how you feel' },
@@ -1245,7 +1245,7 @@ function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page
   </ScrollView>;
 }
 
-function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
+export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
   const reduceMotion = useReducedMotionPreference();
   const moreSelected = page === 'more' || page === 'emotions' || page === 'studio' || page === 'privacy' || page === 'settings';
   const isSelected = (item: (typeof mobileNavItems)[number]) => {
