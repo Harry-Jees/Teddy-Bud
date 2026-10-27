@@ -37,7 +37,7 @@ test('mobile navigation exposes four destinations and an immediate central New C
     );
   });
 
-  const buttons = renderer.root.findAll(node => node.props.accessibilityRole === 'button');
+  const buttons = renderer.root.findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string' && typeof node.props.onPress === 'function');
   expect(buttons.map(button => button.props.accessibilityLabel)).toEqual([
     'Chats',
     'Memories',
@@ -69,7 +69,7 @@ test('More screen keeps secondary tools discoverable and navigable', async () =>
   });
 
   const labels = renderer.root
-    .findAll(node => node.props.accessibilityRole === 'button')
+    .findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string' && typeof node.props.onPress === 'function')
     .map(button => button.props.accessibilityLabel);
   expect(labels).toEqual(['Chat history', 'Emotions', 'Wellbeing', 'Privacy', 'Settings']);
 
