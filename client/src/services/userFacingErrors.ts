@@ -44,7 +44,7 @@ export function localDataErrorMessage(error: unknown, operation: LocalDataOperat
   if (/quota|storage full|enospc|not enough space/.test(detail)) {
     return 'This device may be low on storage. Free up space and retry; do not clear your saved data as a troubleshooting step.';
   }
-  if (/corrupt|malformed|invalid saved data|migration/.test(detail)) {
+  if (/corrupt|malformed|invalid saved data|migration|read safely/.test(detail)) {
     return 'Teddy Bud could not read part of the saved data safely. Retry once; if the problem continues, make a backup or contact support before clearing anything.';
   }
   if (/locked|busy|temporarily unavailable/.test(detail)) {
