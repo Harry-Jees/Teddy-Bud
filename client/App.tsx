@@ -1812,8 +1812,10 @@ export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
         await savePlainTextFile(content, `teddy-bud-journal-${new Date().toISOString().slice(0, 10)}.txt`);
         setActionNotice('Your journal text download has started.');
       } else {
-        await Share.share({ title: 'Teddy Bud private journal export', message: content });
-        setActionNotice('The share sheet opened. Choose where you would like to keep your journal text.');
+        const result = await Share.share({ title: 'Teddy Bud private journal export', message: content });
+        setActionNotice(result.action === Share.dismissedAction
+          ? 'Export canceled. Your journal entries remain saved on this device.'
+          : 'The share sheet opened. Choose where you would like to keep your journal text.');
       }
     } catch {
       setActionError('Teddy Bud could not export the journal text. Try again, or select and copy the entries you want to keep.');
@@ -1848,13 +1850,13 @@ export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
       <TextInput accessibilityLabel="Journal title (optional)" value={title} onChangeText={setTitle} maxLength={160} placeholder="Title (optional)" placeholderTextColor={C.muted} style={styles.journalTextInput} editable={!saving} />
       <TextInput accessibilityLabel="Journal entry" accessibilityHint="Your entry is stored locally and is not sent to the AI unless you choose to discuss it and then send the prepared chat message." value={body} onChangeText={value => { setBody(value); setActionError(null); setActionNotice(null); }} maxLength={30000} multiline placeholder="Start wherever you are…" placeholderTextColor={C.muted} style={[styles.journalTextInput, styles.journalBodyInput]} editable={!saving} textAlignVertical="top" />
       <View style={styles.journalEditorActions}>
-        <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Save journal changes' : 'Save privately'} disabled={saving || !body.trim()} onPress={save} style={({ pressed }) => [styles.journalSaveButton, (saving || !body.trim()) && styles.buttonDisabled, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Save journal changes' : 'Save privately'} disabled={saving} onPress={save} style={({ pressed }) => [styles.journalSaveButton, saving && styles.buttonDisabled, pressed && styles.pressed]}>
           <Text style={styles.journalSaveButtonText}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Save privately'}</Text>
         </Pressable>
         {editing && <Pressable accessibilityRole="button" disabled={saving} onPress={cancelEdit} style={({ pressed }) => [styles.journalCancelButton, pressed && styles.pressed]}><Text style={styles.journalCancelButtonText}>Cancel edit</Text></Pressable>}
       </View>
     </View>
-    <Pressable accessibilityRole="button" disabled={exporting || !entries.length} onPress={exportJournal} style={({ pressed }) => [styles.journalExportButton, (exporting || !entries.length) && styles.buttonDisabled, pressed && styles.pressed]}>
+    <Pressable accessibilityRole="button" disabled={exporting} onPress={exportJournal} style={({ pressed }) => [styles.journalExportButton, exporting && styles.buttonDisabled, pressed && styles.pressed]}>
       <Text style={styles.journalExportButtonText}>{exporting ? 'Preparing export…' : 'Export journal text'}</Text>
     </Pressable>
     <TextInput accessibilityLabel="Search journal entries" value={search} onChangeText={setSearch} placeholder="Search journal entries" placeholderTextColor={C.muted} style={styles.journalSearchInput} />
