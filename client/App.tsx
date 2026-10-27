@@ -41,7 +41,7 @@ import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/c
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
 
-type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio' | 'more';
+type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio' | 'discover' | 'more';
 type Memory = LocalMemory;
 type MemorySuggestion = { conversationId: string; messageId: number; fact: string };
 type Message = LocalMessage;
@@ -56,18 +56,16 @@ const C = {
 };
 
 const navItems: { id: Page; icon: string; label: string }[] = [
-  { id: 'chat', icon: '◌', label: 'Your space' },
-  { id: 'memories', icon: '✳', label: 'Memories' },
-  { id: 'emotions', icon: '◉', label: 'Emotions' },
-  { id: 'journal', icon: '▤', label: 'Journal' },
-  { id: 'studio', icon: '☼', label: 'Wellbeing' },
-  { id: 'privacy', icon: '⌑', label: 'Privacy' },
-  { id: 'settings', icon: '⚙', label: 'Settings' },
+  { id: 'chat', icon: 'message-circle', label: 'Chats' },
+  { id: 'memories', icon: 'brain', label: 'Memories' },
+  { id: 'discover', icon: 'compass', label: 'Discover' },
+  { id: 'settings', icon: 'settings', label: 'Settings' },
 ];
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
-  { id: 'chat', icon: '◌', label: 'Chats' },
-  { id: 'memories', icon: '✳', label: 'Memories' },
-  { id: 'more', icon: '···', label: 'More' },
+  { id: 'chat', icon: 'message-circle', label: 'Chats' },
+  { id: 'memories', icon: 'brain', label: 'Memories' },
+  { id: 'discover', icon: 'compass', label: 'Discover' },
+  { id: 'settings', icon: 'settings', label: 'Settings' },
 ];
 
 const gatewayService = new GatewayService(GATEWAY_BASE_URL);
@@ -136,8 +134,14 @@ function AccessGate() {
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
+      let restoreTimeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        const current = await browserAuthService.restore();
+        const current = await Promise.race([
+          browserAuthService.restore(),
+          new Promise<never>((_, reject) => {
+            restoreTimeout = setTimeout(() => reject(new Error('Secure session check timed out. Reload the app or sign in again.')), 12_000);
+          }),
+        ]);
         if (mounted) {
           setSession(current);
           if (current) await browserAuthService.markSetupComplete();
@@ -149,6 +153,7 @@ function AccessGate() {
       } catch (restoreError) {
         if (mounted) setError(authErrorMessage(restoreError, 'session-restore'));
       } finally {
+        if (restoreTimeout) clearTimeout(restoreTimeout);
         if (mounted) setBusy(false);
       }
     };
@@ -379,7 +384,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const receivedReplyRef = useRef('');
   const responseAbortControllerRef = useRef<AbortController | null>(null);
 
-  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : page === 'more' ? 'More tools' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
+  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' || page === 'privacy' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : page === 'discover' || page === 'more' ? 'Discover' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
 
   const persistLocalSnapshot = useCallback(async (overrides: Partial<LocalAppData>) => {
@@ -884,6 +889,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     const userMessage: Message = {
       id: nextMessageId.current = Math.max(Date.now(), nextMessageId.current + 1),
       text,
+      ...(imageDataUrl ? { imageDataUrl } : {}),
       author: 'you',
       time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     };
@@ -1140,8 +1146,8 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             setAssistantCharacterId(id);
             setAssistantName(savedName);
             setAssistantCharacterNames(current => ({ ...current, [id]: savedName }));
-          }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} />}
-          {page === 'more' && <MorePage wide={wide} onNavigate={setPage} />}
+          }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} onOpenPrivacy={() => setPage('privacy')} />}
+          {(page === 'discover' || page === 'more') && <MorePage wide={wide} onNavigate={setPage} />}
           </>}
         </View>
         {!wide && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
@@ -1424,7 +1430,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
         <Text style={styles.newChatGlyph}>+</Text>{!labelsCollapsed && <Animated.Text style={[styles.newChatLabel, { opacity: labelOpacity }]}>New chat</Animated.Text>}
       </Pressable>
       {!labelsCollapsed && <Animated.Text style={[styles.sidebarLabel, { opacity: labelOpacity }]}>YOUR SPACE</Animated.Text>}
-      {navItems.map(item => <NavButton key={item.id} item={item} selected={item.id === page} collapsed={labelsCollapsed} labelOpacity={labelOpacity} onPress={() => onNavigate(item.id)} />)}
+      {navItems.map(item => <NavButton key={item.id} item={item} selected={item.id === page || (item.id === 'discover' && (page === 'journal' || page === 'emotions' || page === 'studio')) || (item.id === 'settings' && page === 'privacy')} collapsed={labelsCollapsed} labelOpacity={labelOpacity} onPress={() => onNavigate(item.id)} />)}
       {!labelsCollapsed && <Animated.Text style={[styles.sidebarLabel, { opacity: labelOpacity }]}>CHATS</Animated.Text>}
       <ScrollView style={[styles.sidebarChatList, labelsCollapsed && styles.sidebarChatListCollapsed, { opacity: labelOpacity }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={!labelsCollapsed} showsHorizontalScrollIndicator={false}>
         {!labelsCollapsed && <ConversationHistoryList
@@ -1445,9 +1451,36 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
   );
 });
 
+function NavigationIcon({ name, active = false, size = 22 }: { name: string; active?: boolean; size?: number }) {
+  const paths: Record<string, string[]> = {
+    'message-circle': ['M20 11.5a7.5 7.5 0 0 1-7.5 7.5 8 8 0 0 1-3.5-.8L4 20l1.8-4.2A7.5 7.5 0 1 1 20 11.5Z', 'M8 11h.01', 'M12 11h.01', 'M16 11h.01'],
+    brain: ['M9 4.5A3.5 3.5 0 0 0 3.5 8a3.5 3.5 0 0 0 1 6.5A3.5 3.5 0 0 0 9 19V4.5Z', 'M15 4.5A3.5 3.5 0 0 1 20.5 8a3.5 3.5 0 0 1-1 6.5A3.5 3.5 0 0 1 15 19V4.5Z', 'M9 8H7', 'M15 8h2', 'M9 13H7', 'M15 13h2', 'M12 3v18'],
+    compass: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z', 'm15.5 8.5-2.3 4.7-4.7 2.3 2.3-4.7 4.7-2.3Z'],
+    settings: ['M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.8 3.1-.2-.1a1.7 1.7 0 0 0-1.8.1l-.1.1h-3.6l-.1-.2a1.7 1.7 0 0 0-1.5-1l-.2.1-3.1-1.8.1-.2a1.7 1.7 0 0 0-.1-1.8l-.1-.1v-3.6l.2-.1a1.7 1.7 0 0 0 1-1.5l-.1-.2 1.8-3.1.2.1a1.7 1.7 0 0 0 1.8-.1l.1-.1h3.6l.1.2a1.7 1.7 0 0 0 1.5 1l.2-.1 3.1 1.8-.1.2a1.7 1.7 0 0 0 .1 1.8l.1.1v3.6Z'],
+    'book-open': ['M12 7v14', 'M3 5.5A2.5 2.5 0 0 1 5.5 3H12v18H5.5A2.5 2.5 0 0 1 3 18.5v-13Z', 'M21 5.5A2.5 2.5 0 0 0 18.5 3H12v18h6.5a2.5 2.5 0 0 0 2.5-2.5v-13Z'],
+    'heart-pulse': ['M20.8 8.8c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.8 4.8 0 0 1 12 6a4.8 4.8 0 0 1 8.8 2.8Z', 'M5 12h3l2-3 3 6 2-3h4'],
+    wind: ['M3 8h12a3 3 0 1 0-3-3', 'M2 12h17a3 3 0 1 1-3 3', 'M4 16h6'],
+  };
+  const color = active ? C.cocoaDark : C.muted;
+  if (Platform.OS !== 'web') {
+    const line = { height: 1.8, backgroundColor: color, borderRadius: 2 } as const;
+    return <View accessibilityElementsHidden style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {name === 'message-circle' && <View style={{ width: 18, height: 15, borderRadius: 8, borderWidth: 1.7, borderColor: color, alignItems: 'center', justifyContent: 'center' }}><View style={{ flexDirection: 'row', gap: 2.5 }}><View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: color }} /><View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: color }} /><View style={{ width: 2, height: 2, borderRadius: 1, backgroundColor: color }} /></View></View>}
+      {name === 'brain' && <View style={{ width: 19, height: 19, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 10, height: 15, borderWidth: 1.7, borderColor: color, borderTopLeftRadius: 7, borderBottomLeftRadius: 7, borderRightWidth: 0 }} /><View style={{ width: 10, height: 15, borderWidth: 1.7, borderColor: color, borderTopRightRadius: 7, borderBottomRightRadius: 7, borderLeftWidth: 0 }} /></View>}
+      {name === 'compass' && <View style={{ width: 19, height: 19, borderWidth: 1.7, borderColor: color, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 7, height: 7, borderLeftWidth: 1.7, borderTopWidth: 1.7, borderColor: color, transform: [{ rotate: '45deg' }] }} /></View>}
+      {name === 'settings' && <View style={{ width: 18, height: 18, borderRadius: 6, borderWidth: 1.7, borderColor: color, alignItems: 'center', justifyContent: 'center' }}><View style={{ width: 6, height: 6, borderRadius: 4, borderWidth: 1.7, borderColor: color }} /></View>}
+      {name === 'book-open' && <View style={{ flexDirection: 'row', gap: 1 }}><View style={{ width: 8, height: 15, borderWidth: 1.6, borderColor: color, borderTopLeftRadius: 3, borderBottomLeftRadius: 3 }} /><View style={{ width: 8, height: 15, borderWidth: 1.6, borderColor: color, borderTopRightRadius: 3, borderBottomRightRadius: 3 }} /></View>}
+      {name === 'heart-pulse' && <Text style={{ color, fontSize: size - 1, lineHeight: size }}>♡</Text>}
+      {name === 'wind' && <View style={{ width: 19, gap: 4 }}><View style={[line, { width: 15 }]} /><View style={[line, { width: 19 }]} /><View style={[line, { width: 11 }]} /></View>}
+    </View>;
+  }
+  return React.createElement('svg' as any, { viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: active ? C.cocoaDark : C.muted, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', focusable: false, 'aria-hidden': true },
+    ...(paths[name] ?? paths.compass).map(d => React.createElement('path' as any, { key: d, d, fill: 'none' })));
+}
+
 function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }: { item: (typeof navItems)[number]; selected: boolean; onPress: () => void; collapsed?: boolean; labelOpacity?: Animated.Value }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityHint={collapsed ? `Open ${item.label}` : undefined} accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.navButton, collapsed && styles.navButtonCollapsed, selected && styles.navButtonSelected, pressed && styles.pressed]}>
-    <Text style={[styles.navIcon, selected && styles.navIconSelected]}>{item.icon}</Text><Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
+    <NavigationIcon name={item.icon} active={selected} size={21} /><Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
     {selected && !collapsed && <View style={styles.navDot} />}
   </Pressable>;
 }
@@ -1487,19 +1520,16 @@ function useReducedMotionPreference() {
 export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
   const reduceMotion = useReducedMotionPreference();
   const items: { id: Page; icon: string; label: string; description: string }[] = [
-    { id: 'history', icon: '▤', label: 'Chat history', description: 'Find a conversation from earlier' },
-    { id: 'journal', icon: '▤', label: 'Journal', description: 'Write, search, and export private reflections' },
-    { id: 'emotions', icon: '◉', label: 'Emotions', description: 'Check in with how you feel' },
-    { id: 'studio', icon: '☼', label: 'Wellbeing', description: 'Gentle exercises you can use offline' },
-    { id: 'privacy', icon: '⌑', label: 'Privacy', description: 'Choose what stays local and what is shared' },
-    { id: 'settings', icon: '⚙', label: 'Settings', description: 'Your companion, backup, and account' },
+    { id: 'journal', icon: 'book-open', label: 'Journal', description: 'Write, search, and revisit private reflections' },
+    { id: 'emotions', icon: 'heart-pulse', label: 'Emotions', description: 'Check in with how you feel, without pressure' },
+    { id: 'studio', icon: 'wind', label: 'Wellbeing', description: 'Gentle exercises you can use offline' },
   ];
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
     <View style={styles.pageIntro}>
-      <Text style={styles.eyebrow}>YOUR SPACE, YOUR WAY</Text>
-      <Text style={styles.pageTitle}>More tools</Text>
-      <Text style={styles.pageDescription}>Everything else, in one calm place. Your everyday essentials stay close at hand.</Text>
+      <Text style={styles.eyebrow}>A LITTLE SPACE FOR YOU</Text>
+      <Text style={styles.pageTitle}>Discover</Text>
+      <Text style={styles.pageDescription}>Small, supportive tools for reflection and feeling a little more grounded.</Text>
     </View>
     <View style={styles.moreList}>
       {items.map(item => <Pressable
@@ -1510,7 +1540,7 @@ export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (pag
         onPress={() => onNavigate(item.id)}
         style={({ pressed }) => [styles.moreItem, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}
       >
-        <View style={styles.moreItemIconWrap}><Text style={styles.moreItemIcon}>{item.icon}</Text></View>
+        <View style={styles.moreItemIconWrap}><NavigationIcon name={item.icon} active={false} size={22} /></View>
         <View style={styles.moreItemCopy}>
           <Text style={styles.moreItemTitle}>{item.label}</Text>
           <Text style={styles.moreItemDescription}>{item.description}</Text>
@@ -1523,10 +1553,11 @@ export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (pag
 
 export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
   const reduceMotion = useReducedMotionPreference();
-  const moreSelected = page === 'more' || page === 'journal' || page === 'emotions' || page === 'studio' || page === 'privacy' || page === 'settings';
+  const moreSelected = page === 'discover' || page === 'more' || page === 'journal' || page === 'emotions' || page === 'studio';
   const isSelected = (item: (typeof mobileNavItems)[number]) => {
     if (item.id === 'chat') return page === 'chat' || page === 'history';
-    if (item.id === 'more') return moreSelected;
+    if (item.id === 'discover') return moreSelected;
+    if (item.id === 'settings') return page === 'settings' || page === 'privacy';
     return item.id === page;
   };
   const renderItem = (item: (typeof mobileNavItems)[number]) => {
@@ -1535,7 +1566,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       key={item.id}
       accessibilityRole="button"
       accessibilityLabel={item.label}
-      accessibilityHint={item.id === 'more' ? 'Open wellbeing, privacy, settings, and chat history' : undefined}
+      accessibilityHint={item.id === 'discover' ? 'Open journal, emotions, and wellbeing tools' : undefined}
       accessibilityState={{ selected }}
       onPress={() => onNavigate(item.id)}
       style={({ pressed }) => [
@@ -1545,7 +1576,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
         pressed && !reduceMotion && styles.squeezePressed,
       ]}
     >
-      <Text style={[styles.bottomIcon, selected && styles.bottomIconActive]}>{item.icon}</Text>
+      <NavigationIcon name={item.icon} active={selected} size={22} />
       <Text numberOfLines={1} style={[styles.bottomLabel, selected && styles.bottomLabelActive]}>{item.label}</Text>
     </Pressable>;
   };
@@ -1567,11 +1598,13 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       <View style={styles.bottomNavPlusBox}><Text style={styles.bottomNavPlusGlyph}>+</Text></View>
     </Pressable>
     {renderItem(mobileNavItems[2])}
+    {renderItem(mobileNavItems[3])}
   </View>;
 }
 
 export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, editingMessageId, onEditMessage, onCancelEdit, onStop, onRetry, onRegenerate, retryPending, isSending, chatError }: { wide: boolean; bottomInset?: number; conversationId?: string | null; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; editingMessageId?: number | null; onEditMessage?: (message: Message) => void; onCancelEdit?: () => void; onStop: () => void; onRetry: () => void; onRegenerate?: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
   const reduceMotion = useReducedMotionPreference();
   const canSend = (!!draft.trim() || !!selectedImage) && !isSending;
@@ -1679,7 +1712,11 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         {messages.map(message => <View key={message.id}>
           <View style={[styles.messageRow, message.author === 'you' && styles.messageRowYou]}>
             {message.author === 'teddy' && <View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View>}
-            <View style={[styles.messageBubble, message.author === 'you' ? styles.userBubble : styles.teddyBubble]}>{message.author === 'teddy' ? <MarkdownReply content={message.text} /> : <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>}<Text style={[styles.messageTime, message.author === 'you' && styles.userMessageTime]}>{message.time}</Text></View>
+            <View style={[styles.messageBubble, message.author === 'you' ? styles.userBubble : styles.teddyBubble]}>
+              {message.imageDataUrl && <Pressable accessibilityRole="button" accessibilityLabel="Open attached image" onPress={() => setViewingImage(message.imageDataUrl!)}><Image source={{ uri: message.imageDataUrl }} resizeMode="contain" style={{ width: 240, height: 220, maxWidth: '100%', borderRadius: 12, marginBottom: 8, backgroundColor: C.paperAlt }} /></Pressable>}
+              {message.author === 'teddy' ? <MarkdownReply content={message.text} /> : <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>}
+              <Text style={[styles.messageTime, message.author === 'you' && styles.userMessageTime]}>{message.time}</Text>
+            </View>
           </View>
           {message.author === 'you' && messages.filter(item => item.author === 'you').slice(-1)[0]?.id === message.id && onEditMessage && <Pressable accessibilityRole="button" accessibilityLabel="Edit and resend your last message" disabled={isSending} onPress={() => onEditMessage(message)} style={{ alignSelf: 'flex-end', marginRight: 4, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Edit & resend</Text></Pressable>}
           {message.author === 'teddy' && messages[messages.length - 1]?.id === message.id && onRegenerate && <Pressable accessibilityRole="button" accessibilityLabel="Generate another reply" disabled={isSending} onPress={onRegenerate} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Try another reply</Text></Pressable>}
@@ -1739,6 +1776,12 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       </View>
       {wide && <Text style={styles.composerFootnote}>{isSending ? 'Sending to the companion service…' : 'Your conversation is saved on this device.'}</Text>}
     </View>
+    <Modal visible={viewingImage !== null} transparent animationType="fade" onRequestClose={() => setViewingImage(null)}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(20,18,16,0.94)', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close image viewer" onPress={() => setViewingImage(null)} style={{ position: 'absolute', top: 24, right: 20, zIndex: 2, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF22' }}><Text style={{ color: '#FFFFFF', fontSize: 28 }}>×</Text></Pressable>
+        {viewingImage && <Image source={{ uri: viewingImage }} resizeMode="contain" style={{ width: '100%', height: '82%' }} />}
+      </View>
+    </Modal>
   </KeyboardAvoidingView>;
 }
 
@@ -2330,7 +2373,7 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
   </ScrollView>;
 }
 
-function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
+function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout, onOpenPrivacy }: {
   wide: boolean;
   creditBalance: CreditBalance | null;
   onRefreshCredits: () => Promise<void>;
@@ -2343,6 +2386,7 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
   onExport: (passphrase: string) => Promise<string>;
   onImport: (fileContents: string, passphrase: string) => Promise<boolean>;
   onLogout: () => void;
+  onOpenPrivacy: () => void;
 }) {
   const [backupPassphrase, setBackupPassphrase] = useState('');
   const [backupStatus, setBackupStatus] = useState('');
@@ -2388,6 +2432,11 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text><Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
+    <View style={styles.settingsCardForm}>
+      <Text style={styles.settingTitle}>Privacy & data</Text>
+      <Text style={styles.settingDescription}>Choose what Teddy Bud can remember, what context is shared, and manage local data.</Text>
+      <Button label="Open privacy controls" tone="quiet" onPress={onOpenPrivacy} />
+    </View>
     <Text style={styles.settingsSectionLabel}>FREE PLAN</Text>
     <View style={styles.settingsCardForm}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>

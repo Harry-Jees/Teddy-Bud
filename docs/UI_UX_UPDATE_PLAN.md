@@ -1,15 +1,17 @@
 # Teddy Bud UI/UX Update Plan
 
 Last reviewed: 2026-10-27  
-Working branch: `feature/phase-3-chat-polish`  
+Working branch: `ux/media-and-navigation`  
 Status: **Implementation in progress; current merge gate pending CI and platform verification**  
 Scope: Mobile-first UX, all app screens, sign-in/password/recovery flows, error handling, accessibility, cross-platform behavior, regression tests, and release validation.
 
 ## 1. Goal and non-negotiable rules
 
-Deliver a calmer, more predictable Teddy Bud app without losing access to existing chats or weakening privacy. Mobile navigation should contain **four icons total**: Chats, Memories, a boxed central **+** that starts a new chat immediately, and More. Journal and all other secondary tools belong in More. Secondary tools belong in **More**. The same feature set must remain reachable on desktop.
+Deliver a calmer, more predictable Teddy Bud app without losing access to existing chats or weakening privacy. Mobile navigation must contain **four destinations plus a distinct centered +**: Chats, Memories, Discover, and Settings. Journal, emotions, and wellbeing belong in Discover. Privacy and data controls must be reachable from Settings. Desktop uses the same four destinations in its persistent side navigation, with New chat as a separate action. Chat media supports inline image/GIF previews and image understanding; document uploads are out of scope.
 
 - [ ] Keep this file as the source of truth for the rollout; tick tasks only after implementation and verification.
+- [ ] Verify inline image/GIF rendering on web, Android, Windows, macOS, and Linux; verify image payloads reach a vision-capable gateway/model.
+- [ ] Use consistent modern outlined navigation icons across platforms; do not use document-upload workflows or generic office tools.
 - [ ] Do not redesign multiple unrelated flows in one risky commit; complete and test each phase before moving on.
 - [ ] Preserve existing user data and provide a recovery route for every recoverable failure.
 - [ ] Never show raw server/internal errors, stack traces, tokens, passwords, recovery passphrases, or other secrets to users.
