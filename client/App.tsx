@@ -625,6 +625,21 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     }
   };
 
+  const closeRenameDialog = () => {
+    if (renameSaving) return;
+    const original = conversations.find(conversation => conversation.id === renameConversationId)?.title ?? '';
+    const close = () => {
+      setRenameConversationId(null);
+      setRenameDraft('');
+      setRenameError(null);
+    };
+    if (renameDraft !== original) {
+      confirmAction('Discard chat rename?', 'Your unsaved chat name will be discarded.', close);
+    } else {
+      close();
+    }
+  };
+
   const deleteConversation = useCallback((conversation: Conversation) => {
     if (streamingConversationId === conversation.id) return;
     confirmAction(
@@ -1151,19 +1166,20 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
           </View>
         </View>
       </Modal>
-      <Modal visible={renameConversationId !== null} animationType="fade" transparent onRequestClose={() => setRenameConversationId(null)}>
+      <Modal visible={renameConversationId !== null} animationType="fade" transparent onRequestClose={closeRenameDialog}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalTopline}>
               <View style={styles.modalIcon}><Text style={styles.modalIconText}>✎</Text></View>
-              <Pressable onPress={() => setRenameConversationId(null)} accessibilityRole="button" accessibilityLabel="Close rename chat dialog" style={styles.closeButton}><Text style={styles.closeText}>×</Text></Pressable>
+              <Pressable onPress={closeRenameDialog} disabled={renameSaving} accessibilityRole="button" accessibilityLabel="Close rename chat dialog" style={[styles.closeButton, renameSaving && styles.buttonDisabled]}><Text style={styles.closeText}>×</Text></Pressable>
             </View>
             <Text style={styles.modalTitle}>Rename chat</Text>
             <Text style={styles.modalBody}>Choose a short name that helps you find this conversation.</Text>
-            <TextInput autoFocus value={renameDraft} onChangeText={value => setRenameDraft(value.slice(0, 80))} placeholder="Chat name" placeholderTextColor={C.muted} maxLength={80} returnKeyType="done" onSubmitEditing={saveConversationRename} style={styles.settingsTextInput} accessibilityLabel="Chat name" />
+            {renameError && <View accessibilityRole="alert" style={styles.authError}><Text accessibilityLiveRegion="polite" style={styles.authErrorText}>{renameError}</Text></View>}
+            <TextInput accessibilityLabel="Chat name" autoFocus value={renameDraft} onChangeText={value => { setRenameDraft(value.slice(0, 80)); setRenameError(null); }} editable={!renameSaving} placeholder="Chat name" placeholderTextColor={C.muted} maxLength={80} returnKeyType="done" onSubmitEditing={saveConversationRename} style={styles.settingsTextInput} />
             <View style={styles.modalActions}>
-              <Button label="Cancel" tone="quiet" onPress={() => setRenameConversationId(null)} />
-              <Button label="Save name" onPress={saveConversationRename} disabled={!renameDraft.trim()} />
+              <Button label="Cancel" tone="quiet" onPress={closeRenameDialog} disabled={renameSaving} />
+              <Button label={renameSaving ? 'Saving…' : 'Save name'} onPress={saveConversationRename} disabled={renameSaving || !renameDraft.trim()} />
             </View>
           </View>
         </View>
