@@ -579,16 +579,20 @@ test('emotion check-in keeps ratings and note visible when local persistence fai
     );
   });
 
+  const pressable = (label: string) => renderer.root
+    .findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')
+    .find(node => typeof node.props.onPress === 'function');
+
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Add a check-in' }).props.onPress();
+    pressable('Add a check-in')!.props.onPress();
   });
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Anxious 5 out of 5' }).props.onPress();
+    pressable('Anxious 5 out of 5')!.props.onPress();
   });
   const noteField = renderer.root.findByProps({ accessibilityLabel: 'Emotion check-in note (optional)' });
   await ReactTestRenderer.act(async () => noteField.props.onChangeText('A note I need to keep.'));
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Save emotion check-in' }).props.onPress();
+    pressable('Save emotion check-in')!.props.onPress();
   });
 
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
