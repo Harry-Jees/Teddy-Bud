@@ -16,7 +16,8 @@
     "desktop:linux": "npm run desktop:build -- --linux deb AppImage",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest"
+    "test": "jest",
+    "build": "vite build --outDir dist"
   },
   "dependencies": {
     "@op-engineering/op-sqlite": "^18.2.5",
