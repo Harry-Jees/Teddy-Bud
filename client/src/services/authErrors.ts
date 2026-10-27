@@ -29,8 +29,14 @@ export class AuthServiceError extends Error {
   }
 }
 
+export type AuthField = 'email' | 'password' | 'confirmPassword' | 'recoveryPassphrase' | 'recoveryPassphraseConfirmation';
+
 export class AuthValidationError extends Error {
   readonly name = 'AuthValidationError';
+
+  constructor(message: string, readonly field?: AuthField) {
+    super(message);
+  }
 }
 
 function statusOf(error: unknown): number | undefined {
