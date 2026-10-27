@@ -514,41 +514,117 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const openMemory = (memory?: Memory) => {
     setEditing(memory ?? null);
     setMemoryDraft(memory?.text ?? '');
+    setMemoryActionError(null);
+    setMemoryDeleteRetry(null);
     setMemoryModal(true);
   };
 
-  const saveMemory = () => {
-    const value = memoryDraft.trim();
-    if (!value) return;
-    if (editing) {
-      setMemories(current => current.map(item => item.id === editing.id ? { ...item, text: value } : item));
-    } else {
-      setMemories(current => [{ id: Date.now(), text: value, date: 'Added just now' }, ...current]);
+  const closeMemoryEditor = () => {
+    if (memorySaving) return;
+    const originalText = editing?.text ?? '';
+    if (memoryDraft.trim() !== originalText) {
+      confirmAction('Discard memory changes?', 'Your unsaved memory text will be discarded.', () => {
+        setMemoryModal(false);
+        setEditing(null);
+        setMemoryDraft('');
+        setMemoryActionError(null);
+      });
+      return;
     }
     setMemoryModal(false);
+    setEditing(null);
+    setMemoryDraft('');
+    setMemoryActionError(null);
+  };
+
+  const saveMemory = async () => {
+    if (memorySaving) return;
+    const value = memoryDraft.trim();
+    if (!value) {
+      setMemoryActionError('Write a memory before saving.');
+      return;
+    }
+    const nextMemories = editing
+      ? memories.map(item => item.id === editing.id ? { ...item, text: value } : item)
+      : [{ id: Date.now(), text: value, date: 'Added just now' }, ...memories];
+    setMemorySaving(true);
+    setMemoryActionError(null);
+    try {
+      await persistLocalSnapshot({ memories: nextMemories });
+      setMemoryModal(false);
+      setEditing(null);
+      setMemoryDraft('');
+      setMemoryDeleteRetry(null);
+      setMemoryActionError(null);
+    } catch {
+      setMemoryActionError('This memory could not be saved. Your text is still in the editor; retry saving before leaving this screen.');
+    } finally {
+      setMemorySaving(false);
+    }
+  };
+
+  const persistForgetMemory = async (memory: Memory) => {
+    setMemoryActionError(null);
+    const nextMemories = memories.filter(item => item.id !== memory.id);
+    try {
+      await persistLocalSnapshot({ memories: nextMemories });
+      setMemoryDeleteRetry(null);
+      setMemoryActionError(null);
+    } catch {
+      setMemoryDeleteRetry(memory);
+      setMemoryActionError('This memory could not be forgotten from saved data. It is still stored on this device; retry the removal.');
+    }
   };
 
   const removeMemory = (memory: Memory) => confirmAction(
     'Forget this memory?',
     'It will be removed from saved memories on this device.',
-    () => setMemories(current => current.filter(item => item.id !== memory.id)),
+    () => { void persistForgetMemory(memory); },
   );
 
+  const retryMemoryDelete = () => {
+    if (memoryDeleteRetry) void persistForgetMemory(memoryDeleteRetry);
+  };
+
   const setConversationPinned = useCallback((conversationId: string, pinned: boolean) => {
-    setConversations(current => current.map(conversation => conversation.id === conversationId ? { ...conversation, pinned } : conversation));
-  }, []);
+    const nextConversations = conversations.map(conversation => conversation.id === conversationId
+      ? { ...conversation, pinned }
+      : conversation);
+    const persistPin = async () => {
+      try {
+        await persistLocalSnapshot({ conversations: nextConversations });
+      } catch {
+        setPendingLocalAction(() => persistPin);
+        setLocalDataSaveError('This chat change could not be saved. The saved version remains unchanged; retry to apply the change.');
+      }
+    };
+    void persistPin();
+  }, [conversations, persistLocalSnapshot]);
 
   const beginRenameConversation = useCallback((conversation: Conversation) => {
     setRenameConversationId(conversation.id);
     setRenameDraft(conversation.title);
+    setRenameError(null);
   }, []);
 
-  const saveConversationRename = () => {
+  const saveConversationRename = async () => {
     const newTitle = renameDraft.trim().slice(0, 80);
-    if (!renameConversationId || !newTitle) return;
-    setConversations(current => current.map(conversation => conversation.id === renameConversationId ? { ...conversation, title: newTitle, updatedAt: new Date().toISOString() } : conversation));
-    setRenameConversationId(null);
-    setRenameDraft('');
+    if (!renameConversationId || !newTitle || renameSaving) return;
+    const nextConversations = conversations.map(conversation => conversation.id === renameConversationId
+      ? { ...conversation, title: newTitle, updatedAt: new Date().toISOString() }
+      : conversation);
+    setRenameSaving(true);
+    setRenameError(null);
+    try {
+      await persistLocalSnapshot({ conversations: nextConversations });
+      setRenameConversationId(null);
+      setRenameDraft('');
+      setRenameError(null);
+    } catch {
+      setRenameError('This chat name could not be saved. Your new name is still in the field; try saving again.');
+    } finally {
+      setRenameSaving(false);
+    }
   };
 
   const deleteConversation = useCallback((conversation: Conversation) => {
@@ -557,17 +633,27 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       'Delete this chat?',
       `"${conversation.title}" and its messages will be removed from this device for this account.`,
       () => {
-      const remaining = conversations.filter(item => item.id !== conversation.id);
-      setConversations(remaining);
-      if (activeConversationId === conversation.id) {
-        setActiveConversationId(remaining[0]?.id ?? null);
-        setDraft('');
-        setChatError(null);
-        setRetryMessage(null);
-      }
+        const remaining = conversations.filter(item => item.id !== conversation.id);
+        const nextActiveId = activeConversationId === conversation.id
+          ? remaining[0]?.id ?? null
+          : activeConversationId;
+        const persistDelete = async () => {
+          try {
+            await persistLocalSnapshot({ conversations: remaining, activeConversationId: nextActiveId });
+            if (activeConversationId === conversation.id) {
+              setDraft('');
+              setChatError(null);
+              setRetryMessage(null);
+            }
+          } catch {
+            setPendingLocalAction(() => persistDelete);
+            setLocalDataSaveError('This chat could not be deleted from saved data. The chat remains available; retry to confirm the removal.');
+          }
+        };
+        void persistDelete();
       },
     );
-  }, [activeConversationId, conversations, streamingConversationId]);
+  }, [activeConversationId, conversations, streamingConversationId, persistLocalSnapshot]); 
 
   const startNewConversation = useCallback(() => {
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
