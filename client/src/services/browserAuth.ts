@@ -173,32 +173,23 @@ export class BrowserAuthService {
   }
 
   async restore(): Promise<StoredSession | null> {
+    // Deliberately require sign-in on every app launch. Never reopen the app
+    // from a persisted bearer token; revoke it server-side when possible, then
+    // remove the local token regardless of network availability.
     const current = inMemorySession ?? await this.readStoredSession();
-    if (!current) return null;
-    inMemorySession = current;
-    if (current.expiresAt <= Date.now()) {
+    if (current) {
       try {
-        return await this.refresh();
-      } catch (error) {
-        if ((error as { status?: number }).status === 401) {
-          throw authServiceErrorFromResponse(401, 'session-restore');
-        }
-        throw error;
+        await request<{ success: boolean }>('/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${current.accessToken}` },
+        });
+      } catch {
+        // Offline launch must still show sign-in; the short-lived token expires
+        // server-side. Do not retain it just because revocation is unavailable.
       }
     }
-    try {
-      await request<{ userId: string }>('/auth/session', {
-        method: 'GET', headers: { Authorization: `Bearer ${current.accessToken}` },
-      });
-      return current;
-    } catch (error) {
-      if ((error as { status?: number }).status === 401) {
-        if (this.hasActiveLegacySession(current.accessToken)) return null;
-        await this.clear();
-        throw authServiceErrorFromResponse(401, 'session-restore');
-      }
-      throw error;
-    }
+    await this.clear();
+    return null;
   }
 
   async refresh(): Promise<StoredSession> {
