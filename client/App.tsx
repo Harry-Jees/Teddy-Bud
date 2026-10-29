@@ -128,7 +128,7 @@ function AccessGate() {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initialMode, setInitialMode] = useState<'login' | 'create'>('create');
+  const [initialMode, setInitialMode] = useState<'login' | 'create'>('login');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
 
   useEffect(() => {
@@ -146,8 +146,9 @@ function AccessGate() {
           setSession(current);
           if (current) await browserAuthService.markSetupComplete();
           else {
-            setInitialMode(await browserAuthService.shouldCreateAccount() ? 'create' : 'login');
-            setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
+            // Always land on sign-in. Account creation remains an explicit secondary action.
+            setInitialMode('login');
+            setCanMigrateLegacy(false);
           }
         }
       } catch (restoreError) {
