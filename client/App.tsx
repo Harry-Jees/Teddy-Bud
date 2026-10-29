@@ -133,31 +133,31 @@ function AccessGate() {
 
   useEffect(() => {
     let mounted = true;
-    const restore = async () => {
-      let restoreTimeout: ReturnType<typeof setTimeout> | undefined;
+    const startFresh = async () => {
       try {
-        const current = await Promise.race([
-          browserAuthService.restore(),
-          new Promise<never>((_, reject) => {
-            restoreTimeout = setTimeout(() => reject(new Error('Secure session check timed out. Reload the app or sign in again.')), 12_000);
-          }),
-        ]);
-        if (mounted) {
-          setSession(current);
-          if (current) await browserAuthService.markSetupComplete();
-          else {
-            setInitialMode(await browserAuthService.shouldCreateAccount() ? 'create' : 'login');
-            setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
-          }
+        // A launch is never treated as a sign-in. Revoke the saved session when
+        // possible, then remove its local token so the user must authenticate.
+        await browserAuthService.logout();
+      } catch (resetError) {
+        try {
+          await browserAuthService.clear();
+        } catch (storageError) {
+          if (mounted) setError(authErrorMessage(storageError, 'session-restore'));
         }
-      } catch (restoreError) {
-        if (mounted) setError(authErrorMessage(restoreError, 'session-restore'));
+        // A network failure must not strand the user on a loading screen.
+        if (resetError instanceof AuthServiceError && resetError.kind === 'storage' && mounted) {
+          setError(authErrorMessage(resetError, 'session-restore'));
+        }
       } finally {
-        if (restoreTimeout) clearTimeout(restoreTimeout);
-        if (mounted) setBusy(false);
+        if (mounted) {
+          setInitialMode('login');
+          setCanMigrateLegacy(false);
+          setSession(null);
+          setBusy(false);
+        }
       }
     };
-    restore();
+    void startFresh();
     return () => {
       mounted = false;
     };
