@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   client-checks:
-    if: ${{ inputs.source_run_id == '' && github.event_name != 'pull_request' }}
+    if: ${{ inputs.source_run_id == '' }}
     name: Client tests and type checks
     runs-on: ubuntu-24.04
     defaults:
@@ -46,7 +46,7 @@ jobs:
       - run: npm run build:web
 
   python-quality:
-    if: ${{ inputs.source_run_id == '' && github.event_name != 'pull_request' }}
+    if: ${{ inputs.source_run_id == '' }}
     name: Python lint (Ruff)
     runs-on: ubuntu-24.04
     steps:
@@ -60,7 +60,7 @@ jobs:
         run: ruff check scripts
 
   worker-tests:
-    if: ${{ inputs.source_run_id == '' && github.event_name != 'pull_request' }}
+    if: ${{ inputs.source_run_id == '' }}
     name: Gateway Worker tests
     runs-on: ubuntu-24.04
     defaults:
@@ -77,7 +77,7 @@ jobs:
       - run: npm test
 
   android-build:
-    if: ${{ inputs.source_run_id == '' && github.event_name != 'pull_request' }}
+    if: ${{ inputs.source_run_id == '' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') }}
     name: Android release APK
     runs-on: ubuntu-24.04
     steps:
@@ -112,7 +112,7 @@ jobs:
           if-no-files-found: error
 
   desktop-packages:
-    if: ${{ inputs.source_run_id == '' && github.event_name != 'pull_request' }}
+    if: ${{ inputs.source_run_id == '' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch') }}
     name: Desktop package (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
