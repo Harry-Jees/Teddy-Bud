@@ -76,3 +76,28 @@ Audit every screen and state in `client/App.tsx` and every imported component, n
 ## Definition of done
 
 A feature is complete only when implementation, automated tests, platform-specific validation and user-visible behavior all pass. A dependency in package.json, a visible button, a passing web build or a generated artifact alone is not proof of a working feature. Record platform-by-platform evidence and known limitations; never mark untested behavior as complete.
+
+
+## Cloudflare Workers AI voice model decision
+
+The connected Cloudflare account contains the existing `teddy-bud-browser-gateway` Worker, with an `AI` Workers AI binding already configured. Keep voice inference inside this authenticated gateway; never call Workers AI directly from the app or expose credentials.
+
+### Selected model candidates
+- Speech-to-text default: `@cf/openai/whisper-large-v3-turbo`. Cloudflare documents this as Whisper Large v3 Turbo and prices it at $0.0005 per audio minute (46.63 Neurons/minute).
+- Low-cost text-to-speech default: `@cf/myshell-ai/melotts`. Cloudflare describes it as high-quality multilingual TTS; the documented unit rate is $0.000205 per generated audio minute (18.63 Neurons/minute). The model accepts a `prompt` and `lang`, and returns MP3 audio.
+- Expressiveness benchmark: `@cf/deepgram/aura-2-en`. Cloudflare describes context-aware natural pacing, expressiveness and fillers. It supports named speakers and real-time/batch inference, but is materially more expensive at $0.03 per 1,000 input characters (2,727.27 Neurons/1k characters) and is English-only in this model variant.
+
+Workers AI currently includes 10,000 Neurons/day at no charge across the account. This is a shared daily allowance, not a separate voice-only quota; usage resets at 00:00 UTC. At the published rates, MeloTTS's allowance is roughly 537 generated audio minutes/day before other Workers AI usage, while Aura-2's allowance is roughly 3,666 characters/day before other usage. Actual usage depends on model accounting and the rest of the account's inference.
+
+### Implementation decision
+- Start with MeloTTS as the cost-efficient default, but do not describe it as the most expressive until listening tests confirm that.
+- Benchmark Aura-2 English using the same Teddy Bud sample scripts for warmth, natural pauses, emotional appropriateness, pronunciation and latency. If quality is clearly better, expose it only as a consciously selected high-quality option with transparent usage limits; never silently switch users onto the expensive model.
+- Use Whisper Large v3 Turbo for transcription. Do not store raw recordings by default.
+- Keep model IDs, per-user limits, request size/duration limits, auth, rate limiting and usage accounting on the Worker.
+- Voice quality test set must include comforting, cheerful, calm, explanatory and neutral replies. Companion personality controls should shape the TTS prompt without exaggerating emotion, changing meaning or pretending to diagnose the user's feelings.
+
+### Connected Cloudflare inspection
+- Worker found: `teddy-bud-browser-gateway`.
+- Workers AI binding `AI` is already present.
+- Existing authenticated routes include `/v1/models` and `/v1/chat/completions`; voice endpoints still need to be implemented and tested.
+- The deployed Worker is currently the gateway's production version. Do not overwrite it with untested voice code. Develop and validate a version/branch first, then deploy deliberately after endpoint, auth, quota, audio-size and rollback checks.
