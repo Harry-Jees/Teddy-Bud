@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ImageSourcePropType } from 'react-native';
+import * as ReactNative from 'react-native';
 import {
   Animated,
   AccessibilityInfo,
@@ -10,7 +11,6 @@ import {
   Linking,
   Modal,
   Platform,
-  PermissionsAndroid,
   NativeEventEmitter,
   NativeModules,
   Pressable,
@@ -1685,7 +1685,9 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         recognition.start();
       } else {
         if (Platform.OS === 'android') {
-          const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, {
+          const permissionsAndroid = (ReactNative as any).PermissionsAndroid;
+          if (!permissionsAndroid) throw new Error('Android microphone permission support is unavailable.');
+          const permission = await permissionsAndroid.request(permissionsAndroid.PERMISSIONS.RECORD_AUDIO, {
             title: 'Allow microphone access',
             message: 'Teddy Bud uses your microphone only when you tap the voice-input button to turn speech into editable text.',
             buttonPositive: 'Allow',
