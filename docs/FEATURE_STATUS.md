@@ -33,7 +33,6 @@ This document distinguishes implemented code from features that still need crede
 
 | Area | Remaining work | Why it is not marked complete |
 |---|---|---|
-| Paid Pro/Premium plans | Plan entitlements, provider-cost metering, durable billing ledger, checkout, signed webhook verification, renewals, refunds, cancellation, reconciliation | No merchant configuration or verified production payment flow is present. Paid checkout must stay disabled. |
 | Enterprise administration | Tenant provisioning, admin console, per-user quotas, operational audit exports, chargeback, policy management | Current endpoint configuration is deployment-managed; no self-serve multi-tenant control plane. |
 | Voice | Speech capture, transcription, playback, permission handling, privacy controls, platform testing | Requires a deliberate cross-platform audio architecture and additional native dependencies. |
 | Reminders/notifications | User-controlled schedules, permission handling, local notification implementation and tests across platforms | Not implemented by the current client. |
@@ -49,4 +48,4 @@ This document distinguishes implemented code from features that still need crede
 3. Verify exact distribution names, package structure, architecture targets, and the complete `dist/` file set.
 4. Complete install-and-launch tests on real target devices; inspect signing and notarization requirements.
 5. Run authenticated production text/vision smoke tests without exposing real user data or secrets.
-6. Keep payment, enterprise sales claims, and unsupported platform claims disabled until their dedicated gates pass.
+6. Keep unsupported platform and enterprise sales claims disabled until their dedicated gates pass.
