@@ -261,6 +261,30 @@ function createMainWindow() {
   });
   mainWindow = window;
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Speech input is the only microphone use in Teddy Bud. Never grant camera
+  // access, and never grant media permission to an untrusted frame/origin.
+  window.webContents.session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    if (permission !== 'media' || !webContents || webContents.isDestroyed()) return false;
+    const frame = webContents.mainFrame;
+    if (!isTrustedRenderer(frame)) return false;
+    let origin;
+    try { origin = new URL(requestingOrigin).origin; } catch { return false; }
+    if (origin !== `${APP_SCHEME}://${APP_HOST}`) return false;
+    const mediaTypes = details?.mediaType ? [details.mediaType] : [];
+    return mediaTypes.includes('audio') && !mediaTypes.includes('video');
+  });
+  window.webContents.session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission !== 'media' || !webContents || webContents.isDestroyed()) return callback(false);
+    const frame = webContents.mainFrame;
+    let requestingOrigin;
+    try { requestingOrigin = new URL(details?.requestingUrl || frame?.url || '').origin; } catch { return callback(false); }
+    const mediaTypes = Array.isArray(details?.mediaTypes) ? details.mediaTypes : [];
+    const allowed = isTrustedRenderer(frame)
+      && requestingOrigin === `${APP_SCHEME}://${APP_HOST}`
+      && mediaTypes.includes('audio')
+      && !mediaTypes.includes('video');
+    callback(allowed);
+  });
   window.webContents.on('will-navigate', (event, url) => {
     if (!url.startsWith(APP_URL_PREFIX)) event.preventDefault();
   });
