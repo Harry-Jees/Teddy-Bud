@@ -1715,7 +1715,6 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     voiceMountedRef.current = true;
     if (Platform.OS !== 'web' && nativeSpeech) {
       const emitter = new NativeEventEmitter(nativeSpeech);
-      nativeSpeechEvents.current = emitter;
       const resultSubscription = emitter.addListener('speechResults', event => {
         const transcript = event.value?.[0]?.trim();
         if (transcript && voiceMountedRef.current) setDraft(voicePrefixRef.current + transcript);
