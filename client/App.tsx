@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Voice from '@react-native-voice/voice';
 import type { ImageSourcePropType } from 'react-native';
 import {
   Animated,
@@ -12,6 +11,8 @@ import {
   Modal,
   Platform,
   PermissionsAndroid,
+  NativeEventEmitter,
+  NativeModules,
   Pressable,
   ScrollView,
   Share,
@@ -1626,6 +1627,8 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
   const [voiceMessage, setVoiceMessage] = useState('');
   const voicePrefixRef = useRef('');
   const webRecognitionRef = useRef<any>(null);
+  const nativeSpeech = NativeModules.TeddyBudSpeechRecognition;
+  const nativeSpeechEvents = useRef<NativeEventEmitter | null>(null);
   const voiceMountedRef = useRef(true);
 
   const stopVoiceInput = useCallback(async (cancel = false) => {
@@ -1633,8 +1636,8 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       if (Platform.OS === 'web') {
         const recognition = webRecognitionRef.current;
         if (recognition) cancel ? recognition.abort() : recognition.stop();
-      } else if (cancel) await Voice.cancel();
-      else await Voice.stop();
+      } else if (cancel) await nativeSpeech?.cancel();
+      else await nativeSpeech?.stop();
     } catch {
       // The platform recognizer may already have ended.
     } finally {
@@ -1690,7 +1693,8 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
             return;
           }
         }
-        await Voice.start('en-IN');
+        if (!nativeSpeech) throw new Error('Speech recognition is unavailable on this device.');
+        await nativeSpeech.start('en-IN');
       }
       setVoiceListening(true);
     } catch {
@@ -1701,24 +1705,29 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
 
   useEffect(() => {
     voiceMountedRef.current = true;
-    if (Platform.OS !== 'web') {
-      Voice.onSpeechResults = event => {
+    if (Platform.OS !== 'web' && nativeSpeech) {
+      const emitter = new NativeEventEmitter(nativeSpeech);
+      nativeSpeechEvents.current = emitter;
+      const resultSubscription = emitter.addListener('speechResults', event => {
         const transcript = event.value?.[0]?.trim();
         if (transcript && voiceMountedRef.current) setDraft(voicePrefixRef.current + transcript);
-      };
-      Voice.onSpeechPartialResults = event => {
+      });
+      const partialSubscription = emitter.addListener('speechPartialResults', event => {
         const transcript = event.value?.[0]?.trim();
         if (transcript && voiceMountedRef.current) setDraft(voicePrefixRef.current + transcript);
-      };
-      Voice.onSpeechError = () => {
+      });
+      const errorSubscription = emitter.addListener('speechError', event => {
         if (voiceMountedRef.current) {
           setVoiceListening(false);
-          setVoiceMessage('Speech input stopped. Check microphone permission or try again.');
+          setVoiceMessage(event.message || 'Speech input stopped. Check microphone permission or try again.');
         }
-      };
-      Voice.onSpeechEnd = () => {
+      });
+      const endSubscription = emitter.addListener('speechEnd', () => {
         if (voiceMountedRef.current) setVoiceListening(false);
-      };
+      });
+      nativeSpeechEvents.current = { removeAllListeners: () => {
+        resultSubscription.remove(); partialSubscription.remove(); errorSubscription.remove(); endSubscription.remove();
+      } } as any;
     }
     return () => {
       voiceMountedRef.current = false;
@@ -1726,7 +1735,8 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         try { webRecognitionRef.current?.abort(); } catch {}
         webRecognitionRef.current = null;
       } else {
-        void Voice.destroy().then(() => Voice.removeAllListeners()).catch(() => undefined);
+        nativeSpeechEvents.current?.removeAllListeners();
+        void nativeSpeech?.cancel?.();
       }
     };
   }, [setDraft]);
@@ -1897,7 +1907,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         <Pressable accessibilityRole="button" accessibilityLabel={voiceListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Converts speech into editable text. It does not send automatically." accessibilityState={{ selected: voiceListening }} disabled={isSending} onPress={() => voiceListening ? void stopVoiceInput() : void startVoiceInput()} style={({ pressed }) => [styles.voiceInputButton, voiceListening && styles.voiceInputButtonActive, pressed && styles.pressed, isSending && styles.buttonDisabled]}>
-          <Text style={[styles.voiceInputGlyph, voiceListening && styles.voiceInputGlyphActive]}>{voiceListening ? '■' : '●'}</Text>
+          <Text style={[styles.voiceInputGlyph, voiceListening && styles.voiceInputGlyphActive]}>{voiceListening ? '■' : '🎙'}</Text>
         </Pressable>
         {isSending
           ? <Pressable accessibilityRole="button" accessibilityLabel="Stop response" onPress={onStop} style={({ pressed }) => [styles.sendButton, styles.stopButton, pressed && styles.pressed]}><View style={styles.stopIcon} /></Pressable>
