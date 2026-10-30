@@ -60,16 +60,18 @@ const C = {
 };
 
 const navItems: { id: Page; icon: string; label: string }[] = [
-  { id: 'chat', icon: 'message-circle', label: 'Chats' },
+  { id: 'chat', icon: 'message-circle', label: 'Your space' },
   { id: 'memories', icon: 'brain', label: 'Memories' },
-  { id: 'discover', icon: 'compass', label: 'Discover' },
+  { id: 'emotions', icon: 'heart-pulse', label: 'Emotions' },
+  { id: 'journal', icon: 'book-open', label: 'Journal' },
+  { id: 'studio', icon: 'wind', label: 'Wellbeing' },
+  { id: 'privacy', icon: 'lock', label: 'Privacy' },
   { id: 'settings', icon: 'settings', label: 'Settings' },
 ];
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
   { id: 'chat', icon: 'message-circle', label: 'Chats' },
   { id: 'memories', icon: 'brain', label: 'Memories' },
-  { id: 'discover', icon: 'compass', label: 'Discover' },
-  { id: 'settings', icon: 'settings', label: 'Settings' },
+  { id: 'more', icon: 'more-horizontal', label: 'More' },
 ];
 
 const gatewayService = new GatewayService(GATEWAY_BASE_URL);
@@ -403,7 +405,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const receivedReplyRef = useRef('');
   const responseAbortControllerRef = useRef<AbortController | null>(null);
 
-  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' || page === 'privacy' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : page === 'discover' || page === 'more' ? 'Discover' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
+  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'privacy' ? 'Privacy' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : page === 'discover' || page === 'more' ? 'More tools' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
 
   const persistLocalSnapshot = useCallback(async (overrides: Partial<LocalAppData>) => {
@@ -1449,7 +1451,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
         <Text style={styles.newChatGlyph}>+</Text>{!labelsCollapsed && <Animated.Text style={[styles.newChatLabel, { opacity: labelOpacity }]}>New chat</Animated.Text>}
       </Pressable>
       {!labelsCollapsed && <Animated.Text style={[styles.sidebarLabel, { opacity: labelOpacity }]}>YOUR SPACE</Animated.Text>}
-      {navItems.map(item => <NavButton key={item.id} item={item} selected={item.id === page || (item.id === 'discover' && (page === 'journal' || page === 'emotions' || page === 'studio')) || (item.id === 'settings' && page === 'privacy')} collapsed={labelsCollapsed} labelOpacity={labelOpacity} onPress={() => onNavigate(item.id)} />)}
+      {navItems.map(item => <NavButton key={item.id} item={item} selected={item.id === page || (item.id === 'chat' && page === 'history')} collapsed={labelsCollapsed} labelOpacity={labelOpacity} onPress={() => onNavigate(item.id)} />)}
       {!labelsCollapsed && <Animated.Text style={[styles.sidebarLabel, { opacity: labelOpacity }]}>CHATS</Animated.Text>}
       <ScrollView style={[styles.sidebarChatList, labelsCollapsed && styles.sidebarChatListCollapsed, { opacity: labelOpacity }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={!labelsCollapsed} showsHorizontalScrollIndicator={false}>
         {!labelsCollapsed && <ConversationHistoryList
@@ -1479,6 +1481,8 @@ function NavigationIcon({ name, active = false, size = 22 }: { name: string; act
     'book-open': ['M12 7v14', 'M3 5.5A2.5 2.5 0 0 1 5.5 3H12v18H5.5A2.5 2.5 0 0 1 3 18.5v-13Z', 'M21 5.5A2.5 2.5 0 0 0 18.5 3H12v18h6.5a2.5 2.5 0 0 0 2.5-2.5v-13Z'],
     'heart-pulse': ['M20.8 8.8c0 4.2-8.8 10-8.8 10s-8.8-5.8-8.8-10A4.8 4.8 0 0 1 12 6a4.8 4.8 0 0 1 8.8 2.8Z', 'M5 12h3l2-3 3 6 2-3h4'],
     wind: ['M3 8h12a3 3 0 1 0-3-3', 'M2 12h17a3 3 0 1 1-3 3', 'M4 16h6'],
+    lock: ['M5 10h14v11H5z', 'M8 10V7a4 4 0 0 1 8 0v3', 'M12 14v3'],
+    'more-horizontal': ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
   };
   const color = active ? C.cocoaDark : C.muted;
   if (Platform.OS !== 'web') {
@@ -1491,6 +1495,8 @@ function NavigationIcon({ name, active = false, size = 22 }: { name: string; act
       {name === 'book-open' && <View style={{ flexDirection: 'row', gap: 1 }}><View style={{ width: 8, height: 15, borderWidth: 1.6, borderColor: color, borderTopLeftRadius: 3, borderBottomLeftRadius: 3 }} /><View style={{ width: 8, height: 15, borderWidth: 1.6, borderColor: color, borderTopRightRadius: 3, borderBottomRightRadius: 3 }} /></View>}
       {name === 'heart-pulse' && <Text style={{ color, fontSize: size - 1, lineHeight: size }}>♡</Text>}
       {name === 'wind' && <View style={{ width: 19, gap: 4 }}><View style={[line, { width: 15 }]} /><View style={[line, { width: 19 }]} /><View style={[line, { width: 11 }]} /></View>}
+      {name === 'lock' && <View style={{ width: 16, height: 18, alignItems: 'center' }}><View style={{ width: 9, height: 8, borderWidth: 1.6, borderColor: color, borderTopLeftRadius: 6, borderTopRightRadius: 6 }} /><View style={{ width: 16, height: 11, borderWidth: 1.6, borderColor: color, borderRadius: 3, marginTop: -1 }} /></View>}
+      {name === 'more-horizontal' && <View style={{ flexDirection: 'row', gap: 3 }}><View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: color }} /><View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: color }} /><View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: color }} /></View>}
     </View>;
   }
   return React.createElement('svg' as any, { viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: active ? C.cocoaDark : C.muted, strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', focusable: false, 'aria-hidden': true },
@@ -1539,16 +1545,19 @@ function useReducedMotionPreference() {
 export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
   const reduceMotion = useReducedMotionPreference();
   const items: { id: Page; icon: string; label: string; description: string }[] = [
-    { id: 'journal', icon: 'book-open', label: 'Journal', description: 'Write, search, and revisit private reflections' },
-    { id: 'emotions', icon: 'heart-pulse', label: 'Emotions', description: 'Check in with how you feel, without pressure' },
+    { id: 'history', icon: 'message-circle', label: 'Chat history', description: 'Find a conversation from earlier' },
+    { id: 'journal', icon: 'book-open', label: 'Journal', description: 'Write, search, and export private reflections' },
+    { id: 'emotions', icon: 'heart-pulse', label: 'Emotions', description: 'Check in with how you feel' },
     { id: 'studio', icon: 'wind', label: 'Wellbeing', description: 'Gentle exercises you can use offline' },
+    { id: 'privacy', icon: 'lock', label: 'Privacy', description: 'Choose what stays local and what is shared' },
+    { id: 'settings', icon: 'settings', label: 'Settings', description: 'Your companion, backup, and account' },
   ];
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
     <View style={styles.pageIntro}>
-      <Text style={styles.eyebrow}>A LITTLE SPACE FOR YOU</Text>
-      <Text style={styles.pageTitle}>Discover</Text>
-      <Text style={styles.pageDescription}>Small, supportive tools for reflection and feeling a little more grounded.</Text>
+      <Text style={styles.eyebrow}>YOUR SPACE, YOUR WAY</Text>
+      <Text style={styles.pageTitle}>More tools</Text>
+      <Text style={styles.pageDescription}>Everything else, in one calm place. Your everyday essentials stay close at hand.</Text>
     </View>
     <View style={styles.moreList}>
       {items.map(item => <Pressable
@@ -1572,11 +1581,10 @@ export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (pag
 
 export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
   const reduceMotion = useReducedMotionPreference();
-  const moreSelected = page === 'discover' || page === 'more' || page === 'journal' || page === 'emotions' || page === 'studio';
+  const moreSelected = page === 'discover' || page === 'more' || page === 'history' || page === 'journal' || page === 'emotions' || page === 'studio' || page === 'privacy' || page === 'settings';
   const isSelected = (item: (typeof mobileNavItems)[number]) => {
-    if (item.id === 'chat') return page === 'chat' || page === 'history';
-    if (item.id === 'discover') return moreSelected;
-    if (item.id === 'settings') return page === 'settings' || page === 'privacy';
+    if (item.id === 'chat') return page === 'chat';
+    if (item.id === 'more') return moreSelected;
     return item.id === page;
   };
   const renderItem = (item: (typeof mobileNavItems)[number]) => {
@@ -1585,7 +1593,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       key={item.id}
       accessibilityRole="button"
       accessibilityLabel={item.label}
-      accessibilityHint={item.id === 'discover' ? 'Open journal, emotions, and wellbeing tools' : undefined}
+      accessibilityHint={item.id === 'more' ? 'Open wellbeing, privacy, settings, and chat history' : undefined}
       accessibilityState={{ selected }}
       onPress={() => onNavigate(item.id)}
       style={({ pressed }) => [
@@ -1617,7 +1625,6 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       <View style={styles.bottomNavPlusBox}><Text style={styles.bottomNavPlusGlyph}>+</Text></View>
     </Pressable>
     {renderItem(mobileNavItems[2])}
-    {renderItem(mobileNavItems[3])}
   </View>;
 }
 
@@ -2593,6 +2600,22 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text><Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
+    <Text style={styles.settingsSectionLabel}>YOUR PLAN</Text>
+    <View style={styles.settingsCardForm}>
+      <Text style={styles.settingTitle}>Free plan</Text>
+      <Text style={styles.settingDescription}>Your current plan includes 40 AI credits each day and four companion personalities.</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+        <View style={{ flex: 1, borderRadius: 13, borderWidth: 1, borderColor: C.line, padding: 12, backgroundColor: '#FDFBF8' }}>
+          <Text style={styles.settingTitle}>Pro · Coming soon</Text>
+          <Text style={styles.settingDescription}>7 personalities · More capable models</Text>
+        </View>
+        <View style={{ flex: 1, borderRadius: 13, borderWidth: 1, borderColor: C.line, padding: 12, backgroundColor: '#FDFBF8' }}>
+          <Text style={styles.settingTitle}>Premium · Coming soon</Text>
+          <Text style={styles.settingDescription}>10 personalities · Most capable models</Text>
+        </View>
+      </View>
+      <Text style={styles.settingDescription}>Paid plans are not available yet. No payment is required for the Free plan.</Text>
+    </View>
     <View style={styles.settingsCardForm}>
       <Text style={styles.settingTitle}>Privacy & data</Text>
       <Text style={styles.settingDescription}>Choose what Teddy Bud can remember, what context is shared, and manage local data.</Text>
@@ -2629,9 +2652,9 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
           const selected = selectedCharacterId === character.id;
           const savedName = assistantCharacterNames?.[character.id] ?? character.name;
           const shownName = selected && characterNameDraft.trim() ? characterNameDraft.trim() : savedName;
-          return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}`} accessibilityState={{ selected }}  onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected]}>
+          return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}${character.tier === 'free' ? '' : ', coming soon'}`} accessibilityState={{ selected, disabled: character.tier !== 'free' }} disabled={character.tier !== 'free'} onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected, character.tier !== 'free' && { opacity: 0.62 }]}>
             <Text style={styles.characterChoiceIcon}>{character.symbol}</Text>
-            <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text></View>
+            <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text>{character.tier !== 'free' && <Text style={styles.characterChoiceTagline}>{character.tier === 'pro' ? 'PRO' : 'PREMIUM'} · COMING SOON</Text>}</View>
             {selected && <Text style={styles.characterChoiceCheck}>✓</Text>}
           </Pressable>;
         })}

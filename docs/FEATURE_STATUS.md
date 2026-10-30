@@ -33,13 +33,14 @@ This document distinguishes implemented code from features that still need crede
 
 | Area | Remaining work | Why it is not marked complete |
 |---|---|---|
+| Paid Pro/Premium plans | Plan entitlements, provider-cost metering, durable billing ledger, checkout, signed webhook verification, renewals, refunds, cancellation, reconciliation | No merchant configuration or verified production payment flow is present. Paid checkout must stay disabled. |
 | Enterprise administration | Tenant provisioning, admin console, per-user quotas, operational audit exports, chargeback, policy management | Current endpoint configuration is deployment-managed; no self-serve multi-tenant control plane. |
 | Voice | Speech capture and editable transcription are implemented for browser and Android, with Electron audio-only permission handling. Voice playback is not implemented; speech recognition still needs platform/device verification and lifecycle regression coverage. | The current feature is dictation only, not voice conversation or text-to-speech. Recognition may be processed by the browser/OS speech provider; the app does not promise on-device transcription. |
 | Reminders/notifications | User-controlled schedules, permission handling, local notification implementation and tests across platforms | Not implemented by the current client. |
 | Single-device enforcement | Verify on the deployed Worker and exercise concurrent logins under production-like load | The Durable Object atomically selects one active session per account, migrates the legacy session-ID index on access, and every authenticated request checks the active ID. Tests cover a new login invalidating an old token, legacy index migration, and stale-session removal. Production deployment and concurrency verification remain. |
 | End-to-end encrypted AI conversations | A design compatible with the inference model and privacy requirements | A remote model must receive readable prompt content; current transport encryption is not end-to-end encryption. |
 | Backup restore safety | Add interrupted-write/rollback tests and verify the native/web confirmation flows on real devices | Preview, explicit merge/replace choice, merge logic, and duplicate handling are implemented; real-device and failure-injection validation remain. |
-| Live production smoke tests | Authenticated text and vision requests using a disposable test account | Automated tests do not prove that current production secrets, bindings, or external services are configured correctly. |
+| Live production smoke tests | Authenticated text and vision requests using a disposable test account | Automated tests do not prove that current production secrets, bindings, merchant settings, or external accounts are configured correctly. |
 
 ## Release gates
 
@@ -48,4 +49,4 @@ This document distinguishes implemented code from features that still need crede
 3. Verify exact distribution names, package structure, architecture targets, and the complete `dist/` file set.
 4. Complete install-and-launch tests on real target devices; inspect signing and notarization requirements.
 5. Run authenticated production text/vision smoke tests without exposing real user data or secrets.
-6. Keep unsupported platform and enterprise sales claims disabled until their dedicated gates pass.
+6. Keep payment, enterprise sales claims, and unsupported platform claims disabled until their dedicated gates pass.

@@ -42,7 +42,7 @@ const sampleData: LocalAppData = {
   aboutMe: 'Likes short answers',
   assistantName: 'Buddy',
   assistantCharacterId: 'teddy-bud',
-  assistantCharacterNames: { 'teddy-bud': 'Buddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
+  assistantCharacterNames: { 'teddy-bud': 'Buddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' },
 };
 
 describe('encrypted Teddy Bud backups', () => {

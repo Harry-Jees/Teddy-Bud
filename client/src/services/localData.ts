@@ -168,8 +168,12 @@ function normalize(value: unknown): LocalAppData {
     const normalizedSavedName = typeof savedName === 'string' && savedName.trim()
       ? savedName.trim().slice(0, MAX_ASSISTANT_NAME_LENGTH)
       : '';
-    assistantCharacterNames[character.id] = migratedDefaultNames[normalizedSavedName]
-      ?? (normalizedSavedName || (character.id === assistantCharacterId ? legacyAssistantName : character.name));
+    // Keep the default name map limited to free companions; preserve custom names
+    // and the currently selected companion for forward-compatible restores.
+    if (character.tier === 'free' || normalizedSavedName || character.id === assistantCharacterId) {
+      assistantCharacterNames[character.id] = migratedDefaultNames[normalizedSavedName]
+        ?? (normalizedSavedName || (character.id === assistantCharacterId ? legacyAssistantName : character.name));
+    }
   }
   return {
     conversations,
