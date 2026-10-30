@@ -481,7 +481,9 @@ export class GatewayService {
       model: selected.id,
       messages,
       // React Native's fetch streaming support is inconsistent across Android versions. Use a normal JSON response on native platforms.
-      stream: Platform.OS === 'web' && typeof options.onTextChunk === 'function',
+      // Keep image requests on the buffered JSON path: vision inference is more reliable
+      // without the web SSE normalizer, while text-only chats retain token streaming.
+      stream: Platform.OS === 'web' && typeof options.onTextChunk === 'function' && !options.imageDataUrl,
       max_tokens: options.task === 'coding' || options.task === 'vision' ? 220 : 4096,
       temperature: 0.65,
       top_p: 0.9,
