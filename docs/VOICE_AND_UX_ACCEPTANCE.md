@@ -1,124 +1,45 @@
-# Voice, Interaction and Visual Quality Acceptance
+# Voice input and interaction quality acceptance
 
-This document is the implementation contract for the voice and UI completion work. It does not claim that any feature listed here is already implemented.
+## Product scope
 
-## Product quality rules
+Teddy Bud voice is **speech-to-text input only**. It behaves like a microphone button in a chat composer: the user explicitly starts recognition, speaks, reviews and edits the resulting text, then chooses whether to send it as an ordinary message.
 
-- Apply the 8-point spacing grid: 8, 16, 24, 32, 40, 48 and 64 dp/px where appropriate. Use 4-point optical corrections only where a platform control or icon alignment requires it; document exceptions.
-- Preserve Teddy Bud's light claymorphism + Material 3 + soft-minimal visual language: warm ivory surfaces, cocoa accents, rounded but restrained geometry, subtle ambient elevation, and calm micro-interactions.
-- Keep hierarchy clear: consistent page gutters, card padding, section spacing, typography scale, icon sizing, touch targets and responsive breakpoints.
-- Avoid arbitrary one-off values, nested cards without purpose, inconsistent radii, crowded toolbars, clipped content, layout jumps and excessive motion.
-- Respect reduced-motion settings, keyboard/safe-area insets, large text, screen readers and touch target guidance.
-- No paid-tier, subscription, checkout or future paid-plan content in the core app.
+Out of scope: text-to-speech, generated audio, spoken assistant replies, voice playback, duplex voice conversations, and paid speech APIs. Do not add voice-output controls or a TTS provider.
 
-## Voice experience
+## Implementation requirements
 
-### Interaction states
-1. Idle: microphone action is visible and clearly labelled; recording never starts automatically.
-2. Permission request: explain why microphone access is needed before requesting it.
-3. Recording: persistent visible recording state, elapsed time, waveform/level feedback, mute/pause where supported, and an obvious cancel/finish action.
-4. Processing: show that audio is being transcribed; allow cancellation and recoverable retry.
-5. Review: show editable transcription before sending, unless the user explicitly chooses a send-without-review preference.
-6. Reply: render the normal Teddy Bud response and offer explicit play/stop controls for spoken output.
-7. Error/denied: explain the problem in plain language and keep text chat fully usable.
+- Use the platform/browser speech-recognition capability; do not route audio through Teddy Bud's Cloudflare gateway or add a paid inference provider.
+- Android uses the native speech-recognition service through the React Native voice bridge and requests microphone permission at runtime.
+- Web/Electron uses the browser SpeechRecognition API only when the host provides it and microphone access is allowed. Explain unsupported browsers and retain normal text entry.
+- Recognition is always user-initiated. Never record automatically or send a message automatically.
+- Partial/final recognition populates the existing editable message draft. Preserve any text already in the draft.
+- Provide a clear listening state, stop action, accessible labels, permission/error guidance and retry path.
+- Stop recognition when the screen unmounts. Do not save or upload microphone recordings; the platform speech service may process speech according to its own privacy policy.
+- No generated audio, TTS, voice model, Cloudflare AI voice route, or voice response settings.
 
-### Speech input
-- Implement native microphone capture on supported mobile targets with runtime permission handling.
-- Implement browser capture on web/Electron only where secure-context and permission requirements are satisfied.
-- Use a provider-backed transcription service through an authenticated gateway; never expose provider keys in the client.
-- Validate audio type, duration and size at the gateway; enforce authentication, rate limits, request timeouts and safe temporary-file cleanup.
-- Do not persist raw audio by default. Disclose any provider processing and retention before first use.
-- Handle permission denial, device changes, interruptions, app backgrounding, network loss, empty/oversized recordings and duplicate submissions.
-- Provide a complete text-only fallback on every platform.
+## Acceptance tests
 
-### Expressive spoken replies
-- Use a speech provider/model that supports natural prosody and expressive delivery, not merely a generic robotic system voice.
-- Map the selected companion's established personality and the reply's conversational intent to conservative delivery controls: warmth, energy, pace, pauses and emphasis. Do not infer or announce a user's emotion as fact.
-- Keep speech faithful to the assistant's visible reply; do not add unsourced words or change safety-critical meaning.
-- Provide voice selection/preview, play/pause/resume/stop, replay and speech-rate controls. Persist preferences locally.
-- Use sentence/chunk streaming where supported; cancel stale playback when the user sends a new message or navigates away.
-- Handle audio focus, Bluetooth/headphones, phone calls, route changes, app lifecycle and output-device changes.
-- Never autoplay spoken replies by default. Make audio playback an explicit user choice.
-- Clearly disclose third-party processing, and do not retain generated audio longer than necessary.
-
-### Voice acceptance tests
+- Start/stop recognition; partial and final results appear in the composer.
+- Existing draft text is preserved before the dictated text.
+- User can edit, delete or discard the transcript before sending.
+- No automatic send on recognition completion.
 - Permission granted, denied, revoked and unavailable.
-- Record, cancel, finish, review/edit transcript, submit, retry and stop.
-- Network offline/timeout/401/429/5xx; malformed, empty and over-limit audio.
-- App background/foreground, interruption, device-route changes and repeated taps.
-- Correct companion voice profile, natural phrasing/prosody, no clipped sentence endings, no overlap/duplicate playback.
-- Screen-reader labels and visible state for every voice control.
-- Confirm no recording or playback begins without an explicit user action.
+- Unsupported browser, no recognition service, empty transcript, network/service error and repeated taps.
+- App background/unmount ends recognition cleanly.
+- Screen-reader labels and visible state for microphone controls.
+- Text chat remains fully usable if voice input is unavailable.
 
 ## Visual and interaction audit
 
-Audit every screen and state in `client/App.tsx` and every imported component, not only the chat landing view:
+- Follow Teddy Bud's 8-point spacing rhythm and warm ivory/clay/cocoa visual language.
+- Keep the microphone control aligned with the text field and send action, with a 44 dp minimum hit target.
+- Ensure responsive layout, safe areas, keyboard behavior, reduced motion, large text, contrast and screen-reader support.
+- Avoid layout jumps when listening status or errors appear.
 
-- Authentication, onboarding, chat, history, memories, privacy, settings, emotions, journal, studio, discover and secondary navigation.
-- Empty, loading, success, error, offline, expired-session, permission-denied and destructive-confirmation states.
-- Short and long conversations, long unbroken text, code, images, attachments, keyboard-open state and large accessibility text.
-- Phone portrait, phone landscape, tablet, desktop narrow and desktop wide layouts.
-- Consistent 8-point spacing, page gutters, card insets, vertical rhythm, typography, line height, radii, shadows, icon alignment and hit areas.
-- No horizontal overflow, overlap, clipping, content hidden behind keyboard/navigation, or unexpected layout shifts.
-- Motion is purposeful, short and interruptible; reduced-motion mode removes nonessential movement.
-- Focus order, accessible names, roles, live-region announcements, contrast and touch-target dimensions.
+## Release gates
 
-## Reliability, privacy and release gates
-
-- Verify text and image chat on web and native transports, including streaming/buffered differences.
-- Exercise stop, retry, regenerate, edit/resend, rapid submissions, duplicate prevention, timeouts and server errors.
-- Verify local encryption, owner/account isolation, logout, storage/keychain failures, migrations, memory consent, backup merge/replace and interrupted-restore rollback.
-- Verify gateway auth, rate limits, audio/image validation, request-size limits, provider error mapping and usage accounting.
-- Run lint, type-check, unit/integration tests and platform builds from the same commit.
-- Install and launch each release artifact on real target hardware; run production smoke tests with disposable accounts.
-- Complete signing/notarization before calling desktop artifacts production-ready.
-
-## Definition of done
-
-A feature is complete only when implementation, automated tests, platform-specific validation and user-visible behavior all pass. A dependency in package.json, a visible button, a passing web build or a generated artifact alone is not proof of a working feature. Record platform-by-platform evidence and known limitations; never mark untested behavior as complete.
-
-
-## Cloudflare Workers AI voice model decision
-
-The connected Cloudflare account contains the existing `teddy-bud-browser-gateway` Worker, with an `AI` Workers AI binding already configured. Keep voice inference inside this authenticated gateway; never call Workers AI directly from the app or expose credentials.
-
-### Selected model candidates
-- Speech-to-text default: `@cf/openai/whisper-large-v3-turbo`. Cloudflare documents this as Whisper Large v3 Turbo and prices it at $0.0005 per audio minute (46.63 Neurons/minute).
-- Low-cost text-to-speech default: `@cf/myshell-ai/melotts`. Cloudflare describes it as high-quality multilingual TTS; the documented unit rate is $0.000205 per generated audio minute (18.63 Neurons/minute). The model accepts a `prompt` and `lang`, and returns MP3 audio.
-- Expressiveness benchmark: `@cf/deepgram/aura-2-en`. Cloudflare describes context-aware natural pacing, expressiveness and fillers. It supports named speakers and real-time/batch inference, but is materially more expensive at $0.03 per 1,000 input characters (2,727.27 Neurons/1k characters) and is English-only in this model variant.
-
-Workers AI currently includes 10,000 Neurons/day at no charge across the account. This is a shared daily allowance, not a separate voice-only quota; usage resets at 00:00 UTC. At the published rates, MeloTTS's allowance is roughly 537 generated audio minutes/day before other Workers AI usage, while Aura-2's allowance is roughly 3,666 characters/day before other usage. Actual usage depends on model accounting and the rest of the account's inference.
-
-
-### Strict zero-paid-usage policy
-
-- The product requirement is zero paid voice usage. Treat the daily Workers AI free allocation as a hard ceiling, not as a trial allowance.
-- Before enabling voice in production, verify the account is on the Cloudflare Workers Free plan and confirm the current account-level daily Neurons allowance and over-limit behavior from the dashboard/docs.
-- Add a server-side voice budget guard before every transcription and synthesis inference. Reserve estimated Neurons atomically per account/day; reject requests that would exceed the remaining budget. Do not rely on client-side counters.
-- Never fall back to Aura-2, Grok TTS, a third-party provider, or a paid plan automatically. These are not allowed in the zero-cost configuration.
-- When the account-level allowance is exhausted or unavailable, return a stable `VOICE_QUOTA_EXHAUSTED` response and keep text chat working. Explain that voice will be available again after the daily reset.
-- Because Workers AI allowance is shared across the Cloudflare account and other inference workloads, reserve a conservative voice budget rather than assuming all 10,000 Neurons are available to voice.
-- Add an operator kill switch that disables transcription and TTS independently. The default must be disabled until the server-side quota guard is deployed and verified.
-- Do not persist raw microphone recordings or generated audio. Process in memory and return audio with private, non-cacheable response headers.
-- Tests must prove that the quota guard rejects over-budget calls before `env.AI.run` is invoked, including concurrent requests and midnight UTC rollover.
-
-### Free voice implementation acceptance
-
-- Transcription: `@cf/openai/whisper-large-v3-turbo`.
-- Speech generation: `@cf/myshell-ai/melotts`.
-- Treat MeloTTS emotional expressiveness as an unverified quality claim until listening tests cover calm, comforting, cheerful, playful and explanatory samples.
-- Do not advertise continuous real-time duplex voice. The initial release is explicit push-to-talk, transcription review, normal chat response, and optional spoken playback. Real-time streaming is a separate phase requiring its own latency, interruption and cost validation.
-- Platform support must be stated separately. Browser/Electron microphone capture requires a secure context and permission; Android requires native microphone capture and runtime permission. A web MediaRecorder implementation alone does not satisfy Android native support.
-
-### Implementation decision
-- Start with MeloTTS as the cost-efficient default, but do not describe it as the most expressive until listening tests confirm that.
-- Benchmark Aura-2 English using the same Teddy Bud sample scripts for warmth, natural pauses, emotional appropriateness, pronunciation and latency. If quality is clearly better, expose it only as a consciously selected high-quality option with transparent usage limits; never silently switch users onto the expensive model.
-- Use Whisper Large v3 Turbo for transcription. Do not store raw recordings by default.
-- Keep model IDs, per-user limits, request size/duration limits, auth, rate limiting and usage accounting on the Worker.
-- Voice quality test set must include comforting, cheerful, calm, explanatory and neutral replies. Companion personality controls should shape the TTS prompt without exaggerating emotion, changing meaning or pretending to diagnose the user's feelings.
-
-### Connected Cloudflare inspection
-- Worker found: `teddy-bud-browser-gateway`.
-- Workers AI binding `AI` is already present.
-- Existing authenticated routes include `/v1/models` and `/v1/chat/completions`; voice endpoints still need to be implemented and tested.
-- The deployed Worker is currently the gateway's production version. Do not overwrite it with untested voice code. Develop and validate a version/branch first, then deploy deliberately after endpoint, auth, quota, audio-size and rollback checks.
+- Run lint, type-check, unit tests and Android/web/desktop builds from the same commit.
+- Install and test Android on a real device with permission granted and denied.
+- Test supported browser/Electron environments; explicitly document unsupported hosts.
+- Confirm text/image chat regression tests pass.
+- Do not claim platform support or completion without recorded evidence.
