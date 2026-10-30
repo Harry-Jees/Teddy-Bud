@@ -1644,7 +1644,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     } finally {
       if (voiceMountedRef.current) setVoiceListening(false);
     }
-  }, []);
+  }, [nativeSpeech]);
 
   const startVoiceInput = useCallback(async () => {
     if (voiceListening || voiceStartingRef.current || isSending) return;
@@ -1709,7 +1709,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       setVoiceListening(false);
       setVoiceMessage('Could not start speech input. Check microphone permission and try again.');
     }
-  }, [draft, isSending, setDraft, voiceListening]);
+  }, [draft, isSending, nativeSpeech, setDraft, voiceListening]);
 
   useEffect(() => {
     voiceMountedRef.current = true;
@@ -1747,7 +1747,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         void nativeSpeech?.cancel?.();
       }
     };
-  }, [setDraft]);
+  }, [nativeSpeech, setDraft]);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
   const reduceMotion = useReducedMotionPreference();
