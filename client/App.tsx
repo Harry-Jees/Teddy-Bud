@@ -1628,7 +1628,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
   const voicePrefixRef = useRef('');
   const webRecognitionRef = useRef<any>(null);
   const nativeSpeech = NativeModules.TeddyBudSpeechRecognition;
-  const nativeSpeechEvents = useRef<NativeEventEmitter | null>(null);
+  const nativeSpeechEvents = useRef<{ removeAllListeners: () => void } | null>(null);
   const voiceMountedRef = useRef(true);
   const voiceStartingRef = useRef(false);
 
