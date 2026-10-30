@@ -1,9 +1,19 @@
 # Teddy Bud UI/UX Update Plan
 
-Last reviewed: 2026-10-27  
-Working branch: `feature/phase-3-chat-polish`  
-Status: **Implementation in progress; current merge gate pending CI and platform verification**  
+Last reviewed: 2026-10-31  
+Working branch: `main`  
+Status: **Refined desktop/mobile navigation and tiered companion previews merged; remaining UX and real-device release gates are still open**  
 Scope: Mobile-first UX, all app screens, sign-in/password/recovery flows, error handling, accessibility, cross-platform behavior, regression tests, and release validation.
+
+## Latest main integration checkpoint — 2026-10-31
+
+- [x] Merged PR #32: desktop sidebar now exposes Chats, Memories, Emotions, Journal, Wellbeing, Privacy and Settings.
+- [x] Mobile navigation now uses Chats, Memories, a central New Chat action and More; secondary destinations remain reachable from More.
+- [x] Added ten companion definitions: four available Free companions, three locked Pro previews and three locked Premium previews. Paid checkout and entitlements remain disabled.
+- [x] Preserved the current onboarding survey, sign-in flow, Discover compatibility, image attachments, privacy controls and native speech-to-text.
+- [x] PR CI passed: 11 test suites / 94 tests, TypeScript, web build, gateway tests and Ruff.
+- [ ] Latest main platform builds (Android, Windows x64/ARM64, macOS Intel/Apple Silicon, Linux) must all finish successfully before release verification.
+- [ ] Real-device install/launch, backup/restore failure-injection, voice-permission and accessibility checks remain outstanding.
 
 ## 1. Goal and non-negotiable rules
 
