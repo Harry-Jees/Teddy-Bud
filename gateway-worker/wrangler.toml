@@ -3,7 +3,7 @@ main = "src/index.mjs"
 compatibility_date = "2026-10-12"
 
 [vars]
-AUTH_REDIRECT_ORIGINS = "https://teddybud.vercel.app,http://localhost:5173,http://127.0.0.1:5173"
+AUTH_REDIRECT_ORIGINS = "https://teddybud.vercel.app,https://teddy-bud-web.vercel.app,http://localhost:5173,http://127.0.0.1:5173"
 
 [[kv_namespaces]]
 binding = "DEVICE_KEYS"
