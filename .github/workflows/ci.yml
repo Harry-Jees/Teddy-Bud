@@ -229,7 +229,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
           lfs: true
       - name: Download artifacts from the selected run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: teddy-bud-*
           path: source-artifacts
