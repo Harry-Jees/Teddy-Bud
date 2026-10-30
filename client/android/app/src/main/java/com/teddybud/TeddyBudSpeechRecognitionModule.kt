@@ -92,7 +92,7 @@ class TeddyBudSpeechRecognitionModule(
   override fun onBeginningOfSpeech() {}
   override fun onRmsChanged(rmsdB: Float) {}
   override fun onBufferReceived(buffer: ByteArray?) {}
-  override fun onEndOfSpeech() { emit("speechEnd") }
+  override fun onEndOfSpeech() {}
   override fun onError(error: Int) {
     val payload = Arguments.createMap()
     payload.putString("message", "Speech recognition ended (error $error). Please try again.")
