@@ -39,7 +39,7 @@ This document distinguishes implemented code from features that still need crede
 | Single-device enforcement | Verify on the deployed Worker and exercise concurrent logins under production-like load | The Durable Object atomically selects one active session per account, migrates the legacy session-ID index on access, and every authenticated request checks the active ID. Tests cover a new login invalidating an old token, legacy index migration, and stale-session removal. Production deployment and concurrency verification remain. |
 | End-to-end encrypted AI conversations | A design compatible with the inference model and privacy requirements | A remote model must receive readable prompt content; current transport encryption is not end-to-end encryption. |
 | Backup restore safety | Add interrupted-write/rollback tests and verify the native/web confirmation flows on real devices | Preview, explicit merge/replace choice, merge logic, and duplicate handling are implemented; real-device and failure-injection validation remain. |
-| Live production smoke tests | Authenticated text and vision requests using a disposable test account | Automated tests do not prove that current production secrets, bindings, merchant settings, or external accounts are configured correctly. |
+| Live production smoke tests | Authenticated text and vision requests using a disposable test account | Automated tests do not prove that current production secrets, bindings, or external services are configured correctly. |
 
 ## Release gates
 
