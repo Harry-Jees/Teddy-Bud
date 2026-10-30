@@ -36,6 +36,7 @@ import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import { authErrorMessage, AuthServiceError, AuthValidationError } from './src/services/authErrors';
 import type { AuthField } from './src/services/authErrors';
+import { OnboardingSurvey } from './src/components/OnboardingSurvey';
 import { backupErrorMessage, chatErrorMessage, imagePickerErrorMessage, localDataErrorMessage } from './src/services/userFacingErrors';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
@@ -130,34 +131,46 @@ function AccessGate() {
   const [error, setError] = useState<string | null>(null);
   const [initialMode, setInitialMode] = useState<'login' | 'create'>('create');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
+  const [showOnboardingSurvey, setShowOnboardingSurvey] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    const restore = async () => {
-      let restoreTimeout: ReturnType<typeof setTimeout> | undefined;
+    const startFresh = async () => {
       try {
-        const current = await Promise.race([
-          browserAuthService.restore(),
-          new Promise<never>((_, reject) => {
-            restoreTimeout = setTimeout(() => reject(new Error('Secure session check timed out. Reload the app or sign in again.')), 12_000);
+        // A launch is never treated as a sign-in. Revoke the saved session when
+        // possible, then remove its local token so the user must authenticate.
+        // Do not let an unavailable gateway keep the app on its splash screen.
+        // logout() clears local credentials after its server revocation attempt.
+        let logoutTimedOut = false;
+        await Promise.race([
+          browserAuthService.logout(),
+          new Promise<void>(resolve => {
+            setTimeout(() => {
+              logoutTimedOut = true;
+              resolve();
+            }, 8_000);
           }),
         ]);
-        if (mounted) {
-          setSession(current);
-          if (current) await browserAuthService.markSetupComplete();
-          else {
-            setInitialMode(await browserAuthService.shouldCreateAccount() ? 'create' : 'login');
-            setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
-          }
+        if (logoutTimedOut) await browserAuthService.clear();
+      } catch (resetError) {
+        try {
+          await browserAuthService.clear();
+        } catch (storageError) {
+          if (mounted) setError(authErrorMessage(storageError, 'session-restore'));
         }
-      } catch (restoreError) {
-        if (mounted) setError(authErrorMessage(restoreError, 'session-restore'));
+        if (resetError instanceof AuthServiceError && resetError.kind === 'storage' && mounted) {
+          setError(authErrorMessage(resetError, 'session-restore'));
+        }
       } finally {
-        if (restoreTimeout) clearTimeout(restoreTimeout);
-        if (mounted) setBusy(false);
+        if (mounted) {
+          setInitialMode('login');
+          setCanMigrateLegacy(false);
+          setSession(null);
+          setBusy(false);
+        }
       }
     };
-    restore();
+    void startFresh();
     return () => {
       mounted = false;
     };
@@ -185,7 +198,8 @@ function AccessGate() {
   }, [session]);
 
   if (busy) return <AuthLoading />;
-  if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
+  if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} onAccountCreated={() => setShowOnboardingSurvey(true)} />;
+  if (showOnboardingSurvey) return <OnboardingSurvey onComplete={async answers => { const owner = ownerFromToken(session.accessToken); const data = await localDataService.load(owner); await localDataService.save(owner, { ...data, onboardingSurvey: { completedAt: new Date().toISOString(), answers } }); setShowOnboardingSurvey(false); }} />;
   return <TeddyBud sessionToken={session.accessToken} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
       const message = authErrorMessage(logoutError, 'sign-out');
@@ -204,7 +218,7 @@ function AuthLoading() {
   return <View style={styles.authScreen}><View style={styles.brandMark}><Image source={teddyBudLogo} style={styles.brandLogo} accessibilityLabel="Teddy Bud" /></View><Text style={styles.authTitle}>Opening your private space…</Text><Text style={styles.authBody}>Checking your secure session.</Text></View>;
 }
 
-export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
+export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated, onAccountCreated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void; onAccountCreated?: () => void }) {
   const { width } = useWindowDimensions();
   const compact = width < 600;
   const [mode, setMode] = useState<'login' | 'create' | 'recover' | 'migrate'>(initialMode);
@@ -246,7 +260,9 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
         const phrase = recoveryPassphrase.trim();
         if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.', 'recoveryPassphrase');
         if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.', 'recoveryPassphraseConfirmation');
-        onAuthenticated(await browserAuthService.createAccount(email.trim(), password, phrase));
+        const createdSession = await browserAuthService.createAccount(email.trim(), password, phrase);
+        onAuthenticated(createdSession);
+        onAccountCreated?.();
       } else if (mode === 'migrate') {
         if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.');
         if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.');
