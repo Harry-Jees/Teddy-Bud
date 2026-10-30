@@ -59,5 +59,5 @@ A separately configured enterprise gateway can route text and supported vision r
 - Real-device checks for image selection, permissions, keyboard/screen-reader behavior, and low-connectivity states.
 - Accessibility checks: text scaling, contrast, focus order, reduced motion, and touch target sizes.
 - Privacy review: data inventory, consent boundaries, deletion behavior, telemetry minimization, and dependency/secret scan.
-- Cost review: measure actual model usage and Cloudflare charges before setting paid quotas or prices.
+- Cost review: measure actual model usage and Cloudflare charges before changing usage limits or publishing cost claims.
 - Do not advertise capabilities that have not been implemented, tested, and deployed.
