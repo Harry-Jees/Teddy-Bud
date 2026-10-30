@@ -1,7 +1,6 @@
 export const ASSISTANT_CHARACTERS = [
   {
     id: 'teddy-bud',
-    tier: 'free',
     name: 'Teddy',
     symbol: '🧸',
     tagline: 'Gentle & thoughtful',
@@ -9,7 +8,6 @@ export const ASSISTANT_CHARACTERS = [
   },
   {
     id: 'doodle',
-    tier: 'free',
     name: 'Doodle',
     symbol: '🎨',
     tagline: 'Curious & creative',
@@ -17,7 +15,6 @@ export const ASSISTANT_CHARACTERS = [
   },
   {
     id: 'sunny',
-    tier: 'free',
     name: 'Sunny',
     symbol: '☀️',
     tagline: 'Bright & playful',
@@ -25,7 +22,6 @@ export const ASSISTANT_CHARACTERS = [
   },
   {
     id: 'mellow',
-    tier: 'free',
     name: 'Mellow',
     symbol: '☁️',
     tagline: 'Soft & patient',
