@@ -1693,7 +1693,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
             buttonPositive: 'Allow',
             buttonNegative: 'Not now',
           });
-          if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+          if (permission !== permissionsAndroid.RESULTS.GRANTED) {
             setVoiceMessage('Microphone permission was not granted. You can still type your message.');
             voiceStartingRef.current = false;
             return;
