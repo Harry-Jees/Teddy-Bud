@@ -1743,7 +1743,10 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         try { webRecognitionRef.current?.abort(); } catch {}
         webRecognitionRef.current = null;
       } else {
-        nativeSpeechEvents.current?.removeAllListeners();
+        nativeSpeechEvents.current?.removeAllListeners('speechResults');
+        nativeSpeechEvents.current?.removeAllListeners('speechPartialResults');
+        nativeSpeechEvents.current?.removeAllListeners('speechError');
+        nativeSpeechEvents.current?.removeAllListeners('speechEnd');
         void (nativeSpeech as { cancel?: () => Promise<void> } | undefined)?.cancel?.();
       }
     };
