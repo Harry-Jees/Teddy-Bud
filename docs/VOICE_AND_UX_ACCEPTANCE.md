@@ -89,6 +89,27 @@ The connected Cloudflare account contains the existing `teddy-bud-browser-gatewa
 
 Workers AI currently includes 10,000 Neurons/day at no charge across the account. This is a shared daily allowance, not a separate voice-only quota; usage resets at 00:00 UTC. At the published rates, MeloTTS's allowance is roughly 537 generated audio minutes/day before other Workers AI usage, while Aura-2's allowance is roughly 3,666 characters/day before other usage. Actual usage depends on model accounting and the rest of the account's inference.
 
+
+### Strict zero-paid-usage policy
+
+- The product requirement is zero paid voice usage. Treat the daily Workers AI free allocation as a hard ceiling, not as a trial allowance.
+- Before enabling voice in production, verify the account is on the Cloudflare Workers Free plan and confirm the current account-level daily Neurons allowance and over-limit behavior from the dashboard/docs.
+- Add a server-side voice budget guard before every transcription and synthesis inference. Reserve estimated Neurons atomically per account/day; reject requests that would exceed the remaining budget. Do not rely on client-side counters.
+- Never fall back to Aura-2, Grok TTS, a third-party provider, or a paid plan automatically. These are not allowed in the zero-cost configuration.
+- When the account-level allowance is exhausted or unavailable, return a stable `VOICE_QUOTA_EXHAUSTED` response and keep text chat working. Explain that voice will be available again after the daily reset.
+- Because Workers AI allowance is shared across the Cloudflare account and other inference workloads, reserve a conservative voice budget rather than assuming all 10,000 Neurons are available to voice.
+- Add an operator kill switch that disables transcription and TTS independently. The default must be disabled until the server-side quota guard is deployed and verified.
+- Do not persist raw microphone recordings or generated audio. Process in memory and return audio with private, non-cacheable response headers.
+- Tests must prove that the quota guard rejects over-budget calls before `env.AI.run` is invoked, including concurrent requests and midnight UTC rollover.
+
+### Free voice implementation acceptance
+
+- Transcription: `@cf/openai/whisper-large-v3-turbo`.
+- Speech generation: `@cf/myshell-ai/melotts`.
+- Treat MeloTTS emotional expressiveness as an unverified quality claim until listening tests cover calm, comforting, cheerful, playful and explanatory samples.
+- Do not advertise continuous real-time duplex voice. The initial release is explicit push-to-talk, transcription review, normal chat response, and optional spoken playback. Real-time streaming is a separate phase requiring its own latency, interruption and cost validation.
+- Platform support must be stated separately. Browser/Electron microphone capture requires a secure context and permission; Android requires native microphone capture and runtime permission. A web MediaRecorder implementation alone does not satisfy Android native support.
+
 ### Implementation decision
 - Start with MeloTTS as the cost-efficient default, but do not describe it as the most expressive until listening tests confirm that.
 - Benchmark Aura-2 English using the same Teddy Bud sample scripts for warmth, natural pauses, emotional appropriateness, pronunciation and latency. If quality is clearly better, expose it only as a consciously selected high-quality option with transparent usage limits; never silently switch users onto the expensive model.
