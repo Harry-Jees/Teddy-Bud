@@ -1663,7 +1663,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     if (shouldAutoScrollRef.current && (messages.length > 0 || streamingReply)) {
       scrollRef.current?.scrollToEnd({ animated: !isSending });
     }
-  }, [messages.length, isSending]);
+  }, [messages.length, streamingReply, isSending]);
 
   const submitMessage = () => {
     if (!canSend) return;
@@ -2283,7 +2283,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
       {[1,2,3,4,5].map(level => EMOTION_AXES.map((_, i) => line(point(i, level), point((i+1)%axisCount, level), '#E8DDD5', 1)))}
       {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D8CBC2', 1))}
       {EMOTION_AXES.map((axis,i) => {
-        const p = point(i,5), label = point(i,5.75);
+        const label = point(i,5.75);
         return <React.Fragment key={axis.id}>
           <Text style={{position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}}>{axis.label}</Text>
           {data && values[i] > 0 ? <View style={{position:'absolute',left:point(i,values[i]).x-5,top:point(i,values[i]).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#B87862',borderWidth:2,borderColor:'#FFF9F4'}} /> : null}
