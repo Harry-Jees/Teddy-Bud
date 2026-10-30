@@ -1913,7 +1913,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         <Pressable accessibilityRole="button" accessibilityLabel={voiceListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Converts speech into editable text. It does not send automatically." accessibilityState={{ selected: voiceListening }} disabled={isSending} onPress={() => voiceListening ? void stopVoiceInput() : void startVoiceInput()} style={({ pressed }) => [styles.voiceInputButton, voiceListening && styles.voiceInputButtonActive, pressed && styles.pressed, isSending && styles.buttonDisabled]}>
-          <Text style={[styles.voiceInputGlyph, voiceListening && styles.voiceInputGlyphActive]}>{voiceListening ? '■' : <VoiceMicIcon />}</Text>
+          {voiceListening ? <Text style={[styles.voiceInputGlyph, styles.voiceInputGlyphActive]}>■</Text> : <VoiceMicIcon />}
         </Pressable>
         {isSending
           ? <Pressable accessibilityRole="button" accessibilityLabel="Stop response" onPress={onStop} style={({ pressed }) => [styles.sendButton, styles.stopButton, pressed && styles.pressed]}><View style={styles.stopIcon} /></Pressable>
