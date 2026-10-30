@@ -105,7 +105,7 @@ jobs:
           mkdir -p "$(dirname "$target")"
           cp "$source" "$target"
           test -s "$target"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: teddy-bud-android
           path: dist/android/TeddyBud.v.1.0-Android-arm64.apk
@@ -203,7 +203,7 @@ jobs:
           for name in win-unpacked linux-unpacked mac mac-arm64; do
             rm -rf "dist/desktop/$name"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.files }}
@@ -255,7 +255,7 @@ jobs:
           test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
           test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
           find dist -type f -printf '%P %s bytes\n' | sort
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: teddy-bud-dist
           path: dist/
