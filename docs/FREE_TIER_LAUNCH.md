@@ -2,7 +2,7 @@
 
 ## Launch decision
 
-Teddy Bud launches with one plan: **Free**. Do not add checkout, payment-provider SDKs, subscription screens, upgrade prompts, paid entitlements, or payment secrets to the launch build. Pro and other paid tiers are deferred until real usage and inference costs are measured.
+Teddy Bud launches with a single, clearly defined usage allowance. The client and gateway enforce the same published limits.
 
 ## Implemented Free-tier policy
 
@@ -10,7 +10,7 @@ Teddy Bud launches with one plan: **Free**. Do not add checkout, payment-provide
 - Text requests cost **1 credit**.
 - Image-containing requests cost **1 credit**, the same as a text request.
 - The gateway detects image content and selects the model server-side: GLM-4.7 Flash for text, Qwen 3.8 27B for images.
-- Free includes four personalities; Pro will offer seven and Premium ten when those plans launch.
+- Four companion personalities are available in the current release.
 - Durable Object storage reserves credits atomically before inference, refunds reservations on inference errors before a response is returned, and commits successful requests.
 - Authenticated `GET /v1/credits` returns the current balance and reset time.
 - The app's client cannot supply a user ID, plan, or credit cost to change its allowance.
@@ -21,7 +21,7 @@ Credits are a product-level usage guard, not an exact billing ledger. Cloudflare
 
 ## Deployment status and safety
 
-The Cloudflare Workers AI migration and enterprise model-routing adapter are under validation on `migration/cloudflare-workers-ai-phonepe`. Do not assume the branch is production-ready from a staged deployment or direct provider smoke test alone. Check the latest CI results and run authenticated end-to-end tests before directing production traffic.
+The Cloudflare Workers AI migration and enterprise model-routing adapter are under validation. Do not assume the branch is production-ready from a staged deployment or direct provider smoke test alone. Check the latest CI results and run authenticated end-to-end tests before directing production traffic.
 
 Before deployment:
 1. Run gateway tests and client type checks/build.
@@ -37,4 +37,4 @@ Use wording such as “Free during the initial launch, with usage limits to keep
 
 ## Enterprise edition
 
-The consumer Free plan remains separate from **TeddyBuddy White Label**, the enterprise deployment offer. See [the enterprise guide](./ENTERPRISE_WHITE_LABEL.md). Do not add checkout or paid consumer entitlements to the first Free release.
+The consumer application and **TeddyBuddy White Label** are separate products. See [the enterprise guide](./ENTERPRISE_WHITE_LABEL.md).
