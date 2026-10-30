@@ -1744,7 +1744,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         webRecognitionRef.current = null;
       } else {
         nativeSpeechEvents.current?.removeAllListeners();
-        void nativeSpeech?.cancel?.();
+        void (nativeSpeech as { cancel?: () => Promise<void> } | undefined)?.cancel?.();
       }
     };
   }, [nativeSpeech, setDraft]);
