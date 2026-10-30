@@ -11,6 +11,7 @@ import {
   Linking,
   Modal,
   Platform,
+  PermissionsAndroid,
   Pressable,
   ScrollView,
   Share,
@@ -1677,6 +1678,18 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         };
         recognition.start();
       } else {
+        if (Platform.OS === 'android') {
+          const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, {
+            title: 'Allow microphone access',
+            message: 'Teddy Bud uses your microphone only when you tap the voice-input button to turn speech into editable text.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Not now',
+          });
+          if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
+            setVoiceMessage('Microphone permission was not granted. You can still type your message.');
+            return;
+          }
+        }
         await Voice.start('en-IN');
       }
       setVoiceListening(true);
