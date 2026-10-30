@@ -1663,7 +1663,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     if (shouldAutoScrollRef.current && (messages.length > 0 || streamingReply)) {
       scrollRef.current?.scrollToEnd({ animated: !isSending });
     }
-  }, [messages.length, isSending]);
+  }, [messages.length, streamingReply, isSending]);
 
   const submitMessage = () => {
     if (!canSend) return;
@@ -2283,7 +2283,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
       {[1,2,3,4,5].map(level => EMOTION_AXES.map((_, i) => line(point(i, level), point((i+1)%axisCount, level), '#E8DDD5', 1)))}
       {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D8CBC2', 1))}
       {EMOTION_AXES.map((axis,i) => {
-        const p = point(i,5), label = point(i,5.75);
+        const label = point(i,5.75);
         return <React.Fragment key={axis.id}>
           <Text style={{position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}}>{axis.label}</Text>
           {data && values[i] > 0 ? <View style={{position:'absolute',left:point(i,values[i]).x-5,top:point(i,values[i]).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#B87862',borderWidth:2,borderColor:'#FFF9F4'}} /> : null}
@@ -2453,7 +2453,7 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
       <Text style={styles.settingDescription}>Choose what Teddy Bud can remember, what context is shared, and manage local data.</Text>
       <Button label="Open privacy controls" tone="quiet" onPress={onOpenPrivacy} />
     </View>
-    <Text style={styles.settingsSectionLabel}>FREE PLAN</Text>
+    <Text style={styles.settingsSectionLabel}>DAILY USAGE</Text>
     <View style={styles.settingsCardForm}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ flex: 1 }}>
@@ -2468,21 +2468,6 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
       <Text style={styles.settingDescription}>Text: 1 credit · Image analysis: 1 credit · Resets daily at 00:00 UTC.</Text>
       <Pressable accessibilityRole="button" onPress={() => { void onRefreshCredits(); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
       {!creditBalance && <Text style={styles.settingDescription}>Balance unavailable right now. Connect to the gateway and refresh.</Text>}
-    </View>
-    <View style={styles.settingsCardForm}>
-      <Text style={styles.settingTitle}>More ways to connect are coming</Text>
-      <Text style={styles.settingDescription}>Pro will include 7 companion personalities, and Premium will include 10, with access to more capable models and larger credit allowances. Paid plans are coming soon; no payment is required for Free.</Text>
-      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-        <View style={{ flex: 1, borderRadius: 13, borderWidth: 1, borderColor: C.line, padding: 12, backgroundColor: '#FDFBF8' }}>
-          <Text style={styles.settingTitle}>Pro · Coming soon</Text>
-          <Text style={styles.settingDescription}>7 personalities · Better models</Text>
-        </View>
-        <View style={{ flex: 1, borderRadius: 13, borderWidth: 1, borderColor: C.line, padding: 12, backgroundColor: '#FDFBF8' }}>
-          <Text style={styles.settingTitle}>Premium · Coming soon</Text>
-          <Text style={styles.settingDescription}>10 personalities · Best models</Text>
-        </View>
-      </View>
-      <Text style={styles.settingDescription}>Industrial / Enterprise deployments with locally hosted models are planned separately.</Text>
     </View>
     <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
     <View style={styles.settingsCardForm}>
@@ -2499,9 +2484,9 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
           const selected = selectedCharacterId === character.id;
           const savedName = assistantCharacterNames?.[character.id] ?? character.name;
           const shownName = selected && characterNameDraft.trim() ? characterNameDraft.trim() : savedName;
-          return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}${character.tier === 'free' ? '' : ', coming soon'}`} accessibilityState={{ selected, disabled: character.tier !== 'free' }} disabled={character.tier !== 'free'} onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected, character.tier !== 'free' && { opacity: 0.62 }]}>
+          return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}`} accessibilityState={{ selected }}  onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected]}>
             <Text style={styles.characterChoiceIcon}>{character.symbol}</Text>
-            <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text>{character.tier !== 'free' && <Text style={styles.characterChoiceTagline}>{character.tier === 'pro' ? 'PRO' : 'PREMIUM'} · COMING SOON</Text>}</View>
+            <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text></View>
             {selected && <Text style={styles.characterChoiceCheck}>✓</Text>}
           </Pressable>;
         })}

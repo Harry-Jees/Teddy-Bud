@@ -29,7 +29,7 @@ The current application code also includes journal editing, deletion, search and
 - **Explicit journal sharing:** “Discuss with Teddy” asks for confirmation and copies the selected entry into the chat composer as a draft. It is not sent until the user reviews and presses Send.
 - **Weekly reflection:** a seven-day summary is calculated on-device from at least two user-entered check-ins, with average energy and the most frequently highest-rated emotion. It is descriptive, not diagnostic, and is not sent to the AI provider automatically.
 
-These additions still require CI, accessibility and cross-platform testing before release. The following remain unimplemented or require separate architecture work: true account-level single-device enforcement, full response editing/regeneration/copy controls, voice interaction, reminders/notifications, and a production payment/entitlement ledger. End-to-end encryption of messages is not compatible with sending readable prompts to a remote AI provider; it would require a different local-inference or privacy-preserving architecture, not a checkbox in the current client.
+These additions still require CI, accessibility and cross-platform testing before release. The following remain unimplemented or require separate architecture work: true account-level single-device enforcement, full response editing/regeneration/copy controls, voice interaction, reminders/notifications. End-to-end encryption of messages is not compatible with sending readable prompts to a remote AI provider; it would require a different local-inference or privacy-preserving architecture, not a checkbox in the current client.
 
 ## Phased delivery
 
