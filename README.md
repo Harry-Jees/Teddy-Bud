@@ -51,12 +51,12 @@ These protections reduce risk but do not mean that data is inaccessible to all s
 | --- | --- |
 | Web | **Not offered as a standalone app or download** |
 | Android | ARM64 APK in `dist/android/` |
-| Windows | x64 desktop installer in `dist/desktop/` |
+| Windows | x64 and ARM64 desktop installers in `dist/desktop/` |
 | macOS | Apple Silicon DMG installer in `dist/desktop/` |
 | Linux | x64 Debian package and AppImage in `dist/desktop/` |
 | iOS / iPhone | **Not currently available** |
 
-The supported distribution set is Android APK, Windows installer, Apple Silicon macOS DMG, and Linux DEB/AppImage. There is no standalone web app, no web download, and no iPhone/iPad installer. Downloads are development builds and may not be signed for trusted public distribution. See [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md) for the exact package set and validation limits. The product direction is documented in [the feature roadmap](docs/MAJOR_UPGRADE_ROADMAP.md).
+The configured distribution set is Android ARM64 APK, Windows x64 and ARM64 installers, macOS Apple Silicon and Intel DMGs, and Linux x64 DEB/AppImage packages. There is no standalone web app, no web download, and no iPhone/iPad installer. Downloads are development builds and may not be signed for trusted public distribution. See [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md) for the exact package set and validation limits. The product direction is documented in [the feature roadmap](docs/MAJOR_UPGRADE_ROADMAP.md).
 
 For the product's public-facing presentation, visit the [Teddy Bud portfolio website](https://teddybud.vercel.app/). This is a portfolio/presentation site, not a web version of the Teddy Bud app.
 
