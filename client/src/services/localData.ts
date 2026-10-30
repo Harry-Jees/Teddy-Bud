@@ -8,7 +8,6 @@ export type LocalMessage = {
   text: string;
   author: 'you' | 'teddy';
   time: string;
-  imageDataUrl?: string;
 };
 
 export type LocalConversation = {
@@ -56,7 +55,6 @@ export type LocalAppData = {
   memories: LocalMemory[];
   emotionCheckIns?: EmotionCheckIn[];
   journalEntries?: JournalEntry[];
-  onboardingSurvey?: { completedAt: string; answers: { question: string; answer: string }[] };
   rememberInSession: boolean;
   shareMemories: boolean;
   shareChatHistory: boolean;
@@ -177,9 +175,6 @@ function normalize(value: unknown): LocalAppData {
     emotionCheckIns: Array.isArray(data.emotionCheckIns)
       ? data.emotionCheckIns.filter((entry): entry is EmotionCheckIn => Boolean(entry && typeof entry.id === 'string' && typeof entry.createdAt === 'string' && entry.emotions && typeof entry.emotions === 'object' && !Array.isArray(entry.emotions) && Object.entries(entry.emotions).every(([key, score]) => EMOTION_AXES.some(axis => axis.id === key) && typeof score === 'number' && Number.isInteger(score) && score >= 0 && score <= 5) && typeof entry.energy === 'number' && Number.isInteger(entry.energy) && entry.energy >= 0 && entry.energy <= 5 && ['listen', 'advice', 'encouragement', 'unsure'].includes(entry.support) && (entry.note === undefined || typeof entry.note === 'string'))).slice(0, 500)
       : [],
-    ...(data.onboardingSurvey && typeof data.onboardingSurvey.completedAt === 'string' && Array.isArray(data.onboardingSurvey.answers)
-      ? { onboardingSurvey: { completedAt: data.onboardingSurvey.completedAt, answers: data.onboardingSurvey.answers.filter(item => item && typeof item.question === 'string' && typeof item.answer === 'string').slice(0, 24) } }
-      : {}),
     journalEntries: Array.isArray(data.journalEntries) ? data.journalEntries.filter((entry): entry is JournalEntry => Boolean(entry && typeof entry.id === 'string' && typeof entry.createdAt === 'string' && typeof entry.title === 'string' && entry.title.length <= 160 && typeof entry.body === 'string' && entry.body.length <= 30000 && typeof entry.prompt === 'string')).slice(0, 1000) : [],
     memories: Array.isArray(data.memories)
       ? data.memories.filter(memory => memory && typeof memory.id === 'number' && typeof memory.text === 'string' && typeof memory.date === 'string').map(memory => ({ ...memory, text: memory.text.slice(0, MAX_MEMORY_LENGTH) }))
@@ -297,8 +292,7 @@ function isLocalMessage(message: unknown): message is LocalMessage {
     && typeof (message as LocalMessage).id === 'number'
     && typeof (message as LocalMessage).text === 'string'
     && ((message as LocalMessage).author === 'you' || (message as LocalMessage).author === 'teddy')
-    && typeof (message as LocalMessage).time === 'string'
-    && ((message as LocalMessage).imageDataUrl === undefined || (typeof (message as LocalMessage).imageDataUrl === 'string' && /^data:image\/(?:jpeg|png|webp|gif);base64,/i.test((message as LocalMessage).imageDataUrl as string)));
+    && typeof (message as LocalMessage).time === 'string';
 }
 
 export class LocalDataService {
