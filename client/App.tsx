@@ -137,14 +137,25 @@ function AccessGate() {
       try {
         // A launch is never treated as a sign-in. Revoke the saved session when
         // possible, then remove its local token so the user must authenticate.
-        await browserAuthService.logout();
+        // Do not let an unavailable gateway keep the app on its splash screen.
+        // logout() clears local credentials after its server revocation attempt.
+        let logoutTimedOut = false;
+        await Promise.race([
+          browserAuthService.logout(),
+          new Promise<void>(resolve => {
+            setTimeout(() => {
+              logoutTimedOut = true;
+              resolve();
+            }, 8_000);
+          }),
+        ]);
+        if (logoutTimedOut) await browserAuthService.clear();
       } catch (resetError) {
         try {
           await browserAuthService.clear();
         } catch (storageError) {
           if (mounted) setError(authErrorMessage(storageError, 'session-restore'));
         }
-        // A network failure must not strand the user on a loading screen.
         if (resetError instanceof AuthServiceError && resetError.kind === 'storage' && mounted) {
           setError(authErrorMessage(resetError, 'session-restore'));
         }
