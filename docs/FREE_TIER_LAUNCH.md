@@ -17,7 +17,7 @@ Teddy Bud launches with a single, clearly defined usage allowance. The client an
 - Automatic title and memory-suggestion tasks do not consume chat credits, but have a separate server-enforced cap of 10 background tasks per account per UTC day.
 - Existing burst rate limiting, context size limits, and output-token caps remain in place.
 
-Credits are a product-level usage guard, not an exact billing ledger. Cloudflare Workers AI may charge the project account beyond any applicable allowance. Monitor actual model usage and account spend independently.
+Credits are a product-level usage guard, not an exact provider-cost ledger. Cloudflare Workers AI may charge the project account beyond any applicable allowance. Monitor actual model usage and account spend independently.
 
 ## Deployment status and safety
 
