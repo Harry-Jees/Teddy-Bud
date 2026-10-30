@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export type WellbeingSurveyAnswer = { question: string; answer: string };
 type Question = { prompt: string; options: string[] };
@@ -32,7 +32,6 @@ const QUESTIONS: Question[] = [
 ];
 
 export function OnboardingSurvey({ onComplete }: { onComplete: (answers: WellbeingSurveyAnswer[]) => Promise<void> }) {
-  const { width } = useWindowDimensions();
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [index, setIndex] = useState(0);
   const [saving, setSaving] = useState(false);
