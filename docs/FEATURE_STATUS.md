@@ -1,7 +1,7 @@
 # Teddy Bud feature status
 
-Last reviewed: 2026-10-25  
-Working branch: `feature/phase-3-chat-polish`
+Last reviewed: 2026-10-31  
+Working branch: `main`
 
 This document distinguishes implemented code from features that still need credentials, architecture work, or release verification. A checked-in implementation is not automatically a production-ready or store-certified feature.
 
