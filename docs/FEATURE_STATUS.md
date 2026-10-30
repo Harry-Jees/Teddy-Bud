@@ -10,7 +10,7 @@ This document distinguishes implemented code from features that still need crede
 - Chat with streamed AI replies through the authenticated gateway.
 - Retry after an eligible failed request, stop an in-flight reply, and display loading/error states.
 - Rename and pin conversations; browse conversation history.
-- Choose among the four Free companion personalities and customize their names.
+- Choose among four available Free companion personalities and customize their names; three Pro and three Premium companion definitions are present as locked previews marked Coming soon. Paid entitlements and checkout are not enabled.
 - Optional, explicitly controlled sharing of saved memories, cross-chat context, and About Me notes.
 - Local journal entries with prompts, editing, deletion, search, and text export.
 - Explicit **Discuss with Teddy** action that places a journal entry into the chat composer for review; it is not sent automatically.
