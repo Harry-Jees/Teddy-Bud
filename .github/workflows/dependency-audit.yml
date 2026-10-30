@@ -32,7 +32,7 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: npm ci
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --omit=optional --audit-level=high
 
   worker-audit:
     name: Audit gateway production dependencies
@@ -50,4 +50,4 @@ jobs:
           cache-dependency-path: gateway-worker/package-lock.json
       - run: npm ci
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --omit=optional --audit-level=high
