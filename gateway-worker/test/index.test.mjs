@@ -494,7 +494,7 @@ test('signup attempts are rate-limited and CORS is restricted to app origins', a
   const env = makeEnv();
   const body = {};
   const approvedOrigin = { Origin: 'http://localhost:5173' };
-  const desktopOrigin = { Origin: 'teddybud-app://app' };
+  const desktopOrigin = { Origin: 'teddybud-app://app', 'CF-Connecting-IP': '198.51.100.12' };
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const response = await worker.fetch(request('/auth/signup', 'POST', body, approvedOrigin), env);
     assert.equal(response.status, 400);
