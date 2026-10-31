@@ -195,6 +195,35 @@ function validRecoveryPassphrase(value) {
   return typeof value === 'string' && value.length >= 10 && value.length <= 128 && value === value.trim();
 }
 
+async function confirmSignupUserAndGetSession(env, email, password, signupUser) {
+  const userId = typeof signupUser?.id === 'string' ? signupUser.id : '';
+  const signupEmail = typeof signupUser?.email === 'string' ? signupUser.email.trim().toLowerCase() : '';
+  if (!userId || signupEmail !== email) return null;
+
+  // Supabase returns a user without an access token when Confirm Email is
+  // enabled. Teddy Bud deliberately does not use verification-email flows, so
+  // confirm only the account returned by this successful password signup,
+  // using the server-only service-role key, then obtain its normal password
+  // session. Never accept a client-supplied user ID for this operation.
+  const confirmed = await supabaseAdminRequest(env, `admin/users/${encodeURIComponent(userId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email_confirm: true }),
+  });
+  const confirmedUser = confirmed.payload?.user ?? confirmed.payload;
+  if (!confirmed.response.ok || confirmedUser?.id !== userId) return null;
+
+  const signedIn = await supabaseRequest(env, 'token?grant_type=password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!signedIn.response.ok
+    || signedIn.payload?.user?.id !== userId
+    || typeof signedIn.payload?.access_token !== 'string') return null;
+  return signedIn.payload;
+}
+
 async function passwordSignUp(request, env) {
   if (!await rateLimit(request, env, 'password-signup', 5)) return json(429, { error: 'Too many account requests. Try again later.' });
   const parsed = await readJson(request);
@@ -209,14 +238,31 @@ async function passwordSignUp(request, env) {
   const { response, payload } = await supabaseRequest(env, 'signup', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
   });
-  if (!response.ok || typeof payload?.user?.id !== 'string' || typeof payload?.access_token !== 'string') {
-    return json(response.status === 429 ? 429 : 400, { error: 'Account creation failed. Check your details and try signing in if you already have an account.' });
+  if (!response.ok) {
+    return json(response.status === 429 ? 429 : response.status >= 500 ? 503 : 400, {
+      error: 'Account creation failed. Check your details and try signing in if you already have an account.',
+    });
   }
-  if (!await hasSupabaseProfile(env, payload.user.id, payload.access_token)) return json(403, { error: 'Account profile setup did not complete.' });
+
+  let authPayload = payload;
+  if (typeof authPayload?.user?.id === 'string' && typeof authPayload?.access_token !== 'string') {
+    authPayload = await confirmSignupUserAndGetSession(env, email, password, authPayload.user);
+    if (!authPayload) {
+      return json(503, {
+        error: 'Your account was created, but sign-in setup could not finish. Try signing in with the password you chose; do not create another account.',
+      });
+    }
+  }
+  if (typeof authPayload?.user?.id !== 'string' || typeof authPayload?.access_token !== 'string') {
+    return json(503, { error: 'The account service did not return a usable sign-in session. Please try again.' });
+  }
+  if (!await hasSupabaseProfile(env, authPayload.user.id, authPayload.access_token)) {
+    return json(403, { error: 'Account profile setup did not complete.' });
+  }
   const verifier = await recoveryVerifier(env, email, recoveryKey);
-  const verifierSaved = await createRecoveryVerifier(env, payload.user.id, email, verifier);
+  const verifierSaved = await createRecoveryVerifier(env, authPayload.user.id, email, verifier);
   if (!verifierSaved) return json(409, { error: 'An account with this email already exists. Please sign in.' });
-  return authResponse(payload.user.id, 'password-user', env);
+  return authResponse(authPayload.user.id, 'password-user', env);
 }
 
 async function passwordSignIn(request, env) {
