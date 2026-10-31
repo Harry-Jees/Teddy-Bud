@@ -273,7 +273,7 @@ test('signup completes a password session when Supabase requires email confirmat
       }), { status: 200 });
     }
     if (url.pathname === `/auth/v1/admin/users/${userId}` && method === 'PUT') {
-      assert.equal(init.headers.Authorization, 'Bearer test-service-role-key');
+      assert.equal(new Headers(init.headers).get('Authorization'), 'Bearer test-service-role-key');
       assert.deepEqual(body, { email_confirm: true });
       return new Response(JSON.stringify({
         id: userId,
