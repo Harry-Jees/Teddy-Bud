@@ -224,6 +224,75 @@ async function confirmSignupUserAndGetSession(env, email, password, signupUser) 
   return signedIn.payload;
 }
 
+
+function supabaseErrorCode(payload) {
+  const code = typeof payload?.code === 'string' ? payload.code
+    : typeof payload?.error_code === 'string' ? payload.error_code : '';
+  return code.trim().toLowerCase();
+}
+
+function isDuplicateSignupFailure(response, payload) {
+  const code = supabaseErrorCode(payload);
+  if (code === 'user_already_exists' || code === 'email_exists') return true;
+  const message = [payload?.msg, payload?.message, payload?.error_description]
+    .filter(value => typeof value === 'string').join(' ').toLowerCase();
+  return response.status === 422 && /user already registered|email already exists/.test(message);
+}
+
+async function findSupabaseUserByEmail(env, email) {
+  const { url, serviceKey } = supabaseAdminConfig(env);
+  const endpoint = new URL(url + '/auth/v1/admin/users');
+  // The admin filter is a substring search; verify exact email equality before
+  // using any returned user ID.
+  endpoint.searchParams.set('filter', email);
+  endpoint.searchParams.set('page', '1');
+  endpoint.searchParams.set('per_page', '100');
+  const response = await fetch(endpoint, {
+    headers: { apikey: serviceKey, Authorization: 'Bearer ' + serviceKey, Accept: 'application/json' },
+  });
+  if (!response.ok) throw new Error('Supabase account lookup failed.');
+  const payload = await response.json();
+  const users = Array.isArray(payload?.users) ? payload.users : [];
+  const matches = users.filter(user =>
+    typeof user?.id === 'string' && typeof user?.email === 'string'
+    && user.email.trim().toLowerCase() === email
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
+async function resumeExistingSignup(env, email, password) {
+  let signedIn = await supabaseRequest(env, 'token?grant_type=password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!signedIn.response.ok && supabaseErrorCode(signedIn.payload) === 'email_not_confirmed') {
+    // GoTrue checks the supplied password before returning email_not_confirmed.
+    // Only after that proof do we resolve and confirm the exact matching account.
+    const user = await findSupabaseUserByEmail(env, email);
+    if (!user) return null;
+    const confirmed = await supabaseAdminRequest(env, 'admin/users/' + encodeURIComponent(user.id), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email_confirm: true }),
+    });
+    const confirmedUser = confirmed.payload?.user ?? confirmed.payload;
+    if (!confirmed.response.ok || confirmedUser?.id !== user.id) return null;
+    signedIn = await supabaseRequest(env, 'token?grant_type=password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  if (!signedIn.response.ok
+    || typeof signedIn.payload?.user?.id !== 'string'
+    || typeof signedIn.payload?.access_token !== 'string'
+    || signedIn.payload.user.email?.trim().toLowerCase() !== email) return null;
+  return signedIn.payload;
+}
+
 async function passwordSignUp(request, env) {
   if (!await rateLimit(request, env, 'password-signup', 5)) return json(429, { error: 'Too many account requests. Try again later.' });
   const parsed = await readJson(request);
@@ -238,14 +307,41 @@ async function passwordSignUp(request, env) {
   const { response, payload } = await supabaseRequest(env, 'signup', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
   });
-  if (!response.ok) {
-    return json(response.status === 429 ? 429 : response.status >= 500 ? 503 : 400, {
-      error: 'Account creation failed. Check your details and try signing in if you already have an account.',
-    });
-  }
 
   let authPayload = payload;
-  if (typeof authPayload?.user?.id === 'string' && typeof authPayload?.access_token !== 'string') {
+  let resumedExistingAccount = false;
+  if (!response.ok) {
+    const upstreamCode = supabaseErrorCode(payload);
+    if (isDuplicateSignupFailure(response, payload)) {
+      // A previous attempt may have created the Supabase user but failed before
+      // Teddy Bud issued a session. Resume only after the submitted password
+      // authenticates; never accept a client-supplied user ID for confirmation.
+      authPayload = await resumeExistingSignup(env, email, password);
+      if (!authPayload) {
+        console.warn('Supabase signup retry could not authenticate existing account', {
+          status: response.status, code: upstreamCode || 'user_already_exists',
+        });
+        return json(409, {
+          error: 'An account with this email already exists. Use the password from its first signup attempt, or switch to Sign in.',
+        });
+      }
+      resumedExistingAccount = true;
+    } else {
+      console.warn('Supabase password signup rejected', { status: response.status, code: upstreamCode || 'unknown' });
+      if (upstreamCode === 'weak_password') return json(400, { error: 'Choose a stronger password and try again.' });
+      if (upstreamCode === 'over_request_rate_limit' || upstreamCode === 'over_email_send_rate_limit') {
+        return json(429, { error: 'Too many account requests. Try again later.' });
+      }
+      if (upstreamCode === 'email_provider_disabled' || upstreamCode === 'signup_disabled') {
+        return json(503, { error: 'New account creation is temporarily unavailable. Please try again later.' });
+      }
+      return json(response.status >= 500 ? 503 : 400, {
+        error: 'Account creation was rejected. Check the email and password requirements, or switch to Sign in if this email was used before.',
+      });
+    }
+  }
+
+  if (response.ok && typeof authPayload?.user?.id === 'string' && typeof authPayload?.access_token !== 'string') {
     authPayload = await confirmSignupUserAndGetSession(env, email, password, authPayload.user);
     if (!authPayload) {
       return json(503, {
@@ -258,6 +354,13 @@ async function passwordSignUp(request, env) {
   }
   if (!await hasSupabaseProfile(env, authPayload.user.id, authPayload.access_token)) {
     return json(403, { error: 'Account profile setup did not complete.' });
+  }
+  if (resumedExistingAccount) {
+    const existingVerifier = await findRecoveryVerifier(env, email);
+    if (existingVerifier) {
+      // Do not silently replace an established recovery secret on a signup retry.
+      return json(409, { error: 'This account is already set up. Switch to Sign in instead.' });
+    }
   }
   const verifier = await recoveryVerifier(env, email, recoveryKey);
   const verifierSaved = await createRecoveryVerifier(env, authPayload.user.id, email, verifier);
