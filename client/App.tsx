@@ -30,6 +30,7 @@ import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
 import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
+import { OnboardingSurvey } from './src/components/OnboardingSurvey';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncryptedBackup } from './src/services/backup';
 import { pickBackupFile, saveBackupFile, savePlainTextFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
@@ -360,6 +361,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   const [assistantName, setAssistantName] = useState('Teddy');
   const [assistantCharacterId, setAssistantCharacterId] = useState<AssistantCharacterId>(DEFAULT_ASSISTANT_CHARACTER_ID);
   const [assistantCharacterNames, setAssistantCharacterNames] = useState<AssistantCharacterNames>({ 'teddy-bud': 'Teddy' });
+  const [onboardingSurveyAnswers, setOnboardingSurveyAnswers] = useState<{ question: string; answer: string }[] | undefined>(undefined);
   const [localDataReady, setLocalDataReady] = useState(false);
   const [localDataOwner, setLocalDataOwner] = useState<string | null>(null);
   const [localDataError, setLocalDataError] = useState<string | null>(null);
@@ -397,6 +399,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       assistantName,
       assistantCharacterId,
       assistantCharacterNames,
+      onboardingSurveyAnswers,
     };
     const nextSnapshot: LocalAppData = { ...currentSnapshot, ...overrides };
     await localDataService.save(owner, nextSnapshot);
@@ -416,6 +419,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     if ('assistantName' in overrides) setAssistantName(nextSnapshot.assistantName);
     if ('assistantCharacterId' in overrides) setAssistantCharacterId(nextSnapshot.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
     if ('assistantCharacterNames' in overrides) setAssistantCharacterNames(nextSnapshot.assistantCharacterNames ?? {});
+    if ('onboardingSurveyAnswers' in overrides) setOnboardingSurveyAnswers(nextSnapshot.onboardingSurveyAnswers);
     if (!pendingLocalAction) setLocalDataSaveError(null);
   }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, pendingLocalAction]);
   const refreshCreditBalance = useCallback(async () => {
@@ -457,6 +461,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       setAssistantName(data.assistantName);
       setAssistantCharacterId(data.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
       setAssistantCharacterNames(data.assistantCharacterNames ?? {});
+      setOnboardingSurveyAnswers(data.onboardingSurveyAnswers);
       setLocalDataOwner(owner);
       setLocalDataReady(true);
     }).catch(error => {
@@ -481,12 +486,13 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
       assistantName,
       assistantCharacterId,
       assistantCharacterNames,
+      onboardingSurveyAnswers,
     }).then(() => {
       if (!pendingLocalAction) setLocalDataSaveError(null);
     }).catch(error => {
       setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
     });
-  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries, pendingLocalAction]);
+  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries, onboardingSurveyAnswers, pendingLocalAction]);
 
   const appendConversationMessage = (conversationId: string, message: Message) => {
     const updatedAt = new Date().toISOString();
@@ -1059,6 +1065,12 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   };
 
   const rootInsetsStyle = { paddingTop: insets.top, paddingBottom: wide ? insets.bottom : 0 };
+  if (localDataReady && localDataOwner === owner && onboardingSurveyAnswers === undefined) {
+    return <OnboardingSurvey onComplete={async answers => {
+      await persistLocalSnapshot({ onboardingSurveyAnswers: answers });
+    }} />;
+  }
+
   return (
     <View style={[styles.root, rootInsetsStyle]}>
       {wide && <Sidebar
