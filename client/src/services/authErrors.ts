@@ -81,7 +81,7 @@ function messageForStatus(status: number, context: AuthErrorContext): AuthServic
   }
 
   if (status === 409 && context === 'create-account') {
-    return new AuthServiceError('We could not create an account with those details. Check them, or try signing in if you already have an account.', 'validation', status);
+    return new AuthServiceError('This email already has a Teddy Bud account. Switch to Sign in instead.', 'validation', status);
   }
 
   if (status === 429) {
