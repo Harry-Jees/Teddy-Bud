@@ -421,7 +421,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     if ('assistantCharacterNames' in overrides) setAssistantCharacterNames(nextSnapshot.assistantCharacterNames ?? {});
     if ('onboardingSurveyAnswers' in overrides) setOnboardingSurveyAnswers(nextSnapshot.onboardingSurveyAnswers);
     if (!pendingLocalAction) setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, pendingLocalAction]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, pendingLocalAction]);
   const refreshCreditBalance = useCallback(async () => {
     try {
       setCreditBalance(await gatewayService.getCreditBalance(sessionToken));
