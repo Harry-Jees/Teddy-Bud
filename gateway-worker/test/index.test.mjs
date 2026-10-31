@@ -251,6 +251,73 @@ test('signup creates a password account and session without email verification',
   }
 });
 
+test('signup completes a password session when Supabase requires email confirmation', async () => {
+  const env = makeEnv();
+  env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+  env.RECOVERY_KEY_SECRET = 'test-recovery-secret-with-more-than-32-characters';
+  const userId = 'unconfirmed-password-user';
+  const recoveryRows = [];
+  const calls = [];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    const method = init.method ?? (input instanceof Request ? input.method : 'GET');
+    const body = typeof init.body === 'string' ? JSON.parse(init.body) : null;
+    calls.push({ path: url.pathname + url.search, method, body });
+
+    if (url.pathname === '/auth/v1/signup' && method === 'POST') {
+      assert.equal(body.email, 'person@example.com');
+      return new Response(JSON.stringify({
+        user: { id: userId, email: body.email },
+        session: null,
+      }), { status: 200 });
+    }
+    if (url.pathname === `/auth/v1/admin/users/${userId}` && method === 'PUT') {
+      assert.equal(new Headers(init.headers).get('Authorization'), 'Bearer test-service-role-key');
+      assert.deepEqual(body, { email_confirm: true });
+      return new Response(JSON.stringify({
+        id: userId,
+        email: 'person@example.com',
+        email_confirmed_at: new Date().toISOString(),
+      }), { status: 200 });
+    }
+    if (url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password' && method === 'POST') {
+      assert.deepEqual(body, { email: 'person@example.com', password: 'a-secure-password-long-enough' });
+      return new Response(JSON.stringify({
+        access_token: 'supabase-password-token',
+        user: { id: userId, email: 'person@example.com' },
+      }), { status: 200 });
+    }
+    if (url.pathname === '/rest/v1/user_profiles' && method === 'GET') {
+      return new Response(JSON.stringify([{ user_id: userId }]), { status: 200 });
+    }
+    if (url.pathname === '/rest/v1/account_recovery_verifiers' && method === 'POST') {
+      recoveryRows.push(body);
+      return new Response(null, { status: 201 });
+    }
+    throw new Error(`Unexpected upstream request: ${method} ${url}`);
+  };
+
+  try {
+    const signup = await jsonResponse(await worker.fetch(request('/auth/signup', 'POST', {
+      email: 'Person@example.com',
+      password: 'a-secure-password-long-enough',
+      recoveryKey: 'six-random-words-kept-safe-2026',
+    }), env));
+    assert.equal(signup.status, 200);
+    assert.equal(typeof signup.body.accessToken, 'string');
+    const claims = JSON.parse(Buffer.from(signup.body.accessToken.split('.')[1], 'base64url').toString('utf8'));
+    assert.equal(claims.sub, userId);
+    assert.ok(calls.some(call => call.method === 'PUT' && call.path === `/auth/v1/admin/users/${userId}`));
+    assert.ok(calls.some(call => call.path === '/auth/v1/token?grant_type=password'));
+    assert.deepEqual(Object.keys(recoveryRows[0]).sort(), ['email', 'user_id', 'verifier']);
+    assert.equal(recoveryRows[0].user_id, userId);
+    assert.equal(recoveryRows[0].verifier.length, 43);
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
 test('a valid legacy session migrates to password auth without changing chat owner ID', async () => {
   const env = makeEnv();
   env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';

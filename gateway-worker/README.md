@@ -5,7 +5,7 @@ This Worker is deployed at `https://teddy-bud-browser-gateway.harryjees.workers.
 ## Supabase setup
 
 1. Apply the profile migrations and [`20261020165119_add_account_recovery_verifiers.sql`](../supabase/migrations/20261020165119_add_account_recovery_verifiers.sql) from the repository root.
-2. Enable Supabase Auth's Email provider and disable **Confirm email**. Email is used as an account identifier; the app does not send signup or password-reset emails. This requires no purchased domain or SMTP provider.
+2. Enable Supabase Auth's Email provider and allow new users to sign up. Teddy Bud does not use confirmation-email or password-reset-email flows. When Supabase returns a newly created user without a session because **Confirm email** is enabled, the gateway confirms only that signup's returned user with its server-only service-role key, then obtains a normal password session. The key is never exposed to the client. This requires no purchased domain or SMTP provider.
 3. Configure Auth's password policy to require at least 6 characters. The app enforces that minimum too. Supabase Auth stores the password verifier; the app and gateway never save plaintext passwords. The app stores a keyed verifier for the recovery passphrase, never the passphrase itself or the user's password.
 
 The recovery table has RLS enabled and grants no access to `anon` or `authenticated`. Only the gateway's server-side Supabase service-role secret can read or write it. The table stores the normalized email and an HMAC verifier, never the recovery passphrase itself. The HMAC uses a separate gateway secret. Do not expose either server secret in the client bundle.
