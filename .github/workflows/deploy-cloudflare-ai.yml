@@ -95,7 +95,7 @@ jobs:
               {
                 "type": "plain_text",
                 "name": "AUTH_REDIRECT_ORIGINS",
-                "text": "https://teddybud.vercel.app,https://teddy-bud-web.vercel.app,http://localhost:5173,http://127.0.0.1:5173"
+                "text": "https://teddybud.vercel.app,https://teddy-bud-web.vercel.app,http://localhost:5173,http://127.0.0.1:5173,teddybud-app://app"
               },
               {
                 "type": "kv_namespace",
