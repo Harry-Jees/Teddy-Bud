@@ -1,7 +1,7 @@
 # Teddy Bud feature status
 
-Last reviewed: 2026-10-31  
-Working branch: `main`
+Last reviewed: 2026-10-25  
+Working branch: `feature/phase-3-chat-polish`
 
 This document distinguishes implemented code from features that still need credentials, architecture work, or release verification. A checked-in implementation is not automatically a production-ready or store-certified feature.
 
@@ -10,7 +10,7 @@ This document distinguishes implemented code from features that still need crede
 - Chat with streamed AI replies through the authenticated gateway.
 - Retry after an eligible failed request, stop an in-flight reply, and display loading/error states.
 - Rename and pin conversations; browse conversation history.
-- Choose among four available Free companion personalities and customize their names; three Pro and three Premium companion definitions are present as locked previews marked Coming soon. Paid entitlements and checkout are not enabled.
+- Choose among the four Free companion personalities and customize their names.
 - Optional, explicitly controlled sharing of saved memories, cross-chat context, and About Me notes.
 - Local journal entries with prompts, editing, deletion, search, and text export.
 - Explicit **Discuss with Teddy** action that places a journal entry into the chat composer for review; it is not sent automatically.
@@ -35,7 +35,7 @@ This document distinguishes implemented code from features that still need crede
 |---|---|---|
 | Paid Pro/Premium plans | Plan entitlements, provider-cost metering, durable billing ledger, checkout, signed webhook verification, renewals, refunds, cancellation, reconciliation | No merchant configuration or verified production payment flow is present. Paid checkout must stay disabled. |
 | Enterprise administration | Tenant provisioning, admin console, per-user quotas, operational audit exports, chargeback, policy management | Current endpoint configuration is deployment-managed; no self-serve multi-tenant control plane. |
-| Voice | Speech capture and editable transcription are implemented for browser and Android, with Electron audio-only permission handling. Voice playback is not implemented; speech recognition still needs platform/device verification and lifecycle regression coverage. | The current feature is dictation only, not voice conversation or text-to-speech. Recognition may be processed by the browser/OS speech provider; the app does not promise on-device transcription. |
+| Voice | Speech capture, transcription, playback, permission handling, privacy controls, platform testing | Requires a deliberate cross-platform audio architecture and additional native dependencies. |
 | Reminders/notifications | User-controlled schedules, permission handling, local notification implementation and tests across platforms | Not implemented by the current client. |
 | Single-device enforcement | Verify on the deployed Worker and exercise concurrent logins under production-like load | The Durable Object atomically selects one active session per account, migrates the legacy session-ID index on access, and every authenticated request checks the active ID. Tests cover a new login invalidating an old token, legacy index migration, and stale-session removal. Production deployment and concurrency verification remain. |
 | End-to-end encrypted AI conversations | A design compatible with the inference model and privacy requirements | A remote model must receive readable prompt content; current transport encryption is not end-to-end encryption. |
