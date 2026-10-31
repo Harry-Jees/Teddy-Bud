@@ -187,15 +187,35 @@ jobs:
             status="$(curl --silent --show-error -o /dev/null -w '%{http_code}' "$WORKER_URL$path")"
             test "$status" = "401" || { echo "::error::$path expected HTTP 401 without a session, got $status."; exit 1; }
           done
-          curl --silent --show-error --fail -X OPTIONS \
-            -H 'Origin: teddybud-app://app' \
-            -H 'Access-Control-Request-Method: POST' \
-            -H 'Access-Control-Request-Headers: content-type' \
-            -D "$RUNNER_TEMP/desktop-cors-headers.txt" \
-            -o /dev/null "$WORKER_URL/auth/signup"
-          grep -Fqi 'Access-Control-Allow-Origin: teddybud-app://app' "$RUNNER_TEMP/desktop-cors-headers.txt" || {
+          cors_ready=false
+          for attempt in $(seq 1 10); do
+            curl --silent --show-error --fail -X OPTIONS \
+              -H 'Origin: teddybud-app://app' \
+              -H 'Access-Control-Request-Method: POST' \
+              -H 'Access-Control-Request-Headers: content-type' \
+              -D "$RUNNER_TEMP/desktop-cors-headers.txt" \
+              -o /dev/null "$WORKER_URL/auth/signup"
+            if grep -Fqi 'Access-Control-Allow-Origin: teddybud-app://app' "$RUNNER_TEMP/desktop-cors-headers.txt" \
+              || grep -Fqi 'Access-Control-Allow-Origin: null' "$RUNNER_TEMP/desktop-cors-headers.txt"; then
+              cors_ready=true
+              break
+            fi
+            sleep 3
+          done
+          if [ "$cors_ready" != true ]; then
             echo "::error::Desktop app origin is not allowed by production gateway CORS."
             cat "$RUNNER_TEMP/desktop-cors-headers.txt"
+            exit 1
+          fi
+          curl --silent --show-error --fail -X OPTIONS \
+            -H 'Origin: null' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            -D "$RUNNER_TEMP/opaque-cors-headers.txt" \
+            -o /dev/null "$WORKER_URL/auth/signup"
+          grep -Fqi 'Access-Control-Allow-Origin: null' "$RUNNER_TEMP/opaque-cors-headers.txt" || {
+            echo "::error::Opaque Electron authentication origin is not allowed by production gateway CORS."
+            cat "$RUNNER_TEMP/opaque-cors-headers.txt"
             exit 1
           }
           echo "Worker health, auth guards, and Electron desktop signup CORS preflight passed."

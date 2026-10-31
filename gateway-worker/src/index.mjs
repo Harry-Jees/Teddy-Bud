@@ -33,7 +33,14 @@ function withCors(response, request, env) {
   const allowedOrigins = typeof env.AUTH_REDIRECT_ORIGINS === 'string'
     ? env.AUTH_REDIRECT_ORIGINS.split(',').map(value => value.trim()).filter(Boolean)
     : [];
-  if (origin && allowedOrigins.includes(origin)) headers.set('Access-Control-Allow-Origin', origin);
+  // Chromium can serialize a privileged Electron custom-protocol page as the
+  // opaque origin "null" when it performs a cross-origin request. Permit that
+  // origin only on authentication routes; never grant opaque-origin CORS access
+  // to authenticated chat, model, credit, or user-data APIs.
+  const opaqueAuthOrigin = origin === 'null' && new URL(request.url).pathname.startsWith('/auth/');
+  if (origin && (allowedOrigins.includes(origin) || opaqueAuthOrigin)) {
+    headers.set('Access-Control-Allow-Origin', origin);
+  }
   if (origin) headers.append('Vary', 'Origin');
   headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
