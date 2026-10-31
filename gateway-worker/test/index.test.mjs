@@ -515,6 +515,21 @@ test('signup attempts are rate-limited and CORS is restricted to app origins', a
   assert.equal(desktopSignup.status, 400);
   assert.equal(desktopSignup.headers.get('Access-Control-Allow-Origin'), desktopOrigin.Origin);
 
+  // Some Chromium/Electron versions serialize the privileged custom app origin
+  // as opaque "null". Permit it only for auth routes, never protected APIs.
+  const opaqueOrigin = { Origin: 'null', 'CF-Connecting-IP': '198.51.100.13' };
+  const opaquePreflight = await worker.fetch(request('/auth/signup', 'OPTIONS', undefined, opaqueOrigin), env);
+  assert.equal(opaquePreflight.status, 204);
+  assert.equal(opaquePreflight.headers.get('Access-Control-Allow-Origin'), 'null');
+
+  const opaqueSignup = await worker.fetch(request('/auth/signup', 'POST', body, opaqueOrigin), env);
+  assert.equal(opaqueSignup.status, 400);
+  assert.equal(opaqueSignup.headers.get('Access-Control-Allow-Origin'), 'null');
+
+  const opaqueProtectedPreflight = await worker.fetch(request('/v1/models', 'OPTIONS', undefined, opaqueOrigin), env);
+  assert.equal(opaqueProtectedPreflight.status, 204);
+  assert.equal(opaqueProtectedPreflight.headers.get('Access-Control-Allow-Origin'), null);
+
   const blockedOrigin = await worker.fetch(request('/auth/signup', 'OPTIONS', undefined, { Origin: 'https://attacker.example' }), env);
   assert.equal(blockedOrigin.headers.get('Access-Control-Allow-Origin'), null);
 });
