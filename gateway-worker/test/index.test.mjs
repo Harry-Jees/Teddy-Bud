@@ -116,7 +116,7 @@ function makeEnv() {
     JWT_SIGNING_SECRET: signingSecret,
     SUPABASE_URL: 'https://teddy-bud-test.supabase.co',
     SUPABASE_ANON_KEY: 'test-supabase-anon-key',
-    AUTH_REDIRECT_ORIGINS: 'http://localhost:5173,http://127.0.0.1:5173',
+    AUTH_REDIRECT_ORIGINS: 'http://localhost:5173,http://127.0.0.1:5173,teddybud-app://app',
     AI: {
       run: async (model, options) => {
         if (options.stream) return new ReadableStream({
@@ -494,6 +494,7 @@ test('signup attempts are rate-limited and CORS is restricted to app origins', a
   const env = makeEnv();
   const body = {};
   const approvedOrigin = { Origin: 'http://localhost:5173' };
+  const desktopOrigin = { Origin: 'teddybud-app://app', 'CF-Connecting-IP': '198.51.100.12' };
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const response = await worker.fetch(request('/auth/signup', 'POST', body, approvedOrigin), env);
     assert.equal(response.status, 400);
@@ -505,6 +506,15 @@ test('signup attempts are rate-limited and CORS is restricted to app origins', a
   const preflight = await worker.fetch(request('/auth/signup', 'OPTIONS', undefined, approvedOrigin), env);
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get('Access-Control-Allow-Origin'), approvedOrigin.Origin);
+
+  const desktopPreflight = await worker.fetch(request('/auth/signup', 'OPTIONS', undefined, desktopOrigin), env);
+  assert.equal(desktopPreflight.status, 204);
+  assert.equal(desktopPreflight.headers.get('Access-Control-Allow-Origin'), desktopOrigin.Origin);
+
+  const desktopSignup = await worker.fetch(request('/auth/signup', 'POST', body, desktopOrigin), env);
+  assert.equal(desktopSignup.status, 400);
+  assert.equal(desktopSignup.headers.get('Access-Control-Allow-Origin'), desktopOrigin.Origin);
+
   const blockedOrigin = await worker.fetch(request('/auth/signup', 'OPTIONS', undefined, { Origin: 'https://attacker.example' }), env);
   assert.equal(blockedOrigin.headers.get('Access-Control-Allow-Origin'), null);
 });

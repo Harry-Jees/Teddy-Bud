@@ -95,7 +95,7 @@ jobs:
               {
                 "type": "plain_text",
                 "name": "AUTH_REDIRECT_ORIGINS",
-                "text": "https://teddybud.vercel.app,https://teddy-bud-web.vercel.app,http://localhost:5173,http://127.0.0.1:5173"
+                "text": "https://teddybud.vercel.app,https://teddy-bud-web.vercel.app,http://localhost:5173,http://127.0.0.1:5173,teddybud-app://app"
               },
               {
                 "type": "kv_namespace",
@@ -187,7 +187,18 @@ jobs:
             status="$(curl --silent --show-error -o /dev/null -w '%{http_code}' "$WORKER_URL$path")"
             test "$status" = "401" || { echo "::error::$path expected HTTP 401 without a session, got $status."; exit 1; }
           done
-          echo "Worker health is ready; model catalog and credit balance remain authenticated."
+          curl --silent --show-error --fail -X OPTIONS \
+            -H 'Origin: teddybud-app://app' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: content-type' \
+            -D "$RUNNER_TEMP/desktop-cors-headers.txt" \
+            -o /dev/null "$WORKER_URL/auth/signup"
+          grep -Fqi 'Access-Control-Allow-Origin: teddybud-app://app' "$RUNNER_TEMP/desktop-cors-headers.txt" || {
+            echo "::error::Desktop app origin is not allowed by production gateway CORS."
+            cat "$RUNNER_TEMP/desktop-cors-headers.txt"
+            exit 1
+          }
+          echo "Worker health, auth guards, and Electron desktop signup CORS preflight passed."
       - name: Roll back automatically if deployment verification fails
         if: failure() && steps.deploy.outputs.attempted == 'true' && steps.previous.outputs.version_id != ''
         shell: bash
