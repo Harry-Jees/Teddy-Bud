@@ -1,30 +1,35 @@
-# Product Requirements Document (PRD): Teddy Bud
+# Product Requirements — Teddy Bud
 
-## 1. Product Overview
-Teddy Bud is an emotional companion chat application designed to provide a calm, personal space for natural conversation. It prioritizes warmth, trust, privacy, and technical reliability over generic AI features. It is built as a cross-platform application using React Native.
+## Product promise
+**A little room to breathe.** Teddy Bud is a private, calm AI companion for everyday conversation and personal reflection. It is not a generic AI dashboard, therapist, emergency service, or substitute for professional care.
 
-## 2. Current Platform Scope
-- **Standalone web app**: not in product scope; no hosted browser version or web download is provided.
-- **Internal renderer**: Vite and React Native Web are used to package the shared UI inside Electron desktop apps; local browser preview is for development only.
-- **Android**: ARM64 APK development build.
-- **Desktop**: Windows x64 installer, Apple Silicon macOS package, and x64 Debian/Ubuntu Linux packages through Electron.
-- **Not currently available**: an installable iOS/iPhone/iPad app.
-- **Framework**: React Native, React Native Web as an internal renderer, and Electron desktop packaging.
+## Experience principles
+- Mature, warm, soft UI using claymorphism with Material 3 foundations.
+- Warm ivory, clay, cocoa, and restrained soft accents; no neon, childish cartoon styling, excessive glass, or dark mode.
+- Use an 8-point spacing rhythm, clear typography and hierarchy, accessible touch targets, responsive layouts, and purposeful transitions.
+- Keep the experience simple and conversation-led. Do not add generic document-upload or productivity surfaces.
+- The central **+** starts a new chat immediately. Settings stays easy to reach; Journals belong in Discover; secondary tools should not crowd primary navigation.
 
-Platform support in this section describes the current repository and collected artifacts, not a promise of store approval or signed production distribution.
+## Core capabilities
+- Text chat with streamed responses, conversation history, and visible loading, retry, and failure states.
+- Image understanding through image attachments in chat.
+- Speech-to-text input only: the user initiates recognition, reviews and edits the transcript, then sends it. No generated voice, spoken replies, or voice playback.
+- User-managed memories with explicit controls over what context may be shared with an AI request.
+- Local-first journals and wellbeing entries. They are not sent to AI unless the user explicitly chooses to share selected text.
+- One account per device, username and password only. Display identity as `@username`; do not present email/Gmail as an account identifier.
+- Password recovery may use the account recovery passphrase. Recovery must not imply that local history or encryption keys can be restored on another device.
+- Android biometric sign-in may be enabled after onboarding completion. Password remains the fallback.
+- Free-first usage policy: 40 credits per UTC day; each text or image request costs one credit. Credits are usage limits, not exact provider-cost accounting.
 
-## 3. Core Features
-- **Companion Chat**: Primary surface for conversational AI with support for text, multiline composition, streaming responses, and message history. Includes bounded retries for failed sends.
-- **Memory System**: The app maintains user memories contextually. Users can view, add, edit, forget, and clear specific active memories.
-- **Privacy Controls**: Granular user controls to define what is kept locally, what is sent to the AI, and absolute control to wipe data entirely.
-- **Adaptive UI**: Responsive design adapting from mobile layouts to wide desktop windows safely.
+## Data and privacy
+- Keep conversations, memories, journals, wellbeing data, and preferences local to the device with platform-appropriate encryption.
+- Do not claim cross-device synchronization or end-to-end encryption.
+- Send only the prompt and user-permitted context required for a response through the gateway.
+- Do not automatically include journal entries, mood data, or other sensitive personal context.
+- Password recovery does not recover another device's local data encryption key.
 
-## 4. Non-Goals
-- NOT a generic ChatGPT clone or corporate dashboard.
-- NOT a local AI runtime (No local LLMs, Ollama, or multi-GB model downloads).
-- NO childish cartoon UI, neon, or excessive glassmorphism.
+## Platforms
+Supported targets are Android ARM64 and desktop packages for Windows x64/ARM64, macOS Intel/Apple Silicon, and Linux x64. The browser renderer is internal to development and Electron packaging, not a standalone hosted web app. iOS/iPhone/iPad is not currently offered.
 
-## 5. Security & Privacy Policies
-- All conversation history and approved memories are stored locally in an encrypted database (SQLCipher or equivalent).
-- Database keys and device credentials must be kept in the platform's secure credential store (Keychain/Keystore). There is no plaintext fallback.
-- Only explicitly required context and keyword-relevant memories are sent over the network to the gateway.
+## Release quality
+A successful build is not feature-completion proof. Require automated tests, lint/type checks, package verification, accessibility review, and install/launch tests on target devices. Mark platform or feature support only when evidence exists.

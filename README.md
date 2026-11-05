@@ -6,61 +6,63 @@
 </p>
 
 <p align="center">
-  <a href="https://teddybud.vercel.app/">Official website & portfolio</a> ·
+  <a href="https://teddybud.vercel.app/">Product website</a> ·
   <a href="https://github.com/Harry-Jees/Teddy-Bud">Source repository</a> ·
   <a href="https://github.com/Harry-Jees/Teddy-Bud/issues">Feedback & bug reports</a>
 </p>
 
 ---
 
-## Meet Teddy Bud
+## The product
 
-Teddy Bud is an AI conversation companion built to give people a calmer, more personal place to talk, reflect, and feel heard. It is designed around a simple idea: technology should make room for people—not make their private lives feel like product data.
+Teddy Bud is a calm, personal AI companion for talking things through, reflecting, and returning to conversations that matter. It should feel warm and reassuring—not like a generic AI dashboard, a clinical tool, or a childish character app.
 
-Whether someone wants to talk through a difficult day, organize their thoughts, revisit a meaningful moment, or simply have a friendly conversation, Teddy Bud aims to respond with warmth and care in a clean, approachable interface.
+The product principle is **“A little room to breathe.”** The interface uses a soft, mature claymorphism language with Material 3 foundations, warm ivory and cocoa tones, clear hierarchy, purposeful motion, and an 8-point spacing rhythm. Keep the experience uncluttered and accessible. There is no dark mode.
 
-Teddy Bud is an AI companion, not a therapist, emergency service, or substitute for professional mental-health care. AI responses can be mistaken or incomplete.
+Teddy Bud is an AI companion, not a therapist, emergency service, or substitute for professional care. Responses can be mistaken or incomplete.
 
-## What it is for
+## Product requirements
 
-- **Everyday conversation:** chat naturally with an AI companion.
-- **Image conversations:** attach an image and ask your companion about it.
-- **Free launch allowance:** 40 credits per day; each text or image message costs one credit.
-- **Industrial / Enterprise option:** locally hosted model routing is planned for organizations that need their own inference infrastructure.
-- **A place to reflect:** revisit conversations and keep selected memories that matter to you.
-- **User-controlled memory:** review, edit, or remove saved memories rather than treating every detail as something that must be retained.
-- **Privacy-conscious design:** conversations and approved memories are stored locally with encryption appropriate to the platform.
-- **Choice over shared context:** privacy controls determine which saved memories or excerpts may be included with a message sent to the AI provider.
-- **Cross-platform native experience:** use the Android app or a supported Windows, macOS, or Linux desktop package.
+- **Conversation first:** natural text conversations, streaming responses, history, and clear retry/error states.
+- **Image understanding:** users can attach supported images and discuss them in chat.
+- **Voice input only:** speech-to-text is a composer aid. Users review and edit recognized text before sending. Teddy Bud does not speak replies or provide voice playback.
+- **Local-first personal data:** chats, memories, journals, and wellbeing entries stay on the device. They are not silently synchronized between devices.
+- **Explicit AI context:** only the current conversation and context allowed by the user's controls are sent to the AI gateway. Journal and wellbeing content is not included automatically.
+- **Memory control:** users can review and manage saved memories and decide whether to share them with a request.
+- **One account per device:** account access uses a username and password, not an email/Gmail address. The app displays the account as `@username`. Password recovery uses the user's recovery passphrase; it does not restore local history or encryption keys on another device.
+- **Android biometric sign-in:** after onboarding is completed, users may enable device biometrics for convenient sign-in. Password sign-in remains available.
+- **Free-first launch:** the published allowance is 40 credits per UTC day; text and image requests each cost one credit. This is a usage allowance, not a guarantee of exact provider cost or permanent free access.
+- **Soft, focused UI:** clear, accessible touch targets; responsive mobile and desktop layouts; useful motion without clutter; no exaggerated or distracting effects.
 
-## Privacy by design
+## Navigation and scope
 
-Teddy Bud is designed to minimize unnecessary collection and keep personal conversation data under the user's control.
+The app's primary navigation should stay compact. The central **+** action starts a new chat immediately; it must not open a generic action picker. Secondary tools belong in their appropriate discovery/more surfaces, and Settings must remain easy to reach. Journals belong in Discover. Keep the app focused on companion conversation and personal reflection rather than adding generic document or productivity features.
 
-- Chats, preferences, and approved memories are stored locally on the device.
-- Local data protection uses platform-appropriate encryption and account-scoped keys.
-- Authentication and AI requests go through the configured gateway; provider credentials stay server-side.
-- Only the conversation and optional context selected by the app's behavior and privacy settings are sent to the AI service for a response.
-- Password recovery does not magically restore local chat history or transfer encryption keys to another device.
+Teddy Bud is distributed as an Android app and supported desktop packages. The internal React Native Web renderer is used for development and Electron packaging only; it is not a standalone web app. The separate portfolio website is a presentation site, not the app.
 
-These protections reduce risk but do not mean that data is inaccessible to all software while the app is unlocked. Review the [Security and Privacy guide](guide/SECURITY_AND_PRIVACY.md) before relying on the app for sensitive information.
-
-## Where to use Teddy Bud
-
-| Platform | Current availability |
+| Platform | Status |
 | --- | --- |
-| Web | **Not offered as a standalone app or download** |
-| Android | ARM64 APK in `dist/android/` |
-| Windows | x64 and ARM64 desktop installers in `dist/desktop/` |
-| macOS | Apple Silicon DMG installer in `dist/desktop/` |
-| Linux | x64 Debian package and AppImage in `dist/desktop/` |
-| iOS / iPhone | **Not currently available** |
+| Android | ARM64 development APK |
+| Windows | x64 and ARM64 desktop installers |
+| macOS | Apple Silicon and Intel DMGs |
+| Linux | x64 Debian package and AppImage |
+| Standalone web app | Not offered |
+| iOS / iPhone / iPad | Not currently offered |
 
-The configured distribution set is Android ARM64 APK, Windows x64 and ARM64 installers, macOS Apple Silicon and Intel DMGs, and Linux x64 DEB/AppImage packages. There is no standalone web app, no web download, and no iPhone/iPad installer. Downloads are development builds and may not be signed for trusted public distribution. See [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md) for the exact package set and validation limits. The product direction is documented in [the feature roadmap](docs/MAJOR_UPGRADE_ROADMAP.md).
+Build success and package verification do not replace installation, accessibility, security, or real-device testing. Development packages may not be signed for public distribution.
 
-For the product's public-facing presentation, visit the [Teddy Bud portfolio website](https://teddybud.vercel.app/). This is a portfolio/presentation site, not a web version of the Teddy Bud app.
+## Privacy and safety
 
-## Getting started for developers
+- Local data is protected using platform-appropriate encrypted storage.
+- Authentication and AI requests use the configured gateway; provider credentials remain server-side.
+- Users choose whether saved memory or other permitted context is included with an AI request.
+- Password recovery does not recover another device's local database key or conversation history.
+- Do not describe the app as end-to-end encrypted: the remote model must receive readable prompt content to generate a response.
+- Do not claim clinical, diagnostic, or emergency capabilities.
+
+See [Security and Privacy](guide/SECURITY_AND_PRIVACY.md), [Product Requirements](guide/PRD.md), and [UI/UX Guidelines](guide/UI_UX_GUIDELINES.md).
+
+## Developer setup
 
 Requirements: Node.js 22.12 or newer.
 
@@ -70,58 +72,27 @@ npm ci
 npm run web
 ```
 
-For desktop packaging, the build system creates an internal web-rendered bundle that is loaded by Electron. This is an implementation detail of the desktop app, not a standalone web product.
-
-Run gateway Worker tests separately:
+The browser preview is for development only. For desktop packaging, use the platform scripts in `client/package.json`. Run gateway tests from `gateway-worker/`:
 
 ```sh
-cd gateway-worker
 npm ci
 npm test
 ```
 
-### Common commands
-
-Run client commands from `client/`:
-
-| Purpose | Command |
-| --- | --- |
-| Run local browser preview (development only) | `npm run web` |
-| Client tests | `npm test -- --runInBand` |
-| TypeScript check | `npx tsc --noEmit` |
-| Build internal renderer bundle (used by desktop packaging) | `npm run build:web` |
-| Build desktop package for current OS | `npm run build:dist` |
-| Build Windows installer | `npm run desktop:windows` |
-| Build macOS disk image | `npm run desktop:macos` |
-| Build Linux packages | `npm run desktop:linux` |
-
-Run `python scripts/verify_distributions.py` from the repository root to check collected distribution artifacts.
-
-## How the repository is organized
+## Repository map
 
 | Path | Purpose |
 | --- | --- |
-| `client/` | React Native app, internal web renderer for desktop packaging, desktop wrapper, and client tests |
-| `gateway-worker/` | Cloudflare Worker for account sessions, recovery, and authenticated AI requests |
-| `supabase/migrations/` | Database schema migrations |
-| `guide/` | Product, architecture, UI, privacy, release, and distribution documentation |
+| `client/` | React Native app, internal renderer, desktop wrapper, and client tests |
+| `gateway-worker/` | Cloudflare Worker for account sessions and authenticated AI requests |
+| `supabase/migrations/` | Database migrations used by the gateway |
+| `guide/` | Product, architecture, privacy, UI, release, and distribution documentation |
+| `docs/` | Feature status, acceptance criteria, and upgrade plans |
 | `dist/` | Collected platform packages |
-| `scripts/` | Distribution verification tools |
-| `.github/workflows/` | CI and platform packaging workflow; no website deployment workflow |
+| `.github/workflows/` | CI, packaging, and guarded deployment workflows |
 
-## Documentation and community
+## Status and license
 
-- [Product requirements](guide/PRD.md)
-- [Technical architecture](guide/TECHNICAL_ARCHITECTURE.md)
-- [Security and privacy](guide/SECURITY_AND_PRIVACY.md)
-- [Distribution verification](guide/DISTRIBUTION_VERIFICATION.md)
-- [Contributing](CONTRIBUTING.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security reporting](SECURITY.md)
-- [Support](SUPPORT.md)
+Teddy Bud is under active development. Automated checks validate code and packaging; they do not prove every feature works on every device. See [Distribution Verification](guide/DISTRIBUTION_VERIFICATION.md) for package checks and their limitations.
 
-## Project status and licensing
-
-Teddy Bud is under active development. Build success confirms packaging and automated checks, not complete real-device validation or store approval.
-
-**No license is currently declared in this repository.** Public visibility does not itself grant permission to reuse or redistribute the code. A license should be selected by the project owner before the repository is described as open source.
+No license is currently declared. Public visibility does not itself grant permission to reuse or redistribute the code.
