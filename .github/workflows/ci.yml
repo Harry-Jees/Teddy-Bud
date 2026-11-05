@@ -241,9 +241,9 @@ jobs:
           name: teddy-bud-dist
           path: dist/
           if-no-files-found: error
-      # Same-repository PR, branch-push, and manual runs commit verified distributions.
-      - name: Commit replaced distributions to the triggering branch
-        if: (github.ref_type == 'branch' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      # Keep compiled distributions out of feature branches and PRs; only refresh them on main.
+      - name: Commit replaced distributions to main
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
