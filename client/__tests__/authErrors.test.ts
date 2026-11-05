@@ -9,7 +9,7 @@ import {
 describe('safe authentication error messages', () => {
   test('keeps sign-in credentials generic', () => {
     const error = authServiceErrorFromResponse(401, 'sign-in');
-    expect(error.message).toMatch(/email or password is incorrect/i);
+    expect(error.message).toMatch(/username or password is incorrect/i);
     expect(error.message).not.toMatch(/email does not exist|user not found/i);
     expect(error.kind).toBe('invalid-credentials');
   });

@@ -182,7 +182,7 @@ function AccessGate() {
 
   if (busy) return <AuthLoading />;
   if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
-  return <TeddyBud sessionToken={session.accessToken} onLogout={() => {
+  return <TeddyBud sessionToken={session.accessToken} username={session.username ?? ''} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
       const message = authErrorMessage(logoutError, 'sign-out');
       setError(message);
@@ -204,7 +204,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   const { width } = useWindowDimensions();
   const compact = width < 600;
   const [mode, setMode] = useState<'login' | 'create' | 'recover' | 'migrate'>(initialMode);
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [recoveryPassphrase, setRecoveryPassphrase] = useState('');
@@ -229,20 +229,20 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
     if (submitting) return;
     setSubmitting(true); setFormError(null); setFieldErrors({}); setNotice(null);
     try {
-      if (mode !== 'migrate' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-        throw new AuthValidationError('Enter a valid email address.', 'email');
+      if (mode !== 'migrate' && !/^[a-z0-9_]{3,24}$/.test(username.trim().toLowerCase())) {
+        throw new AuthValidationError('Use 3–24 characters: lowercase letters, numbers, or underscores.', 'username');
       }
       if (mode === 'login' && !password) throw new AuthValidationError('Enter your password.', 'password');
 
       if (mode === 'login') {
-        onAuthenticated(await browserAuthService.signIn(email.trim(), password));
+        onAuthenticated(await browserAuthService.signIn(username.trim().toLowerCase(), password));
       } else if (mode === 'create') {
         if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.', 'password');
         if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.', 'confirmPassword');
         const phrase = recoveryPassphrase.trim();
         if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.', 'recoveryPassphrase');
         if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.', 'recoveryPassphraseConfirmation');
-        onAuthenticated(await browserAuthService.createAccount(email.trim(), password, phrase));
+        onAuthenticated(await browserAuthService.createAccount(username.trim().toLowerCase(), password, phrase));
       } else if (mode === 'migrate') {
         if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.');
         if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.');
@@ -253,7 +253,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       } else {
         if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a new password between 6 and 128 characters.', 'password');
         if (recoveryPassphrase.trim().length < 10) throw new AuthValidationError('Enter the recovery passphrase you chose when you created your account.', 'recoveryPassphrase');
-        await browserAuthService.recoverPassword(email.trim(), recoveryPassphrase.trim(), password);
+        await browserAuthService.recoverPassword(username.trim().toLowerCase(), recoveryPassphrase.trim(), password);
         setMode('login'); setPassword(''); setRecoveryPassphrase('');
         setNotice('Password changed. Sign in with your new password.');
       }
@@ -278,7 +278,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   };
 
   const title = mode === 'create' ? 'Create your private space.' : mode === 'recover' ? 'Reset your password.' : mode === 'migrate' ? 'Keep your existing space.' : 'Welcome back.';
-  const actionLabel = mode === 'create' ? 'Create account' : mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
+  const actionLabel = mode === 'create' ? 'Create private space' : mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
 
   return <KeyboardAvoidingView style={styles.authScreen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.authScrollContent, compact && styles.authScrollContentCompact]}>
@@ -286,12 +286,12 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       <View style={styles.authMark}><Image source={teddyBudLogo} style={styles.authLogo} accessibilityLabel="Teddy Bud" /></View>
       <Text style={styles.authEyebrow}>Teddy Bud</Text>
       <Text style={styles.authTitle}>{title}</Text>
-      <Text style={styles.authBody}>{mode === 'create' ? 'Create a strong password and a recovery passphrase you can keep safe. Your account opens your private space on this device.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in to open your private space on this device.'}</Text>
+      <Text style={styles.authBody}>{mode === 'create' ? 'Choose a username, password, and recovery passphrase. Your private space stays on this device.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in with your username to open your private space on this device.'}</Text>
       {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authErrorText}>{formError || error}</Text></View>}
       {!!notice && <View style={styles.authNotice}><Text accessibilityLiveRegion="polite" style={styles.authNoticeText}>{notice}</Text></View>}
       {mode !== 'migrate' && <>
-        <TextInput accessibilityLabel="Email" accessibilityHint={fieldErrors.email} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" value={email} onChangeText={value => { setEmail(value); clearFieldError('email'); }} placeholder="Email address" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.email && styles.authInputInvalid]} editable={!submitting} />
-        {fieldErrors.email && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.email}</Text>}
+        <TextInput accessibilityLabel="Username" accessibilityHint={fieldErrors.username} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" value={username} onChangeText={value => { setUsername(value); clearFieldError('username'); }} placeholder="Username" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.username && styles.authInputInvalid]} editable={!submitting} />
+        {fieldErrors.username && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.username}</Text>}
       </>}
       {mode === 'recover' && <>
         <TextInput accessibilityLabel="Recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.recoveryPassphrase && styles.authInputInvalid]} editable={!submitting} />
@@ -310,23 +310,29 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
         <Text style={styles.authKeyLabel}>RECOVERY PASSPHRASE</Text>
         <TextInput accessibilityLabel="Choose recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="10–128 characters" placeholderTextColor="#938A80" maxLength={128} style={[styles.authInput, fieldErrors.recoveryPassphrase && styles.authInputInvalid]} editable={!submitting} />
         {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
-        <Text style={styles.authFootnote}>Choose a unique recovery passphrase of at least 10 characters and keep it somewhere safe. You will need it with your email to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
+        <Text style={styles.authFootnote}>Choose a unique recovery passphrase of at least 10 characters and keep it somewhere safe. You will need it with your username to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
         <TextInput accessibilityLabel="Confirm recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphraseConfirmation} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphraseConfirmation} onChangeText={value => { setRecoveryPassphraseConfirmation(value); clearFieldError('recoveryPassphraseConfirmation'); }} placeholder="Confirm recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={[styles.authInput, fieldErrors.recoveryPassphraseConfirmation && styles.authInputInvalid]} editable={!submitting} />
         {fieldErrors.recoveryPassphraseConfirmation && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphraseConfirmation}</Text>}
       </>}
       <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
       </Pressable>
+      {mode === 'login' && Platform.OS === 'android' && <Pressable accessibilityRole="button" disabled={submitting} onPress={async () => {
+        setSubmitting(true); setFormError(null);
+        try { onAuthenticated(await browserAuthService.signInWithBiometrics()); }
+        catch (biometricError) { setFormError(authErrorMessage(biometricError, 'sign-in')); }
+        finally { setSubmitting(false); }
+      }} style={[styles.authLink, { borderWidth: 1, borderColor: C.line, borderRadius: 14, marginTop: 8 }]}><Text style={styles.authLinkText}>Use fingerprint / face unlock</Text></Pressable>}
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
       {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Keep chats from the existing account on this device</Text></Pressable>}
-      {mode === 'recover' ? <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>Back to sign in</Text></Pressable> : <Pressable accessibilityRole="button" onPress={() => changeMode(mode === 'login' ? 'create' : 'login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'login' ? 'Create an account' : 'Already have an account? Sign in'}</Text></Pressable>}
+      {mode === 'recover' ? <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>Back to sign in</Text></Pressable> : <Pressable accessibilityRole="button" onPress={() => changeMode(mode === 'login' ? 'create' : 'login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'login' ? 'Create a private space' : 'Already set up? Sign in'}</Text></Pressable>}
       <Text style={styles.authFootnote}>Your chats stay encrypted on this device. Your password and recovery passphrase are never stored in plaintext.</Text>
     </View>
     </ScrollView>
   </KeyboardAvoidingView>;
 }
 
-function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: () => void }) {
+function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; username: string; onLogout: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 800;
@@ -690,9 +696,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
     setActiveConversationId(id);
     setPage('chat');
     setDraft('');
-  }, []);
-
-  const toggleSidebarCollapsed = useCallback(() => {
+  }, []);  const toggleSidebarCollapsed = useCallback(() => {
     setSidebarCollapsed(value => !value);
   }, []);
 
@@ -1068,6 +1072,12 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
   if (localDataReady && localDataOwner === owner && onboardingSurveyAnswers === undefined) {
     return <OnboardingSurvey onComplete={async answers => {
       await persistLocalSnapshot({ onboardingSurveyAnswers: answers });
+      if (Platform.OS === 'android' && await browserAuthService.supportsBiometrics()) {
+        Alert.alert('Make sign-in easier', 'Use your device biometrics to sign in to Teddy Bud next time. Your password stays in Android’s protected credential storage.', [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Enable', onPress: () => { browserAuthService.enableBiometricSignIn().catch(() => Alert.alert('Could not enable biometric sign-in', 'You can continue using your username and password.')); } },
+        ]);
+      }
     }} />;
   }
 
@@ -1097,6 +1107,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
             </View>
           </>}
           {wide && <Text style={styles.topbarContext}>{title}</Text>}
+          {!!username && <Text style={styles.accountHandle}>@{username}</Text>}
           <Pressable accessibilityRole="button" accessibilityLabel="Account Settings" accessibilityHint="Open your account settings" onPress={() => setPage('settings')} style={({ pressed }) => [styles.accountSettingsButton, pressed && styles.pressed]}>
             <Text style={styles.accountSettingsIcon}>⚙</Text><Text style={styles.accountSettingsLabel}>Account Settings</Text>
           </Pressable>
@@ -1146,7 +1157,7 @@ function TeddyBud({ sessionToken, onLogout }: { sessionToken: string; onLogout: 
           {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
           {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
-          {page === 'settings' && <SettingsPage wide={wide} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
+          {page === 'settings' && <SettingsPage wide={wide} username={username} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
             const savedName = name.trim().slice(0, 32);
             if (!savedName) return;
             setAssistantCharacterId(id);
@@ -1384,8 +1395,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
   useEffect(() => {
     const width = visualCollapsed ? 78 : 258;
     sidebarWidth.stopAnimation();
-    chevronProgress.stopAnimation();
-    labelOpacity.stopAnimation();
+    chevronProgress.stopAnimation();    labelOpacity.stopAnimation();
     if (reduceMotion.current) {
       sidebarWidth.setValue(width);
       chevronProgress.setValue(visualCollapsed ? 1 : 0);
@@ -1626,7 +1636,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     if (shouldAutoScrollRef.current && (messages.length > 0 || streamingReply)) {
       scrollRef.current?.scrollToEnd({ animated: !isSending });
     }
-  }, [messages.length, isSending]);
+  }, [messages.length, isSending, streamingReply]);
 
   const submitMessage = () => {
     if (!canSend) return;
@@ -2084,8 +2094,7 @@ export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
     setBody('');
     setPrompt('Free reflection');
     setActionError(null);
-    setActionNotice(null);
-  };
+    setActionNotice(null);  };
   const visible = entries.filter(entry => (entry.title + ' ' + entry.body + ' ' + entry.prompt).toLowerCase().includes(search.toLowerCase()));
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
@@ -2236,7 +2245,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
       {[1,2,3,4,5].map(level => EMOTION_AXES.map((_, i) => line(point(i, level), point((i+1)%axisCount, level), '#E8DDD5', 1)))}
       {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D8CBC2', 1))}
       {EMOTION_AXES.map((axis,i) => {
-        const p = point(i,5), label = point(i,5.75);
+        const label = point(i,5.75);
         return <React.Fragment key={axis.id}>
           <Text style={{position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}}>{axis.label}</Text>
           {data && values[i] > 0 ? <View style={{position:'absolute',left:point(i,values[i]).x-5,top:point(i,values[i]).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#B87862',borderWidth:2,borderColor:'#FFF9F4'}} /> : null}
@@ -2342,8 +2351,9 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
   </ScrollView>;
 }
 
-function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
+function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
   wide: boolean;
+  username: string;
   creditBalance: CreditBalance | null;
   onRefreshCredits: () => Promise<void>;
   aboutMe: string;
@@ -2399,7 +2409,7 @@ function SettingsPage({ wide, creditBalance, onRefreshCredits, aboutMe, assistan
   };
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
-    <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text><Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
+    <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text>{!!username && <Text style={{ color: C.cocoaDark, fontSize: 14, fontWeight: '700', marginTop: 5 }}>@{username}</Text>}<Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
     <Text style={styles.settingsSectionLabel}>FREE PLAN</Text>
     <View style={styles.settingsCardForm}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
@@ -2549,7 +2559,7 @@ const styles = StyleSheet.create({
   sidebarBrand: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 24, minWidth: 0 }, sidebarBrandCollapsed: { flexDirection: 'column', gap: 10, marginBottom: 20, width: '100%' }, sidebarIdentity: { flexDirection: 'row', alignItems: 'center', gap: 11, flex: 1, minWidth: 0 }, sidebarIdentityCollapsed: { flex: 0 }, brandMark: { width: 42, height: 42, borderRadius: 15, backgroundColor: C.cocoa, justifyContent: 'center', alignItems: 'center' }, brandLogo: { width: 42, height: 42, borderRadius: 15 }, brandCopy: { justifyContent: 'center' }, brandName: { color: C.ink, fontSize: 16, letterSpacing: -0.4, fontWeight: '700' }, sidebarCaption: { color: C.muted, fontSize: 12, marginTop: 2 }, sidebarLabel: { color: '#69675F', fontSize: 10, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginLeft: 12 },
   navButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 11, minWidth: 0 }, navButtonCollapsed: { justifyContent: 'center', paddingHorizontal: 0 }, navButtonSelected: { backgroundColor: '#E7E5E0' }, navIcon: { width: 22, textAlign: 'center', fontSize: 19, color: '#887C71' }, navIconSelected: { color: C.cocoa }, navLabel: { color: '#756A60', fontSize: 13, fontWeight: '500', flex: 1 }, navLabelCollapsed: { position: 'absolute' }, navLabelSelected: { color: C.cocoaDark, fontWeight: '700' }, navDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.cocoa },
   sidebarBottom: { marginTop: 'auto' }, sidebarRule: { height: 1, backgroundColor: '#E2D9CD', marginBottom: 20 }, localNoteIcon: { width: 32, height: 32, backgroundColor: '#E7E5E0', borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }, localNoteGlyph: { color: C.cocoa, fontSize: 17 }, localNoteTitle: { color: C.ink, fontSize: 12, fontWeight: '700', marginBottom: 5 }, localNoteBody: { color: C.muted, fontSize: 11, lineHeight: 17 },
-  topbar: { height: 66, borderBottomWidth: 1, borderBottomColor: '#ECEBE7', paddingHorizontal: 28, flexDirection: 'row', alignItems: 'center', backgroundColor: C.paper }, mobileTopbar: { height: 64, paddingHorizontal: 18 }, topbarContext: { marginLeft: 28, paddingLeft: 28, borderLeftWidth: 1, borderLeftColor: C.line, color: C.muted, fontSize: 13, flex: 1 }, accountSettingsButton: { minHeight: 40, borderRadius: 20, backgroundColor: C.peachLight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14, marginLeft: 'auto' }, accountSettingsIcon: { color: C.cocoaDark, fontSize: 17, lineHeight: 20 }, accountSettingsLabel: { color: C.cocoaDark, fontSize: 13, fontWeight: '600' }, brandSub: { color: C.muted, fontSize: 11, marginTop: 2 },
+  topbar: { height: 66, borderBottomWidth: 1, borderBottomColor: '#ECEBE7', paddingHorizontal: 28, flexDirection: 'row', alignItems: 'center', backgroundColor: C.paper }, mobileTopbar: { height: 64, paddingHorizontal: 18 }, topbarContext: { marginLeft: 28, paddingLeft: 28, borderLeftWidth: 1, borderLeftColor: C.line, color: C.muted, fontSize: 13, flex: 1 }, accountHandle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginLeft: 'auto', marginRight: 10 }, accountSettingsButton: { minHeight: 40, borderRadius: 20, backgroundColor: C.peachLight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14, marginLeft: 'auto' }, accountSettingsIcon: { color: C.cocoaDark, fontSize: 17, lineHeight: 20 }, accountSettingsLabel: { color: C.cocoaDark, fontSize: 13, fontWeight: '600' }, brandSub: { color: C.muted, fontSize: 11, marginTop: 2 },
   contentArea: { flex: 1, minHeight: 0 }, chatPage: { flex: 1 }, chatHeader: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, chatHeaderWide: { paddingHorizontal: 48, paddingTop: 20, paddingBottom: 14 }, chatHeaderCopy: { flex: 1 }, chatSubtitle: { color: C.muted, fontSize: 12, marginTop: 6 }, privatePill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#E6E5E1', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: C.paper }, privateDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#7A9875' }, privateLabel: { color: C.green, fontSize: 10, fontWeight: '600' }, eyebrow: { color: C.cocoa, fontSize: 9, letterSpacing: 1.7, fontWeight: '700', marginBottom: 7 }, pageTitle: { color: C.ink, fontSize: 22, fontWeight: '600', letterSpacing: -0.55 }, headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },   servicePill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, serviceDot: { width: 6, height: 6, backgroundColor: '#BC9E79', borderRadius: 4 }, serviceText: { color: C.muted, fontSize: 10, fontWeight: '600' }, moreButton: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line }, moreGlyph: { color: C.muted, fontSize: 20, lineHeight: 23, marginTop: -10 }, historyGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 },
   chatActionsMenuButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 13, paddingHorizontal: 8 }, chatActionsMenuGlyph: { color: C.cocoaDark, fontSize: 24, lineHeight: 27, fontWeight: '700' }, chatActionsModalRoot: { flex: 1, justifyContent: 'flex-end' }, chatActionsScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(35, 29, 24, 0.28)' }, chatActionsSheet: { paddingHorizontal: 20, paddingTop: 18, backgroundColor: C.paper, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderColor: C.line, gap: 8 }, chatActionsSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }, chatActionsSheetTitle: { fontSize: 16, fontWeight: '700', color: C.cocoaDark }, chatActionsDismiss: { minHeight: 40, paddingHorizontal: 10, justifyContent: 'center' }, chatActionsDismissText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, chatActionsSheetItem: { minHeight: 48, justifyContent: 'center', borderRadius: 13, backgroundColor: C.paperAlt, paddingHorizontal: 14 }, chatActionsSheetItemText: { fontSize: 13, fontWeight: '600', color: C.cocoaDark }, chatScrollWrap: { flex: 1, minHeight: 0, position: 'relative' }, chatScroll: { flex: 1 }, jumpToLatestButton: { position: 'absolute', alignSelf: 'center', bottom: 10, minHeight: 40, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: '#DDD4C9', backgroundColor: C.paper, shadowColor: '#302821', shadowOpacity: 0.1, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 3 }, jumpToLatestText: { color: C.cocoaDark, fontSize: 12, fontWeight: '700' }, chatContent: { paddingHorizontal: 20, paddingBottom: 26, flexGrow: 1 }, chatContentWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64 }, emptyContent: { justifyContent: 'center' }, emptyState: { width: '100%', maxWidth: 720, alignSelf: 'center', alignItems: 'center', paddingTop: 14, paddingBottom: 20 }, emptyHeroMark: { width: 60, height: 60, borderRadius: 30, overflow: 'hidden', backgroundColor: '#FAF6ED', alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: C.cocoa, shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 }, emptyHeroLogo: { width: 90, height: 90 }, emptyGreeting: { color: C.ink, fontSize: 30, lineHeight: 38, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, emptyDescription: { maxWidth: 440, color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 9, marginBottom: 28 }, starterGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }, starterCard: { width: '31.8%', minWidth: 175, minHeight: 92, borderRadius: 18, borderWidth: 1, borderColor: '#E7E4DE', backgroundColor: '#FFFFFF', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#302821', shadowOpacity: 0.025, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, starterCardMobile: { width: '48%', minWidth: 120, minHeight: 78, padding: 10, gap: 7 }, starterCardPressed: { backgroundColor: '#F8F6F2', borderColor: '#D4C8BA' }, starterIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F3F0EB', alignItems: 'center', justifyContent: 'center' }, starterIconText: { color: C.cocoa, fontSize: 17 }, starterCopy: { flex: 1 }, starterTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, starterDescription: { color: C.muted, fontSize: 10, lineHeight: 14, marginTop: 4 }, starterArrow: { color: '#6F6256', fontSize: 13, alignSelf: 'flex-start' }, conversationColumn: { width: '100%', maxWidth: 760, alignSelf: 'center' }, dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 10, marginBottom: 24 }, dividerLine: { height: 1, backgroundColor: C.line, flex: 1 }, dayText: { color: '#75665A', fontSize: 9, letterSpacing: 1.5, fontWeight: '700' },
   connectCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2ECE3', borderRadius: 16, padding: 14, marginTop: 22, marginLeft: 44, gap: 12, maxWidth: 555 }, connectIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center' }, connectIconText: { color: C.cocoa, fontSize: 17 }, connectCopy: { flex: 1 }, connectTitle: { fontSize: 12, fontWeight: '700', color: C.ink, marginBottom: 4 }, connectBody: { fontSize: 11, color: C.muted, lineHeight: 16 }, connectArrow: { color: C.cocoa, fontSize: 24 }, promptWrap: { marginTop: 22, marginLeft: 44 }, promptHeading: { color: '#796D62', fontSize: 11, fontWeight: '600', marginBottom: 10, marginLeft: 2 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, promptChip: { borderWidth: 1, borderColor: '#E3D9CD', backgroundColor: '#FBF8F3', borderRadius: 18, paddingHorizontal: 14, minHeight: 38, justifyContent: 'center' }, promptChipText: { color: C.cocoaDark, fontSize: 11, fontWeight: '500' },

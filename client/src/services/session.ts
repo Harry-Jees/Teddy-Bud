@@ -1,1 +1,1 @@
-export type StoredSession = { accessToken: string; expiresAt: number; profilePictureUrl?: string };
+export type StoredSession = { accessToken: string; expiresAt: number; profilePictureUrl?: string; username?: string };

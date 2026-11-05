@@ -6,9 +6,18 @@ import { GATEWAY_BASE_URL } from '../config/gateway';
 
 type LoginResponse = { accessToken: string; expiresIn?: number; userId?: string; profilePictureUrl?: string };
 
+// Username-only identity; this internal alias is never shown in the UI or sent to email providers.
+export function usernameIdentity(username: string): string {
+  const normalized = username.trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,24}$/.test(normalized)) throw new Error('Use 3–24 characters: lowercase letters, numbers, or underscores.');
+  return `${normalized}@accounts.teddybud.invalid`;
+}
+
 const SESSION_KEY = 'teddy-bud:browser-session';
 const NATIVE_SESSION_SERVICE = 'com.teddybud.account-auth';
 const NATIVE_SETUP_SERVICE = 'com.teddybud.auth-setup';
+const NATIVE_BIOMETRIC_SERVICE = 'com.teddybud.biometric-login';
+let pendingBiometricCredentials: { username: string; password: string } | null = null;
 const SETUP_KEY = 'setup-complete';
 let inMemorySession: StoredSession | null = null;
 
@@ -147,25 +156,65 @@ export class BrowserAuthService {
     }
   }
 
-  async signIn(email: string, password: string): Promise<StoredSession> {
+  async signIn(username: string, password: string): Promise<StoredSession> {
+    const normalizedUsername = username.trim().toLowerCase();
+    const email = usernameIdentity(normalizedUsername);
     const result = await request<LoginResponse>('/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
     await this.markSetupComplete();
-    return this.save(result);
+    pendingBiometricCredentials = { username: normalizedUsername, password };
+    return this.save(result, normalizedUsername);
   }
 
-  async createAccount(email: string, password: string, recoveryKey: string): Promise<StoredSession> {
+  async createAccount(username: string, password: string, recoveryKey: string): Promise<StoredSession> {
+    const normalizedUsername = username.trim().toLowerCase();
+    const email = usernameIdentity(normalizedUsername);
     const result = await request<LoginResponse>('/auth/signup', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, recoveryKey }),
     });
     await this.markSetupComplete();
-    return this.save(result);
+    pendingBiometricCredentials = { username: normalizedUsername, password };
+    return this.save(result, normalizedUsername);
   }
 
-  async recoverPassword(email: string, recoveryKey: string, newPassword: string): Promise<void> {
+
+  async supportsBiometrics(): Promise<boolean> {
+    if (Platform.OS !== 'android') return false;
+    try { return Boolean(await Keychain.getSupportedBiometryType()); } catch { return false; }
+  }
+
+  async enableBiometricSignIn(): Promise<void> {
+    if (Platform.OS !== 'android' || !pendingBiometricCredentials) {
+      throw new Error('Sign in with your username and password first.');
+    }
+    const saved = await Keychain.setGenericPassword(
+      pendingBiometricCredentials.username,
+      pendingBiometricCredentials.password,
+      {
+        service: NATIVE_BIOMETRIC_SERVICE,
+        accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET,
+        accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+        authenticationPrompt: { title: 'Enable Teddy Bud biometric sign-in' },
+      },
+    );
+    if (!saved) throw new Error('Biometric sign-in could not be enabled on this device.');
+  }
+
+  async signInWithBiometrics(): Promise<StoredSession> {
+    if (Platform.OS !== 'android') throw new Error('Biometric sign-in is available on Android only.');
+    const credentials = await Keychain.getGenericPassword({
+      service: NATIVE_BIOMETRIC_SERVICE,
+      authenticationPrompt: { title: 'Sign in to Teddy Bud' },
+    });
+    if (!credentials || typeof credentials === 'boolean') throw new Error('Biometric sign-in has not been enabled on this device.');
+    return this.signIn(credentials.username, credentials.password);
+  }
+
+  async recoverPassword(username: string, recoveryKey: string, newPassword: string): Promise<void> {
+    const email = usernameIdentity(username);
     await request<{ success: boolean }>('/auth/recover', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, recoveryKey, newPassword }),
@@ -239,7 +288,7 @@ export class BrowserAuthService {
     }
   }
 
-  private async save(response: LoginResponse): Promise<StoredSession> {
+  private async save(response: LoginResponse, username?: string): Promise<StoredSession> {
     if (!response.accessToken) {
       throw new AuthServiceError('The account service did not complete sign-in. Please try again.', 'unexpected');
     }
@@ -247,6 +296,7 @@ export class BrowserAuthService {
       accessToken: response.accessToken,
       expiresAt: expiresAt(response.accessToken, response.expiresIn ?? 3600),
       ...(response.profilePictureUrl ? { profilePictureUrl: response.profilePictureUrl } : {}),
+      ...(username ? { username } : {}),
     };
     try {
       if (Platform.OS === 'web') {
