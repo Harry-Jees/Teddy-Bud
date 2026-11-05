@@ -1,45 +1,31 @@
-# Voice input and interaction quality acceptance
+# Voice input and interaction acceptance
 
 ## Product scope
-
-Teddy Bud voice is **speech-to-text input only**. It behaves like a microphone button in a chat composer: the user explicitly starts recognition, speaks, reviews and edits the resulting text, then chooses whether to send it as an ordinary message.
+Teddy Bud voice is **speech-to-text input only**. The user taps the microphone, speaks, reviews and edits the recognized text, then decides whether to send it as a normal message.
 
 Out of scope: text-to-speech, generated audio, spoken assistant replies, voice playback, duplex voice conversations, and paid speech APIs. Do not add voice-output controls or a TTS provider.
 
-## Implementation requirements
+## Requirements
+- Recognition is explicitly user-initiated; never record or send automatically.
+- Place recognized text into the editable composer and preserve existing draft content.
+- Provide visible listening/stop states, accessible labels, permission/error guidance, and a retry path.
+- Stop recognition when the screen unmounts or app lifecycle requires it.
+- Do not save or upload microphone recordings. Explain that a platform speech service may process speech under its own policy.
+- If recognition is unavailable or permission is denied, text chat remains fully usable.
 
-- Use the platform/browser speech-recognition capability; do not route audio through Teddy Bud's Cloudflare gateway or add a paid inference provider.
-- Android uses the native speech-recognition service through the React Native voice bridge and requests microphone permission at runtime.
-- Web/Electron uses the browser SpeechRecognition API only when the host provides it and microphone access is allowed. Explain unsupported browsers and retain normal text entry.
-- Recognition is always user-initiated. Never record automatically or send a message automatically.
-- Partial/final recognition populates the existing editable message draft. Preserve any text already in the draft.
-- Provide a clear listening state, stop action, accessible labels, permission/error guidance and retry path.
-- Stop recognition when the screen unmounts. Do not save or upload microphone recordings; the platform speech service may process speech according to its own privacy policy.
-- No generated audio, TTS, voice model, Cloudflare AI voice route, or voice response settings.
-
-## Acceptance tests
-
-- Start/stop recognition; partial and final results appear in the composer.
-- Existing draft text is preserved before the dictated text.
-- User can edit, delete or discard the transcript before sending.
-- No automatic send on recognition completion.
-- Permission granted, denied, revoked and unavailable.
-- Unsupported browser, no recognition service, empty transcript, network/service error and repeated taps.
-- App background/unmount ends recognition cleanly.
-- Screen-reader labels and visible state for microphone controls.
-- Text chat remains fully usable if voice input is unavailable.
-
-## Visual and interaction audit
-
-- Follow Teddy Bud's 8-point spacing rhythm and warm ivory/clay/cocoa visual language.
-- Keep the microphone control aligned with the text field and send action, with a 44 dp minimum hit target.
-- Ensure responsive layout, safe areas, keyboard behavior, reduced motion, large text, contrast and screen-reader support.
+## UX quality
+- Use Teddy Bud's warm ivory/clay/cocoa palette, Material 3 foundations, and 8-point spacing rhythm.
+- Keep microphone, composer, and send action aligned; use accessible hit targets.
+- Respect safe areas, keyboard behavior, reduced motion, large text, contrast, and screen readers.
 - Avoid layout jumps when listening status or errors appear.
 
-## Release gates
+## Acceptance checks
+- Start/stop recognition; partial and final results appear in the composer.
+- Existing draft is preserved; transcript can be edited, discarded, or deleted.
+- No automatic send on recognition completion.
+- Permission granted, denied, revoked, and unavailable paths.
+- Unsupported browser/service, empty transcript, service error, repeated taps, and app background/unmount.
+- Text and image chat remain functional when speech recognition is unavailable.
 
-- Run lint, type-check, unit tests and Android/web/desktop builds from the same commit.
-- Install and test Android on a real device with permission granted and denied.
-- Test supported browser/Electron environments; explicitly document unsupported hosts.
-- Confirm text/image chat regression tests pass.
-- Do not claim platform support or completion without recorded evidence.
+## Release gates
+Run lint, type-check, unit tests, and supported platform builds. Test Android on a real device and supported desktop hosts. Do not claim platform support or completion without recorded evidence.

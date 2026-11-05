@@ -1,72 +1,30 @@
-# Technical Architecture & API Contract
+# Technical Architecture
 
-## 1. System architecture
+## 1. Application architecture
+Teddy Bud is a React Native application with an Electron desktop wrapper. The Vite/React Native Web renderer is used for local development and packaged desktop UI; there is no standalone hosted web app or web download. iOS/iPhone/iPad is not currently offered.
 
-The client is a React Native application with an Electron desktop wrapper. Vite/React Native Web supports a development-only browser preview and packages the UI inside desktop apps; no standalone web product is distributed. It uses the Cloudflare Worker gateway for account operations
-and authenticated AI requests. Supabase Auth manages email/password credentials;
-Supabase Postgres stores account profiles and private recovery verification
-records. Chats, memories, and preferences are persisted locally.
+The client uses the configured Cloudflare Worker gateway for account operations and authenticated AI requests. Provider credentials remain server-side. Keep product copy and API details synchronized with the deployed Worker; historical provider migrations are not current routing specifications.
 
-## 2. Storage and key management
+## 2. Account and identity
+The user-facing account flow is username + password, with identity displayed as `@username`. Email/Gmail is not presented as an account identifier. Android biometric sign-in is optional after onboarding completion; password remains the fallback.
 
-- Android and macOS: account-specific SQLCipher databases; each random
-  database key is stored in Keychain/Keystore.
-- Electron: each account has a random AES-256-GCM key protected by Electron
-  `safeStorage`; only encrypted record values are stored in IndexedDB.
-- Development browser preview only: each account has a separate non-exportable Web Crypto key in IndexedDB; records use AES-256-GCM. This is not a supported public deployment target.
-- Backups: encrypted `.teddybud` files use a separate passphrase-derived key.
+The client must not expose internal credential aliases or backend implementation details in the UI. Recovery may use the configured recovery passphrase, but it restores account access only; it does not restore another device's local data or encryption key.
 
-The authenticated Supabase user ID is the local account scope and key scope.
-Existing records are migrated to per-account encryption as they are opened;
-native records move from the former shared SQLCipher database on a per-account
-basis. Browser-preview encryption does not defend against malicious script executing in the same origin while the preview is unlocked.
+## 3. Local storage and key handling
+- Native app data uses encrypted local storage with platform secure credential storage for key material.
+- Desktop local records use operating-system-backed encryption.
+- The browser preview is development-only and must not be described as a supported hosted product.
+- Portable backups are separately encrypted and require the user's backup passphrase.
+- Chats, memories, journals, wellbeing entries, and preferences are local-first. No automatic cross-device sync is offered.
 
-## 3. Gateway API contract
+## 4. AI and privacy boundaries
+All model inference is remote through the gateway. A response requires the provider to receive readable prompt content. Do not claim end-to-end encryption for AI conversations.
 
-- `POST /auth/signup`: create an email/password account, store a keyed
-  recovery-passphrase verifier, and issue a Teddy Bud session.
-- `POST /auth/login`: verify credentials and the private recovery record; issue
-  a Teddy Bud session.
-- `POST /auth/recover`: verify the recovery passphrase, change the Supabase
-  password, and revoke that account's Teddy Bud sessions.
-- `POST /auth/migrate-legacy`: upgrade a still-valid legacy Google session
-  while preserving its Supabase user ID.
-- `GET /auth/session`: validate a saved session before loading local data.
-- `POST /auth/refresh`: always rejects renewal; sessions expire after one hour.
-- `POST /auth/logout`: revoke the current server-side session.
-- `GET /health`: gateway health check.
-- `GET /v1/models`: authenticated AI model discovery.
-- `POST /v1/chat/completions`: authenticated chat proxy to OpenRouter's OpenAI-compatible API.
+Only the current request and context permitted by the user's privacy controls should be sent. Journal and wellbeing text is not included automatically; sharing is explicit. Never ship provider secrets in the client or log user credentials, recovery phrases, or secret values.
 
-Only the routes listed above are exposed by the public Worker dispatcher. Durable Object paths such as `/session`, `/user-sessions/*`, `/account/*`, and `/rate` are internal state operations, not public client API routes.
+The product's voice feature is speech-to-text input only. Recognition is user-initiated, its transcript is reviewed in the composer, and Teddy Bud does not generate spoken replies or provide voice playback.
 
-## 4. Authentication and session behavior
+## 5. Reliability and release constraints
+The gateway is responsible for authentication validation, payload checks, approved model routing, rate limits, and usage enforcement. The Free allowance is 40 credits per UTC day; each text or image request costs one credit. This is a product usage cap, not an exact provider-cost ledger.
 
-Email is an account identifier; email ownership verification is not required.
-Configure Supabase Auth with **Confirm email** disabled so signup returns an
-Auth token and no email delivery is required. The gateway still checks for an
-RLS-protected profile and a private recovery verifier before granting access.
-
-Teddy Bud sessions are signed bearer tokens backed by Durable Object session
-records and expire one absolute hour after issue. Refresh does not renew them.
-The app clears the local token and returns to sign-in at expiry. Sign-in,
-signup, and recovery are rate-limited. Durable
-Objects also keep per-user session indexes used to revoke sessions after
-password recovery.
-
-The Worker validates the session for `/v1/*` requests and proxies to OpenRouter;
-OPENROUTER_API_KEY remains a Worker secret. The `SUPABASE_SERVICE_ROLE_KEY` and
-`RECOVERY_KEY_SECRET` are also server-only. The profile query uses the user's
-Supabase token and RLS; the recovery table is accessed only by the Worker.
-
-## 5. AI and privacy constraints
-
-- All AI inference happens remotely through the gateway.
-- The gateway exposes only the approved free model IDs `openai/gpt-oss-20b:free` and `qwen/qwen3.8-27b:free`. The client selects chat and vision capabilities from this filtered catalog; the gateway independently rejects every model outside the same allowlist. OpenRouter availability and model capabilities may change.
-- Normal conversation requests ask for up to 4,096 output tokens, coding and image requests ask for 220, and the Worker applies a server-side ceiling of 2,048 output tokens. Recent chat context is capped at 80,000 characters by the client.
-- The client sends the active conversation and only the memories, selected
-  history, or About me content enabled by the privacy controls.
-- Provider credentials never ship in the client.
-
-See [Security and Privacy](SECURITY_AND_PRIVACY.md) for implementation limits,
-email delivery constraints, migration details, and security references.
+Automated tests and successful builds do not establish that production secrets, upstream model availability, real-device biometric behavior, accessibility, signing, or store distribution are verified. Use the release and feature-status documents for current verification evidence.

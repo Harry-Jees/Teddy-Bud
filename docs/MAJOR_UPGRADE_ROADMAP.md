@@ -1,63 +1,30 @@
-# Teddy Bud — major upgrade roadmap (10 features)
+# Teddy Bud — product roadmap
 
-This roadmap is separate from the Free-first launch. The launch should first ship reliably with the current four companion personalities, daily usage allowance, GLM text routing, and Qwen image understanding. Do not add a feature to the release build until its acceptance checks pass on supported platforms.
+This roadmap records future work only. A roadmap item is not a shipped capability; use [Feature Status](./FEATURE_STATUS.md) for the current conservative status.
 
-## The 10 proposed features
+## Product guardrails
+- Product promise: **A little room to breathe.**
+- Warm, mature, uncluttered claymorphism with Material 3 foundations, 8-point spacing, and purposeful motion. Light theme only; no dark mode.
+- Username + password account experience; show `@username`. No email/Gmail account identity in user-facing copy.
+- Android biometrics are optional after onboarding completion; password fallback remains.
+- Voice is speech-to-text input only. No generated speech, spoken assistant replies, voice playback, or TTS.
+- Chats, memories, journals, and wellbeing data remain local-first; no automatic cross-device sync.
+- Journal and wellbeing data are not sent to AI unless the user explicitly shares selected content.
+- Do not claim end-to-end encryption for content sent to remote inference.
 
-### 1. Daily emotional check-in
-A lightweight optional check-in for mood, energy, and what kind of support the user wants. Users can skip it and choose whether entries stay on-device.
-- **Acceptance:** no mandatory onboarding gate; editable/deletable entries; no mood inference without user input; works offline.
+## Potential future work
+### Local convenience
+- Opt-in reminders and home-screen shortcuts, with quiet hours, privacy-safe notification text, and clear disable controls.
+- Additional local wellbeing sessions and reflection tools, all optional and non-clinical.
 
-### 2. Private journal with guided prompts
-A standalone journal with prompt packs for reflection, gratitude, school/work stress, relationships, and small wins.
-- **Acceptance:** entries are encrypted at rest where platform support permits; local-first storage; export and delete controls; journal text is never sent to AI unless the user explicitly chooses to share it.
+### Personalization and accessibility
+- Expanded memory review controls and clear explanation of what context is included in an AI request.
+- Improve keyboard, screen-reader, reduced-motion, large-text, contrast, and responsive behavior across supported platforms.
 
-### 3. Wellbeing studio
-Short guided breathing, grounding, focus breaks, and bedtime wind-down sessions with calm animation and optional haptics.
-- **Acceptance:** fully usable without network or AI; pause/stop controls; reduced-motion mode; no health or treatment claims.
+### Infrastructure
+- Consider encrypted cross-device sync only after a complete threat model, key recovery plan, device revocation, and conflict handling design.
+- Enterprise routing and administration remain separate deployment work. Do not advertise self-service enterprise features until they exist and pass acceptance checks.
+- Any paid plans require a verified entitlement, billing, reconciliation, refund, cancellation, and provider-cost accounting system before launch.
 
-### 4. Mood and habit insights
-Optional weekly summaries from check-ins and journal tags, with clear explanations of how each insight was calculated.
-- **Acceptance:** opt-in only; no diagnosis, risk score, or claims to predict mental-health conditions; users can inspect and delete the source data.
-
-### 5. Voice notes and spoken replies
-Let users record a short voice note and optionally hear a companion reply read aloud. Start with device-native speech APIs where available; evaluate privacy and cost before adding cloud transcription.
-- **Acceptance:** recording is never automatic; visible recording state; permission denial fallback to text; playback controls; disclose if audio leaves the device.
-
-### 6. Better conversation controls
-Add edit-and-resend, regenerate response, copy/share selected text, and a clear “use less advice / listen first / be more practical” response-style switch.
-- **Acceptance:** editing does not silently overwrite history; regenerated replies do not double-charge; controls are keyboard and screen-reader accessible.
-
-### 7. User-controlled memory timeline
-A review screen showing saved facts, source, last-used time, and controls to edit, pause, expire, or delete each item.
-- **Acceptance:** suggestions require approval; deletion removes the memory from future prompts; sharing preferences are explicit; no automatic sensitive-memory capture.
-
-### 8. Local-first reminders and companion widgets
-Optional daily check-in reminders and a home-screen shortcut/widget to resume a chat or open a wellbeing exercise.
-- **Acceptance:** notifications are opt-in, quiet hours are respected, no sensitive message content appears on the lock screen by default, and reminders are easy to disable.
-
-### 9. Encrypted cross-device sync
-An opt-in sync mode for chats, memories, and journal data using end-to-end encryption, with recovery and device management designed before implementation.
-- **Acceptance:** server cannot read plaintext content; documented key recovery trade-offs; conflict handling; device revocation; backup remains available as a fallback.
-
-### 10. Enterprise local-model deployment
-A separately configured enterprise gateway can route text and supported vision requests to organization-managed inference (for example, an OpenAI-compatible vLLM/Ollama gateway) or to Cloudflare Workers AI.
-- **Acceptance:** administrators configure endpoints and credentials server-side; TLS/authentication, model allowlists, timeouts, request limits, audit-safe metrics, and local-only mode; clients cannot submit arbitrary URLs; vision capability is checked per model.
-
-## Delivery phases
-
-1. **Launch hardening (now):** finish and validate the 40-credit Free tier, image upload, personality locks, UTC reset, rate limits, and cost monitoring. Keep the current production Worker unchanged until staged tests pass.
-2. **Core wellbeing (next):** features 1–3. Keep them local-first and make AI optional.
-3. **Personalization (after core stability):** features 4, 6, and 7. Add opt-in controls and regression tests before introducing insights.
-4. **Accessibility and convenience:** features 5 and 8, with platform-specific fallbacks and permission testing.
-5. **Infrastructure expansion:** feature 9 only after a threat model and key-recovery design; feature 10 as an administrator-managed deployment option with security review.
-
-## Shared quality gates
-
-- Unit tests for quota accounting, UTC reset, retry/refund, image routing, and task metering.
-- Client typecheck, unit tests, web renderer build, Android release build, and desktop package build.
-- Real-device checks for image selection, permissions, keyboard/screen-reader behavior, and low-connectivity states.
-- Accessibility checks: text scaling, contrast, focus order, reduced motion, and touch target sizes.
-- Privacy review: data inventory, consent boundaries, deletion behavior, telemetry minimization, and dependency/secret scan.
-- Cost review: measure actual model usage and Cloudflare charges before changing usage limits or publishing cost claims.
-- Do not advertise capabilities that have not been implemented, tested, and deployed.
+## Acceptance rule
+Each feature must have explicit acceptance criteria, automated regression tests, privacy review, and platform-specific verification. Do not promote an item to “available” based on a design, a roadmap note, or a successful build alone.
