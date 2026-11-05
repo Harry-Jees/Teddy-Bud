@@ -29,7 +29,7 @@ export class AuthServiceError extends Error {
   }
 }
 
-export type AuthField = 'email' | 'password' | 'confirmPassword' | 'recoveryPassphrase' | 'recoveryPassphraseConfirmation';
+export type AuthField = 'username' | 'email' | 'password' | 'confirmPassword' | 'recoveryPassphrase' | 'recoveryPassphraseConfirmation';
 
 export class AuthValidationError extends Error {
   readonly name = 'AuthValidationError';
@@ -48,7 +48,7 @@ function statusOf(error: unknown): number | undefined {
 function messageForStatus(status: number, context: AuthErrorContext): AuthServiceError {
   if (status === 401) {
     if (context === 'sign-in') {
-      return new AuthServiceError('Email or password is incorrect. Check your details and try again.', 'invalid-credentials', status);
+      return new AuthServiceError('Username or password is incorrect. Check your details and try again.', 'invalid-credentials', status);
     }
     if (context === 'password-recovery') {
       return new AuthServiceError('The account details or recovery passphrase could not be verified. Check them and try again.', 'invalid-credentials', status);
@@ -61,13 +61,13 @@ function messageForStatus(status: number, context: AuthErrorContext): AuthServic
 
   if (status === 400) {
     if (context === 'password-recovery') {
-      return new AuthServiceError('Check the email, recovery passphrase, and new password requirements, then try again.', 'validation', status);
+      return new AuthServiceError('Check the username, recovery passphrase, and new password requirements, then try again.', 'validation', status);
     }
     if (context === 'create-account') {
-      return new AuthServiceError('Check your email, password, and recovery passphrase requirements, then try again.', 'validation', status);
+      return new AuthServiceError('Check your username, password, and recovery passphrase requirements, then try again.', 'validation', status);
     }
     if (context === 'sign-in') {
-      return new AuthServiceError('Enter a valid email address and password, then try again.', 'validation', status);
+      return new AuthServiceError('Enter a valid username and password, then try again.', 'validation', status);
     }
     return new AuthServiceError('Some details are missing or invalid. Review them and try again.', 'validation', status);
   }

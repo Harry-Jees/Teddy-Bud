@@ -38,10 +38,10 @@ test('sign-in gives actionable email/password validation and clears stale errors
     renderer.root.findByProps({ accessibilityLabel: 'Sign in' }).props.onPress();
   });
   expect(renderer.root.findByProps({ accessibilityRole: 'alert' }).findAllByType(Text).map(node => node.props.children))
-    .toContain('Enter a valid email address.');
+    .toContain('Use 3–24 characters: lowercase letters, numbers, or underscores.');
 
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('person@example.com');
+    renderer.root.findByProps({ accessibilityLabel: 'Username' }).props.onChangeText('harry_jees');
   });
   expect(renderer.root.findAllByProps({ accessibilityRole: 'alert' })).toHaveLength(0);
 
@@ -63,7 +63,7 @@ test('create account explains mismatched passwords instead of silently blocking 
   });
 
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('person@example.com');
+    renderer.root.findByProps({ accessibilityLabel: 'Username' }).props.onChangeText('harry_jees');
     renderer.root.findByProps({ accessibilityLabel: 'Password' }).props.onChangeText('first-password');
     renderer.root.findByProps({ accessibilityLabel: 'Confirm password' }).props.onChangeText('different-password');
     renderer.root.findByProps({ accessibilityLabel: 'Choose recovery passphrase' }).props.onChangeText('a safe recovery passphrase');
@@ -71,7 +71,7 @@ test('create account explains mismatched passwords instead of silently blocking 
   });
 
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Create account' }).props.onPress();
+    renderer.root.findByProps({ accessibilityLabel: 'Create private space' }).props.onPress();
   });
   expect(renderer.root.findByProps({ accessibilityRole: 'alert' }).findAllByType(Text).map(node => node.props.children))
     .toContain('The passwords do not match.');
@@ -112,16 +112,16 @@ test('recovery-passphrase mismatch is not silently disabled', async () => {
   });
 
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Email' }).props.onChangeText('person@example.com');
+    renderer.root.findByProps({ accessibilityLabel: 'Username' }).props.onChangeText('harry_jees');
     renderer.root.findByProps({ accessibilityLabel: 'Password' }).props.onChangeText('private-password');
     renderer.root.findByProps({ accessibilityLabel: 'Confirm password' }).props.onChangeText('private-password');
     renderer.root.findByProps({ accessibilityLabel: 'Choose recovery passphrase' }).props.onChangeText('first recovery phrase');
     renderer.root.findByProps({ accessibilityLabel: 'Confirm recovery passphrase' }).props.onChangeText('different recovery phrase');
   });
 
-  expect(renderer.root.findByProps({ accessibilityLabel: 'Create account' }).props.disabled).toBe(false);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Create private space' }).props.disabled).toBe(false);
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Create account' }).props.onPress();
+    renderer.root.findByProps({ accessibilityLabel: 'Create private space' }).props.onPress();
   });
   expect(renderer.root.findByProps({ accessibilityRole: 'alert' }).findAllByType(Text).map(node => node.props.children))
     .toContain('The recovery passphrases do not match.');
