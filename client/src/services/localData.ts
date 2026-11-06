@@ -26,6 +26,7 @@ export type EmotionCheckIn = {
   energy: number;
   support: 'listen' | 'advice' | 'encouragement' | 'unsure';
   note?: string;
+  origin?: 'survey-ai' | 'self';
 };
 
 export const EMOTION_AXES = [
