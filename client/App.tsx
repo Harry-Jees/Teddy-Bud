@@ -1211,6 +1211,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         </View>
 
         <View style={styles.contentArea}>
+          <SoftPageTransition transitionKey={page}>
           {localDataError ? <LocalDataError error={localDataError} onRetry={retryLocalData} onClear={clearUnavailableLocalData} /> : !localDataReady || localDataOwner !== owner ? <LocalDataLoading /> : <>
           {localDataSaveError && <LocalDataSaveWarning error={localDataSaveError} onRetry={retryLocalData} />}
           {page === 'chat' && <ChatPage key={activeConversationId ?? 'new-chat'} wide={wide} bottomInset={insets.bottom} conversationId={activeConversationId} assistantName={assistantName} messages={messages} streamingReply={activeConversationId === streamingConversationId ? streamingReply : ''} isThinking={isSending && activeConversationId === streamingConversationId} conversationTitle={activeConversation?.title ?? 'A quiet place to be'} onOpenHistory={() => setPage('history')} onRenameChat={() => { if (activeConversation) beginRenameConversation(activeConversation); }} isPinned={activeConversation?.pinned === true} canManageChat={activeConversation !== null} onTogglePin={() => { if (activeConversation) setConversationPinned(activeConversation.id, !activeConversation.pinned); }} onOpenCrisisResources={openCrisisResources} emergencyCallOption={emergencyCallOption} crisisHelplineOption={crisisHelplineOption} onCallEmergency={callEmergencyServices} onCallHelpline={callCrisisHelpline} onTextHelpline={textCrisisHelpline} onOpenHelplineWebsite={openHelplineWebsite} onSaveOccasion={fact => {
@@ -1263,6 +1264,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
           }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} />}
           {page === 'discover' && <DiscoverPage wide={wide} onNavigate={setPage} />}
           </>}
+          </SoftPageTransition>
         </View>
         {!wide && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
       </View>
@@ -1305,6 +1307,43 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       </Modal>
     </View>
   );
+}
+
+function SoftPageTransition({ transitionKey, children }: { transitionKey: string; children: React.ReactNode }) {
+  const reduceMotion = useReducedMotionPreference();
+  const opacity = useRef(new Animated.Value(1)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const previousKey = useRef(transitionKey);
+
+  useEffect(() => {
+    if (previousKey.current === transitionKey) return;
+    previousKey.current = transitionKey;
+    opacity.stopAnimation();
+    translateY.stopAnimation();
+    if (reduceMotion) {
+      opacity.setValue(1);
+      translateY.setValue(0);
+      return;
+    }
+    opacity.setValue(0.72);
+    translateY.setValue(8);
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 210,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        speed: 20,
+        bounciness: 2,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [transitionKey, reduceMotion, opacity, translateY]);
+
+  return <Animated.View style={{ flex: 1, opacity, transform: [{ translateY }] }}>{children}</Animated.View>;
 }
 
 function ConversationHistoryList({ conversations, activeConversationId, busyConversationId, onSelect, onPin, onDelete, onRename }: {
