@@ -34,6 +34,7 @@ import { findRelevantChatHistory, localDataService, ownerFromToken } from './src
 import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
 import { OnboardingSurvey } from './src/components/OnboardingSurvey';
+import { AnimatedNavIcon } from './src/components/AnimatedNavIcon';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncryptedBackup } from './src/services/backup';
 import { pickBackupFile, saveBackupFile, savePlainTextFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
@@ -71,13 +72,15 @@ const C = {
   rose: '#8D473F', white: '#FFFFFF',
 };
 
-const navItems: { id: Page; icon: string; label: string }[] = [
+type PrimaryNavPage = 'chat' | 'discover' | 'memories' | 'settings';
+
+const navItems: { id: PrimaryNavPage; icon: string; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Chats' },
   { id: 'discover', icon: '✧', label: 'Discover' },
   { id: 'memories', icon: '✳', label: 'Memories' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
-const mobileNavItems: { id: Page; icon: string; label: string }[] = [
+const mobileNavItems: { id: PrimaryNavPage; icon: string; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Chats' },
   { id: 'discover', icon: '✧', label: 'Discover' },
   { id: 'memories', icon: '✳', label: 'Memories' },
@@ -1493,8 +1496,11 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
 });
 
 function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }: { item: (typeof navItems)[number]; selected: boolean; onPress: () => void; collapsed?: boolean; labelOpacity?: Animated.Value }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityHint={collapsed ? `Open ${item.label}` : undefined} accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.navButton, collapsed && styles.navButtonCollapsed, selected && styles.navButtonSelected, pressed && styles.pressed]}>
-    <Text style={[styles.navIcon, selected && styles.navIconSelected]}>{item.icon}</Text><Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
+  const reduceMotion = useReducedMotionPreference();
+  const [pulseKey, setPulseKey] = useState(0);
+  return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityHint={collapsed ? `Open ${item.label}` : undefined} accessibilityState={{ selected }} onPress={() => { setPulseKey(value => value + 1); onPress(); }} style={({ pressed }) => [styles.navButton, collapsed && styles.navButtonCollapsed, selected && styles.navButtonSelected, pressed && styles.pressed]}>
+    <AnimatedNavIcon name={item.id} active={selected} pulseKey={pulseKey} reduceMotion={reduceMotion} />
+    <Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
     {selected && !collapsed && <View style={styles.navDot} />}
   </Pressable>;
 }
@@ -1569,6 +1575,7 @@ export function DiscoverPage({ wide, onNavigate }: { wide: boolean; onNavigate: 
 
 export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
   const reduceMotion = useReducedMotionPreference();
+  const [pulseKeys, setPulseKeys] = useState<Record<PrimaryNavPage, number>>({ chat: 0, discover: 0, memories: 0, settings: 0 });
   const isSelected = (item: (typeof mobileNavItems)[number]) => {
     if (item.id === 'chat') return page === 'chat' || page === 'history';
     if (item.id === 'discover') return discoverPages.includes(page);
@@ -1582,7 +1589,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       accessibilityLabel={item.label}
       accessibilityHint={item.id === 'discover' ? 'Open your journal, emotional check-ins, wellbeing exercises, privacy controls, and chat history' : undefined}
       accessibilityState={{ selected }}
-      onPress={() => onNavigate(item.id)}
+      onPress={() => { setPulseKeys(current => ({ ...current, [item.id]: current[item.id] + 1 })); onNavigate(item.id); }}
       style={({ pressed }) => [
         styles.bottomNavItem,
         selected && styles.bottomNavItemActive,
@@ -1590,7 +1597,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
         pressed && !reduceMotion && styles.squeezePressed,
       ]}
     >
-      <Text style={[styles.bottomIcon, selected && styles.bottomIconActive]}>{item.icon}</Text>
+      <AnimatedNavIcon name={item.id} active={selected} pulseKey={pulseKeys[item.id]} reduceMotion={reduceMotion} />
       <Text numberOfLines={1} style={[styles.bottomLabel, selected && styles.bottomLabelActive]}>{item.label}</Text>
     </Pressable>;
   };
