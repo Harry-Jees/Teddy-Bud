@@ -72,15 +72,15 @@ const C = {
 };
 
 const navItems: { id: Page; icon: string; label: string }[] = [
-  { id: 'chat', icon: '◌', label: 'Chats' },
+  { id: 'chat', icon: '▱', label: 'Chats' },
   { id: 'discover', icon: '✧', label: 'Discover' },
-  { id: 'memories', icon: '✳', label: 'Memories' },
+  { id: 'memories', icon: '♡', label: 'Memories' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
-  { id: 'chat', icon: '◌', label: 'Chats' },
+  { id: 'chat', icon: '▱', label: 'Chats' },
   { id: 'discover', icon: '✧', label: 'Discover' },
-  { id: 'memories', icon: '✳', label: 'Memories' },
+  { id: 'memories', icon: '♡', label: 'Memories' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
 const discoverPages: Page[] = ['discover', 'journal', 'emotions', 'studio', 'privacy'];
@@ -1492,9 +1492,40 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
   );
 });
 
+function AnimatedNavGlyph({ glyph, selected, pulse, reduceMotion, bottom = false }: { glyph: string; selected: boolean; pulse: number; reduceMotion: boolean; bottom?: boolean }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const tilt = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (reduceMotion) {
+      scale.setValue(1);
+      tilt.setValue(0);
+      return;
+    }
+    Animated.parallel([
+      Animated.sequence([
+        Animated.spring(scale, { toValue: 1.2, speed: 22, bounciness: 12, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1, speed: 18, bounciness: 8, useNativeDriver: true }),
+      ]),
+      Animated.sequence([
+        Animated.timing(tilt, { toValue: 1, duration: 110, useNativeDriver: true }),
+        Animated.spring(tilt, { toValue: 0, speed: 18, bounciness: 7, useNativeDriver: true }),
+      ]),
+    ]).start();
+  }, [pulse, selected, reduceMotion, scale, tilt]);
+  const rotation = tilt.interpolate({ inputRange: [0, 1], outputRange: ['0deg', glyph === '⚙' ? '22deg' : '9deg'] });
+  return <Animated.Text accessibilityElementsHidden style={[
+    bottom ? styles.bottomIcon : styles.navIcon,
+    selected && (bottom ? styles.bottomIconActive : styles.navIconSelected),
+    { transform: [{ scale }, { rotate: rotation }] },
+  ]}>{glyph}</Animated.Text>;
+}
+
 function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }: { item: (typeof navItems)[number]; selected: boolean; onPress: () => void; collapsed?: boolean; labelOpacity?: Animated.Value }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityHint={collapsed ? `Open ${item.label}` : undefined} accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.navButton, collapsed && styles.navButtonCollapsed, selected && styles.navButtonSelected, pressed && styles.pressed]}>
-    <Text style={[styles.navIcon, selected && styles.navIconSelected]}>{item.icon}</Text><Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
+  const [pulse, setPulse] = useState(0);
+  const reduceMotion = useReducedMotionPreference();
+  return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityHint={collapsed ? `Open ${item.label}` : undefined} accessibilityState={{ selected }} onPress={() => { setPulse(value => value + 1); onPress(); }} style={({ pressed }) => [styles.navButton, collapsed && styles.navButtonCollapsed, selected && styles.navButtonSelected, pressed && styles.pressed]}>
+    <AnimatedNavGlyph glyph={item.icon} selected={selected} pulse={pulse} reduceMotion={reduceMotion} />
+    <Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
     {selected && !collapsed && <View style={styles.navDot} />}
   </Pressable>;
 }
@@ -1567,6 +1598,26 @@ export function DiscoverPage({ wide, onNavigate }: { wide: boolean; onNavigate: 
   </ScrollView>;
 }
 
+function BottomNavItem({ item, selected, onNavigate, reduceMotion }: { item: (typeof mobileNavItems)[number]; selected: boolean; onNavigate: (page: Page) => void; reduceMotion: boolean }) {
+  const [pulse, setPulse] = useState(0);
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={item.label}
+    accessibilityHint={item.id === 'discover' ? 'Open your journal, emotional check-ins, wellbeing exercises, privacy controls, and chat history' : undefined}
+    accessibilityState={{ selected }}
+    onPress={() => { setPulse(value => value + 1); onNavigate(item.id); }}
+    style={({ pressed }) => [
+      styles.bottomNavItem,
+      selected && styles.bottomNavItemActive,
+      pressed && styles.pressed,
+      pressed && !reduceMotion && styles.squeezePressed,
+    ]}
+  >
+    <AnimatedNavGlyph glyph={item.icon} selected={selected} pulse={pulse} reduceMotion={reduceMotion} bottom />
+    <Text numberOfLines={1} style={[styles.bottomLabel, selected && styles.bottomLabelActive]}>{item.label}</Text>
+  </Pressable>;
+}
+
 export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
   const reduceMotion = useReducedMotionPreference();
   const isSelected = (item: (typeof mobileNavItems)[number]) => {
@@ -1574,30 +1625,10 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
     if (item.id === 'discover') return discoverPages.includes(page);
     return item.id === page;
   };
-  const renderItem = (item: (typeof mobileNavItems)[number]) => {
-    const selected = isSelected(item);
-    return <Pressable
-      key={item.id}
-      accessibilityRole="button"
-      accessibilityLabel={item.label}
-      accessibilityHint={item.id === 'discover' ? 'Open your journal, emotional check-ins, wellbeing exercises, privacy controls, and chat history' : undefined}
-      accessibilityState={{ selected }}
-      onPress={() => onNavigate(item.id)}
-      style={({ pressed }) => [
-        styles.bottomNavItem,
-        selected && styles.bottomNavItemActive,
-        pressed && styles.pressed,
-        pressed && !reduceMotion && styles.squeezePressed,
-      ]}
-    >
-      <Text style={[styles.bottomIcon, selected && styles.bottomIconActive]}>{item.icon}</Text>
-      <Text numberOfLines={1} style={[styles.bottomLabel, selected && styles.bottomLabelActive]}>{item.label}</Text>
-    </Pressable>;
-  };
 
   return <View style={[styles.bottomNav, { paddingBottom: Math.max(bottomInset, 8) }]}>
-    {renderItem(mobileNavItems[0])}
-    {renderItem(mobileNavItems[1])}
+    <BottomNavItem item={mobileNavItems[0]} selected={isSelected(mobileNavItems[0])} onNavigate={onNavigate} reduceMotion={reduceMotion} />
+    <BottomNavItem item={mobileNavItems[1]} selected={isSelected(mobileNavItems[1])} onNavigate={onNavigate} reduceMotion={reduceMotion} />
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Start a new chat"
@@ -1611,8 +1642,8 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
     >
       <View style={styles.bottomNavPlusBox}><Text style={styles.bottomNavPlusGlyph}>+</Text></View>
     </Pressable>
-    {renderItem(mobileNavItems[2])}
-    {renderItem(mobileNavItems[3])}
+    <BottomNavItem item={mobileNavItems[2]} selected={isSelected(mobileNavItems[2])} onNavigate={onNavigate} reduceMotion={reduceMotion} />
+    <BottomNavItem item={mobileNavItems[3]} selected={isSelected(mobileNavItems[3])} onNavigate={onNavigate} reduceMotion={reduceMotion} />
   </View>;
 }
 
