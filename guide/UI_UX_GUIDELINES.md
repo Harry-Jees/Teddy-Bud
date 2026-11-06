@@ -34,3 +34,10 @@
 
 ## Accessibility and release
 Check contrast, touch targets, text scaling, keyboard and focus behavior, screen-reader labels, reduced motion, and responsive layouts. A visual build or automated test alone does not prove UX completion; perform platform-specific smoke tests.
+
+
+## Primary navigation icon motion
+- Use a consistent, soft, custom-drawn icon family for Chats, Discover, Memories, and Settings; avoid mixed Unicode symbol styles.
+- On tap or selection, use a brief spring scale with a restrained rotation/pop. Keep the movement small, warm, and purposeful rather than bouncy or distracting.
+- Respect the operating-system/browser reduced-motion preference. When reduced motion is enabled, show the selected state immediately without movement.
+- Keep icon hit targets generous, labels visible, and accessible names independent of the decorative artwork.

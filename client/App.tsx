@@ -34,6 +34,7 @@ import { findRelevantChatHistory, localDataService, ownerFromToken } from './src
 import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
 import { OnboardingSurvey } from './src/components/OnboardingSurvey';
+import { AnimatedNavIcon } from './src/components/AnimatedNavIcon';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncryptedBackup } from './src/services/backup';
 import { pickBackupFile, saveBackupFile, savePlainTextFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
@@ -71,13 +72,15 @@ const C = {
   rose: '#8D473F', white: '#FFFFFF',
 };
 
-const navItems: { id: Page; icon: string; label: string }[] = [
+type PrimaryNavPage = 'chat' | 'discover' | 'memories' | 'settings';
+
+const navItems: { id: PrimaryNavPage; icon: string; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Chats' },
   { id: 'discover', icon: '✧', label: 'Discover' },
   { id: 'memories', icon: '✳', label: 'Memories' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
-const mobileNavItems: { id: Page; icon: string; label: string }[] = [
+const mobileNavItems: { id: PrimaryNavPage; icon: string; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Chats' },
   { id: 'discover', icon: '✧', label: 'Discover' },
   { id: 'memories', icon: '✳', label: 'Memories' },
@@ -155,7 +158,7 @@ function AccessGate() {
         const current = await browserAuthService.restore();
         if (mounted) {
           setSession(current);
-          if (current) await browserAuthService.markSetupComplete();
+          if (current) await browserAuthService.markSetupComplete(current.username);
           else {
             setInitialMode(await browserAuthService.shouldCreateAccount() ? 'create' : 'login');
             setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
@@ -383,6 +386,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const [shareMemories, setShareMemories] = useState(false);
   const [shareChatHistory, setShareChatHistory] = useState(false);
   const [shareAboutMe, setShareAboutMe] = useState(false);
+  const [shareOnboardingSurvey, setShareOnboardingSurvey] = useState(false);
   const [aboutMe, setAboutMe] = useState('');
   const [assistantName, setAssistantName] = useState('Teddy');
   const [assistantCharacterId, setAssistantCharacterId] = useState<AssistantCharacterId>(DEFAULT_ASSISTANT_CHARACTER_ID);
@@ -421,6 +425,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       shareMemories,
       shareChatHistory,
       shareAboutMe,
+      shareOnboardingSurvey,
       aboutMe,
       assistantName,
       assistantCharacterId,
@@ -441,13 +446,14 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     if ('shareMemories' in overrides) setShareMemories(nextSnapshot.shareMemories);
     if ('shareChatHistory' in overrides) setShareChatHistory(nextSnapshot.shareChatHistory);
     if ('shareAboutMe' in overrides) setShareAboutMe(nextSnapshot.shareAboutMe);
+    if ('shareOnboardingSurvey' in overrides) setShareOnboardingSurvey(nextSnapshot.shareOnboardingSurvey ?? false);
     if ('aboutMe' in overrides) setAboutMe(nextSnapshot.aboutMe);
     if ('assistantName' in overrides) setAssistantName(nextSnapshot.assistantName);
     if ('assistantCharacterId' in overrides) setAssistantCharacterId(nextSnapshot.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
     if ('assistantCharacterNames' in overrides) setAssistantCharacterNames(nextSnapshot.assistantCharacterNames ?? {});
     if ('onboardingSurveyAnswers' in overrides) setOnboardingSurveyAnswers(nextSnapshot.onboardingSurveyAnswers);
     if (!pendingLocalAction) setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, pendingLocalAction]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, pendingLocalAction]);
   const refreshCreditBalance = useCallback(async () => {
     try {
       setCreditBalance(await gatewayService.getCreditBalance(sessionToken));
@@ -483,6 +489,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       setShareMemories(data.shareMemories);
       setShareChatHistory(data.shareChatHistory);
       setShareAboutMe(data.shareAboutMe);
+      setShareOnboardingSurvey(data.shareOnboardingSurvey ?? false);
       setAboutMe(data.aboutMe);
       setAssistantName(data.assistantName);
       setAssistantCharacterId(data.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
@@ -508,6 +515,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       shareMemories,
       shareChatHistory,
       shareAboutMe,
+      shareOnboardingSurvey,
       aboutMe,
       assistantName,
       assistantCharacterId,
@@ -518,7 +526,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     }).catch(error => {
       setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
     });
-  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries, onboardingSurveyAnswers, pendingLocalAction]);
+  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries, onboardingSurveyAnswers, pendingLocalAction]);
 
   const appendConversationMessage = (conversationId: string, message: Message) => {
     const updatedAt = new Date().toISOString();
@@ -737,7 +745,9 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         setShareMemories(false);
         setShareChatHistory(false);
         setShareAboutMe(false);
+        setShareOnboardingSurvey(false);
         setAboutMe('');
+        setOnboardingSurveyAnswers(undefined);
         setAssistantName('Teddy');
         setAssistantCharacterId(DEFAULT_ASSISTANT_CHARACTER_ID);
         setAssistantCharacterNames({ 'teddy-bud': 'Teddy' });
@@ -768,7 +778,9 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         setShareMemories(false);
         setShareChatHistory(false);
         setShareAboutMe(false);
+        setShareOnboardingSurvey(false);
         setAboutMe('');
+        setOnboardingSurveyAnswers(undefined);
         setAssistantName('Teddy');
         setLocalDataError(null);
         setLocalDataSaveError(null);
@@ -799,7 +811,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     }
     setLocalDataSaveError(null);
     try {
-      await localDataService.save(owner, { conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames });
+      await localDataService.save(owner, { conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers });
     } catch (error) {
       setLocalDataSaveError(localDataErrorMessage(error, 'save'));
     }
@@ -809,48 +821,52 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     const nextEntries = [entry, ...emotionCheckIns.filter(existing => existing.id !== entry.id)].slice(0, 500);
     await localDataService.save(owner, {
       conversations, activeConversationId, memories, emotionCheckIns: nextEntries, journalEntries,
-      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     });
     setEmotionCheckIns(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers]);
 
   const deleteEmotionCheckIn = useCallback(async (id: string) => {
     const nextEntries = emotionCheckIns.filter(entry => entry.id !== id);
     await localDataService.save(owner, {
       conversations, activeConversationId, memories, emotionCheckIns: nextEntries, journalEntries,
-      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     });
     setEmotionCheckIns(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers]);
 
   const saveJournalEntry = useCallback(async (entry: JournalEntry) => {
     const nextEntries = [entry, ...journalEntries.filter(existing => existing.id !== entry.id)].slice(0, 1000);
     await localDataService.save(owner, {
       conversations, activeConversationId, memories, emotionCheckIns, journalEntries: nextEntries,
-      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     });
     setJournalEntries(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers]);
 
   const deleteJournalEntry = useCallback(async (id: string) => {
     const nextEntries = journalEntries.filter(entry => entry.id !== id);
     await localDataService.save(owner, {
       conversations, activeConversationId, memories, emotionCheckIns, journalEntries: nextEntries,
-      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     });
     setJournalEntries(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers]);
 
   const exportBackup = (passphrase: string) => createEncryptedBackup({
-    conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames,
+    conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers,
   }, owner, passphrase);
 
   const importBackup = async (fileContents: string, passphrase: string) => {
@@ -878,8 +894,9 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     if (!mode) return false;
     const currentData = {
       conversations, activeConversationId, memories, emotionCheckIns, journalEntries,
-      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe,
+      rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     };
     const restored = mode === 'merge' ? mergeLocalAppData(currentData, imported) : imported;
     // Persist the complete replacement in one storage operation before updating React state.
@@ -894,6 +911,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     setShareMemories(restored.shareMemories);
     setShareChatHistory(restored.shareChatHistory);
     setShareAboutMe(restored.shareAboutMe);
+    setShareOnboardingSurvey(restored.shareOnboardingSurvey ?? false);
+    setOnboardingSurveyAnswers(restored.onboardingSurveyAnswers);
     setAboutMe(restored.aboutMe);
     setAssistantName(restored.assistantName);
     setAssistantCharacterId(restored.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
@@ -952,7 +971,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         task: 'conversation',
         imageDataUrl,
         memories: shareMemories ? memories.map(memory => memory.text) : [],
-        aboutMe: shareAboutMe ? aboutMe : '',
+        aboutMe: [shareAboutMe ? aboutMe : '', shareOnboardingSurvey && onboardingSurveyAnswers?.length ? onboardingSurveyAnswers.map(answer => answer.question + ': ' + answer.answer).join('\n') : ''].filter(Boolean).join('\n\n').slice(0, 1800),
         assistantName,
         assistantCharacterId,
         crossChatContext: shareChatHistory
@@ -1176,7 +1195,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
           {page === 'studio' && <WellbeingStudio wide={wide} />}
           {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
-          {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
+          {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
           {page === 'settings' && <SettingsPage wide={wide} username={username} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
             const savedName = name.trim().slice(0, 32);
             if (!savedName) return;
@@ -1198,7 +1217,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
               <Pressable onPress={closeMemoryEditor} disabled={memorySaving} accessibilityRole="button" accessibilityLabel="Close memory editor" style={[styles.closeButton, memorySaving && styles.buttonDisabled]}><Text style={styles.closeText}>×</Text></Pressable>
             </View>
             <Text style={styles.modalTitle}>{editing ? 'Edit a memory' : 'Keep a small thing in mind'}</Text>
-            <Text style={styles.modalBody}>Add a detail to keep on this device. Saved memories are included with future chats sent to the AI provider.</Text>
+            <Text style={styles.modalBody}>Add a detail to keep on this device. Saved memories are included with future chats sent to Teddy’s online reply service.</Text>
             {memoryActionError && <View accessibilityRole="alert" style={styles.authError}><Text accessibilityLiveRegion="polite" style={styles.authErrorText}>{memoryActionError}</Text></View>}
             <TextInput accessibilityLabel="Memory text" autoFocus value={memoryDraft} onChangeText={value => { setMemoryDraft(value); setMemoryActionError(null); }} placeholder="Write a gentle reminder…" placeholderTextColor={C.muted} multiline maxLength={500} editable={!memorySaving} style={styles.memoryInput} textAlignVertical="top" />
             <View style={styles.modalActions}>
@@ -1493,8 +1512,11 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
 });
 
 function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }: { item: (typeof navItems)[number]; selected: boolean; onPress: () => void; collapsed?: boolean; labelOpacity?: Animated.Value }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityHint={collapsed ? `Open ${item.label}` : undefined} accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.navButton, collapsed && styles.navButtonCollapsed, selected && styles.navButtonSelected, pressed && styles.pressed]}>
-    <Text style={[styles.navIcon, selected && styles.navIconSelected]}>{item.icon}</Text><Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
+  const reduceMotion = useReducedMotionPreference();
+  const [pulseKey, setPulseKey] = useState(0);
+  return <Pressable accessibilityRole="button" accessibilityLabel={item.label} accessibilityHint={collapsed ? `Open ${item.label}` : undefined} accessibilityState={{ selected }} onPress={() => { setPulseKey(value => value + 1); onPress(); }} style={({ pressed }) => [styles.navButton, collapsed && styles.navButtonCollapsed, selected && styles.navButtonSelected, pressed && styles.pressed]}>
+    <AnimatedNavIcon name={item.id} active={selected} pulseKey={pulseKey} reduceMotion={reduceMotion} />
+    <Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
     {selected && !collapsed && <View style={styles.navDot} />}
   </Pressable>;
 }
@@ -1569,6 +1591,7 @@ export function DiscoverPage({ wide, onNavigate }: { wide: boolean; onNavigate: 
 
 export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
   const reduceMotion = useReducedMotionPreference();
+  const [pulseKeys, setPulseKeys] = useState<Record<PrimaryNavPage, number>>({ chat: 0, discover: 0, memories: 0, settings: 0 });
   const isSelected = (item: (typeof mobileNavItems)[number]) => {
     if (item.id === 'chat') return page === 'chat' || page === 'history';
     if (item.id === 'discover') return discoverPages.includes(page);
@@ -1582,7 +1605,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       accessibilityLabel={item.label}
       accessibilityHint={item.id === 'discover' ? 'Open your journal, emotional check-ins, wellbeing exercises, privacy controls, and chat history' : undefined}
       accessibilityState={{ selected }}
-      onPress={() => onNavigate(item.id)}
+      onPress={() => { setPulseKeys(current => ({ ...current, [item.id]: current[item.id] + 1 })); onNavigate(item.id); }}
       style={({ pressed }) => [
         styles.bottomNavItem,
         selected && styles.bottomNavItemActive,
@@ -1590,7 +1613,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
         pressed && !reduceMotion && styles.squeezePressed,
       ]}
     >
-      <Text style={[styles.bottomIcon, selected && styles.bottomIconActive]}>{item.icon}</Text>
+      <AnimatedNavIcon name={item.id} active={selected} pulseKey={pulseKeys[item.id]} reduceMotion={reduceMotion} />
       <Text numberOfLines={1} style={[styles.bottomLabel, selected && styles.bottomLabelActive]}>{item.label}</Text>
     </Pressable>;
   };
@@ -2018,7 +2041,7 @@ function MemorySuggestionCard({ fact, onSave, onDismiss }: { fact: string; onSav
   return <View accessibilityRole="summary" style={styles.memorySuggestionCard}>
     <Text style={styles.memorySuggestionTitle}>Would you like Teddy Bud to remember this?</Text>
     <Text style={styles.memorySuggestionFact}>{fact}</Text>
-    <Text style={styles.memorySuggestionBody}>Nothing is saved unless you approve. Saved memories stay on this device and are included with future chats sent to the AI provider.</Text>
+    <Text style={styles.memorySuggestionBody}>Nothing is saved unless you approve. Saved memories stay on this device and are included with future chats sent to Teddy’s online reply service.</Text>
     <View style={styles.memorySuggestionActions}>
       <Button label="Not now" tone="quiet" onPress={onDismiss} />
       <Button label="Add to memories" onPress={onSave} />
@@ -2031,7 +2054,7 @@ function OccasionWidget({ value, onChange, onSave, onDismiss }: { value: string;
     <Text style={styles.occasionTitle}>Save a good moment</Text>
     <Text style={styles.occasionDescription}>Write a happy memory or occasion you'd like Teddy Bud to remember. Review it before saving.</Text>
     <TextInput value={value} onChangeText={onChange} placeholder="What would you like to remember?" placeholderTextColor={C.muted} multiline maxLength={500} style={styles.occasionInput} accessibilityLabel="Memory to save" textAlignVertical="top" />
-    <Text style={styles.occasionPrivacy}>Saved on this device and included with future chats sent to the AI provider.</Text>
+    <Text style={styles.occasionPrivacy}>Saved on this device and included with future chats sent to Teddy’s online reply service.</Text>
     <View style={styles.memorySuggestionActions}>
       <Button label="Cancel" tone="quiet" onPress={onDismiss} />
       <Button label="Save memory" onPress={onSave} disabled={!value.trim()} />
@@ -2116,7 +2139,7 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete, 
         <Pressable accessibilityRole="button" onPress={onDismissActionError} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>
       </View>
     </View>}
-    <View style={styles.memoryNotice}><View style={styles.noticeIcon}><Text style={styles.noticeGlyph}>⌑</Text></View><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{memoryEnabled ? 'Saved on this device' : 'Saved memories are off'}</Text><Text style={styles.noticeBody}>{memoryEnabled ? "Memories stay in this app's local database across restarts and are included with future chats sent to the AI provider." : 'Turn on "Keep memories on this device" in Privacy settings to add memories.'}</Text></View></View>
+    <View style={styles.memoryNotice}><View style={styles.noticeIcon}><Text style={styles.noticeGlyph}>⌑</Text></View><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{memoryEnabled ? 'Saved on this device' : 'Saved memories are off'}</Text><Text style={styles.noticeBody}>{memoryEnabled ? "Memories stay in this app's local database across restarts and are included with future chats sent to Teddy’s online reply service." : 'Turn on "Keep memories on this device" in Privacy settings to add memories.'}</Text></View></View>
     <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>SAVED MEMORIES <Text style={styles.countText}>{memories.length}</Text></Text><Pressable accessibilityRole="button" accessibilityLabel="Add a memory" disabled={!memoryEnabled} onPress={onAdd} style={styles.addLink}><Text style={[styles.addLinkText, !memoryEnabled && styles.disabledText]}>{memoryEnabled ? 'Add a memory' : 'Memory is off'}</Text></Pressable></View>
     {memories.length ? memories.map(memory => <View key={memory.id} style={styles.memoryCard}><View style={styles.memoryMark}><Text style={styles.memoryMarkText}>✳</Text></View><View style={styles.memoryCopy}><Text style={styles.memoryText}>{memory.text}</Text><Text style={styles.memoryDate}>{memory.date}</Text></View><View style={styles.memoryActions}><Pressable accessibilityRole="button" accessibilityLabel="Edit memory" onPress={() => onEdit(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Edit</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Forget memory" onPress={() => onDelete(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Forget</Text></Pressable></View></View>) : <View style={styles.emptyCard}><View style={styles.emptyMark}><Text style={styles.emptyGlyph}>✳</Text></View><Text style={styles.emptyTitle}>{memoryEnabled ? 'A fresh page' : 'Memories are off'}</Text><Text style={styles.emptyBody}>{memoryEnabled ? "Nothing saved right now. Add a small detail you'd like to hold onto." : 'Turn on "Keep memories on this device" in Privacy settings when you are ready.'}</Text>{memoryEnabled && <Button label="Add your first memory" onPress={onAdd} />}</View>}
     {!!memories.length && <Text style={styles.memoriesFootnote}>Your memories are yours. Edit them, remove them, or clear local data from this device at any time.</Text>}
@@ -2444,14 +2467,14 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
   </ScrollView>;
 }
 
-function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, onRememberChange, onShareMemoriesChange, onShareChatHistoryChange, onShareAboutMeChange, onClear }: { wide: boolean; rememberInSession: boolean; shareMemories: boolean; shareChatHistory: boolean; shareAboutMe: boolean; onRememberChange: (value: boolean) => void; onShareMemoriesChange: (value: boolean) => void; onShareChatHistoryChange: (value: boolean) => void; onShareAboutMeChange: (value: boolean) => void; onClear: () => void }) {
+function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, onRememberChange, onShareMemoriesChange, onShareChatHistoryChange, onShareAboutMeChange, shareOnboardingSurvey, onShareOnboardingSurveyChange, onClear }: { wide: boolean; rememberInSession: boolean; shareMemories: boolean; shareChatHistory: boolean; shareAboutMe: boolean; shareOnboardingSurvey: boolean; onRememberChange: (value: boolean) => void; onShareMemoriesChange: (value: boolean) => void; onShareChatHistoryChange: (value: boolean) => void; onShareAboutMeChange: (value: boolean) => void; onShareOnboardingSurveyChange: (value: boolean) => void; onClear: () => void }) {
   const [policyLinkError, setPolicyLinkError] = useState('');
   const isDesktopApp = Platform.OS === 'web' && typeof window !== 'undefined' && !!window.teddyBudDesktop?.isDesktop;
   const storagePrivacyDescription = isDesktopApp
-    ? "Chats, profile notes, and memories are stored in this desktop app and encrypted with a key protected by your operating system. The open app can access its saved data. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat."
+    ? "Chats, profile notes, and memories are stored in this desktop app and encrypted with a key protected by your operating system. The open app can access its saved data. Messages and any context you choose below are sent through Teddy Bud’s online reply service when you chat."
     : Platform.OS === 'web'
-      ? "Chats, profile notes, and memories are stored in this browser's local database and encrypted with a separate key for each account. This protects saved data at rest, but code running in this browser while Teddy Bud is open could access it. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat."
-      : "Chats, profile notes, and memories are stored in this device's encrypted local database. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat.";
+      ? "Chats, profile notes, and memories are stored in this browser's local database and encrypted with a separate key for each account. This protects saved data at rest, but code running in this browser while Teddy Bud is open could access it. Messages and any context you choose below are sent through Teddy Bud’s online reply service when you chat."
+      : "Chats, profile notes, and memories are stored in this device's encrypted local database. Messages and any context you enable below are sent through Teddy Bud’s online reply service when you chat.";
   const openPolicy = (url: string) => {
     setPolicyLinkError('');
     openExternalUrl(url).catch(() => setPolicyLinkError('Could not open this page. Check your connection and try again.'));
@@ -2461,13 +2484,15 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
     <View style={styles.privacyBanner}><View style={styles.privacyShield}><Text style={styles.shieldGlyph}>⌑</Text></View><View style={styles.privacyCopy}><Text style={styles.privacyTitle}>Your chats stay on this device</Text><Text style={styles.privacyBody}>{storagePrivacyDescription}</Text></View></View>
     <Text style={styles.settingsSectionLabel}>MEMORY & CONTEXT</Text>
     <View style={styles.settingsCard}>
-      <SettingRow icon="✳" title="Suggest memory notes" description="Let the assistant suggest durable details from your messages. Turning this off keeps existing notes but stops new suggestions." value={rememberInSession} onChange={onRememberChange} />
+      <SettingRow icon="✳" title="Suggest memory notes" description="Let Teddy gently suggest meaningful details from your messages. Turning this off keeps existing notes but stops new suggestions." value={rememberInSession} onChange={onRememberChange} />
       <View style={styles.settingSeparator} />
       <SettingRow icon="↗" title="Share saved memories" description="Include your saved memory notes as context with new messages." value={shareMemories} onChange={onShareMemoriesChange} />
       <View style={styles.settingSeparator} />
       <SettingRow icon="⌕" title="Use other chats for context" description="Select a few relevant excerpts on this device and include them with your message." value={shareChatHistory} onChange={onShareChatHistoryChange} />
       <View style={styles.settingSeparator} />
-      <SettingRow icon="▤" title="Share About me notes" description="Include the profile notes you wrote in Settings in the assistant's system context." value={shareAboutMe} onChange={onShareAboutMeChange} />
+      <SettingRow icon="▤" title="Share About me notes" description="Include the profile notes you wrote in Settings with your conversations." value={shareAboutMe} onChange={onShareAboutMeChange} />
+      <View style={styles.settingSeparator} />
+      <SettingRow icon="♡" title="Use my setup answers with Teddy" description="When enabled, your answers about routines, mood, and support may accompany messages to Teddy. This stays off until you choose to turn it on." value={shareOnboardingSurvey} onChange={onShareOnboardingSurveyChange} />
     </View>
     <Text style={styles.settingsSectionLabel}>DATA</Text>
     <View style={styles.settingsCard}>

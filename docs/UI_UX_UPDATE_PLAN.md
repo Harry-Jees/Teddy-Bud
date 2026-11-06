@@ -26,4 +26,6 @@ Deliver a calm, mature, conversation-first companion app—**A little room to br
 - [ ] Run lint, typecheck, tests, and platform builds; separately complete real-device smoke tests.
 
 ## Verification status
+
+The current hardening branch adds animated primary navigation icons and device-level username binding. The icon animation respects reduced-motion settings. These changes are pending CI and must not be described as merged or device-verified until those checks complete.
 The current source has automated build/test evidence. The Android Gradle build was not completed in the development sandbox because the Gradle distribution download timed out. Android microphone, username-auth and biometric flows, full accessibility matrix, and all-platform runtime behavior have not been confirmed on physical devices. Do not mark the UX fully verified solely because CI passes.

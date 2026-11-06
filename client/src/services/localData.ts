@@ -59,6 +59,7 @@ export type LocalAppData = {
   shareMemories: boolean;
   shareChatHistory: boolean;
   shareAboutMe: boolean;
+  shareOnboardingSurvey?: boolean;
   aboutMe: string;
   assistantName: string;
   assistantCharacterId?: AssistantCharacterId;
@@ -184,6 +185,7 @@ function normalize(value: unknown): LocalAppData {
     shareMemories: data.shareMemories === true,
     shareChatHistory: data.shareChatHistory === true,
     shareAboutMe: data.shareAboutMe === true,
+    shareOnboardingSurvey: data.shareOnboardingSurvey === true,
     aboutMe: typeof data.aboutMe === 'string' ? data.aboutMe.slice(0, MAX_ABOUT_ME_LENGTH) : '',
     assistantName: assistantCharacterNames[assistantCharacterId] ?? legacyAssistantName,
     assistantCharacterId,

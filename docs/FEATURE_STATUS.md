@@ -15,10 +15,12 @@ Last reviewed: 2026-11-06. This file is a conservative status record: implementa
 ## Implemented foundations (automated verification does not equal device verification)
 - Text chat through the authenticated gateway, with streaming and visible request states.
 - Speech-to-text composer controls are wired to the existing Android speech-recognition module and supported browser Web Speech APIs. Dictation is user-initiated, editable, and never auto-sent; platform and physical-device verification remains outstanding.
+- The current hardening branch adds soft animated icons for Chats, Discover, Memories, and Settings. Tap/selection motion is reduced when the device requests reduced motion.
 - Image attachment and server-side text/image model routing.
 - Local memory, journal, and wellbeing surfaces documented in the current client.
+- The 24-question setup survey is stored locally. A separate Privacy control is off by default and explicitly opts in to sharing those answers as conversation context.
 - Encrypted local storage and encrypted portable backup/restore flows.
-- Username-only sign-in and Android biometric credential storage are implemented. Returning sign-in no longer offers a second setup path; first-run setup remains available on a fresh device. Biometric sign-in is shown only after its local setup marker exists. CI and physical-device auth/biometric testing remain separate.
+- Username-only sign-in and Android biometric credential storage are implemented. First-run setup provisions one private space; the current hardening branch binds that device to its first successfully verified username and rejects a different username before contacting the account service. Older setup markers bind on the next successful sign-in. CI and physical-device auth/biometric testing remain separate.
 - CI produces Android ARM64, Windows x64/ARM64, macOS Intel/Apple Silicon, and Linux DEB/AppImage development packages.
 
 ## Explicit limitations

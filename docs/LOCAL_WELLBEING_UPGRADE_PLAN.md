@@ -16,20 +16,22 @@ Use a radar/web chart inspired by the supplied S/B/I/R/T/A/F chart. It is a desc
 - Trends compare only user-entered check-ins and require enough entries; show dates and missing-data gaps honestly.
 - All chart values are computed locally and can be edited/deleted with the source entry.
 
-## Implementation status (branch: `migration/cloudflare-workers-ai-phonepe`)
+## Current implementation status — 2026-11-06
 
-- **Implemented in this branch:** local emotion check-ins with validated ratings, spider-web/radar-style chart geometry, local trend averages, entry deletion, private journal prompts/search/save/delete, offline wellbeing exercises, local persistence and inclusion in the encrypted backup payload.
-- **Still requires verification:** TypeScript/lint/unit tests, web build, native builds, device testing, accessibility review, and encrypted backup round-trip tests on each platform.
-- **Original gap list (historical):** true account-level single-device enforcement, journal editing/export, conversation controls, voice, notifications, and end-to-end encryption. The dated status below supersedes the earlier journal/conversation entries; use [`FEATURE_STATUS.md`](./FEATURE_STATUS.md) for the current implementation and release-readiness matrix.
+The current application source includes:
+- Local emotion check-ins with validated ratings, a radar-style visualization, recent-pattern summaries, and deletion.
+- Private journal prompts, blank entries, search, editing, deletion, and text export.
+- Offline breathing, grounding, focus-break, and wind-down exercises.
+- Local persistence and inclusion of journal/check-in data in encrypted backups.
+- Explicit “Discuss with Teddy” flow that places a selected journal entry in the chat composer as a draft; it is not sent until the user reviews and sends it.
+- Speech-to-text input with editable transcripts; no spoken replies or TTS.
+- Setup answers stored locally. A separate, off-by-default Privacy setting now lets the user explicitly include those answers in Teddy conversations.
 
-## Verified implementation status — 2026-10-25
+The device-username binding is implemented in the current hardening branch: once a username is assigned to a device, a different username is rejected before an account-service request. Existing devices with older setup markers bind to the username on their next successful sign-in. Automated tests and physical-device checks remain required.
 
-The current application code also includes journal editing, deletion, search and text export, plus local emotion check-ins, recent-pattern averages, and offline wellbeing exercises. The feature branch adds two further capabilities:
+Do not advertise weekly reflections, automatic mood insights, reminders, or notifications as shipped unless their implementation and release tests are present on the current main branch. Do not imply that journal/check-in data is shared automatically.
 
-- **Explicit journal sharing:** “Discuss with Teddy” asks for confirmation and copies the selected entry into the chat composer as a draft. It is not sent until the user reviews and presses Send.
-- **Weekly reflection:** a seven-day summary is calculated on-device from at least two user-entered check-ins, with average energy and the most frequently highest-rated emotion. It is descriptive, not diagnostic, and is not sent to the AI provider automatically.
-
-These additions still require CI, accessibility and cross-platform testing before release. The following remain unimplemented or require separate architecture work: true account-level single-device enforcement, full response editing/regeneration/copy controls, voice interaction, reminders/notifications, and a production payment/entitlement ledger. End-to-end encryption of messages is not compatible with sending readable prompts to a remote AI provider; it would require a different local-inference or privacy-preserving architecture, not a checkbox in the current client.
+**Still requires verification:** CI and package builds for this branch, Android and desktop device testing, accessibility and reduced-motion review, encrypted backup round-trip tests, and authenticated production text/image requests.
 
 ## Phased delivery
 
