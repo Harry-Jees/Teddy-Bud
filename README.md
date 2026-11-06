@@ -88,7 +88,7 @@ npm test
 | `supabase/migrations/` | Database migrations used by the gateway |
 | `guide/` | Product, architecture, privacy, UI, release, and distribution documentation |
 | `docs/` | Feature status, acceptance criteria, and upgrade plans |
-| `dist/` | Local/CI-generated packages (ignored by Git; downloadable builds are GitHub Actions artifacts) |
+| `dist/` | Generated packages are ignored by Git and published as GitHub Release assets after successful CI |
 | `.github/workflows/` | CI, packaging, and guarded deployment workflows |
 
 ## Status and license
