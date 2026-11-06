@@ -515,6 +515,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       shareMemories,
       shareChatHistory,
       shareAboutMe,
+      shareOnboardingSurvey,
       aboutMe,
       assistantName,
       assistantCharacterId,
@@ -525,7 +526,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     }).catch(error => {
       setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
     });
-  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries, onboardingSurveyAnswers, pendingLocalAction]);
+  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries, onboardingSurveyAnswers, pendingLocalAction]);
 
   const appendConversationMessage = (conversationId: string, message: Message) => {
     const updatedAt = new Date().toISOString();
