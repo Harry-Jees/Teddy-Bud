@@ -1597,38 +1597,63 @@ function useReducedMotionPreference() {
 
 export function DiscoverPage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
   const reduceMotion = useReducedMotionPreference();
+  const [infoItem, setInfoItem] = useState<{ label: string; description: string } | null>(null);
   const items: { id: Page; icon: string; label: string; description: string }[] = [
-    { id: 'history', icon: '▤', label: 'Chat history', description: 'Return to a conversation you want to pick up again' },
-    { id: 'journal', icon: '✎', label: 'Private journal', description: 'Write, search, edit, and export reflections saved on this device' },
-    { id: 'emotions', icon: '◉', label: 'Emotional check-in', description: 'Record how you feel and revisit your own check-in history' },
-    { id: 'studio', icon: '☼', label: 'Wellbeing studio', description: 'Try breathing, grounding, focus, and bedtime exercises offline' },
-    { id: 'privacy', icon: '⌑', label: 'Privacy controls', description: 'Choose which saved context, if any, can accompany a chat' },
+    { id: 'history', icon: '▤', label: 'Chat history', description: 'Find and reopen a conversation whenever you want to continue where you left off.' },
+    { id: 'journal', icon: '✎', label: 'Private journal', description: 'Write, edit, search, and export personal reflections stored on this device.' },
+    { id: 'emotions', icon: '◉', label: 'Emotional check-in', description: 'Log how you feel and look back at your check-in patterns over time.' },
+    { id: 'studio', icon: '☼', label: 'Wellbeing studio', description: 'Explore simple breathing, grounding, focus, and bedtime exercises that work offline.' },
+    { id: 'privacy', icon: '⌑', label: 'Privacy controls', description: 'Manage what saved context, if any, can be used to make chats more relevant.' },
   ];
 
-  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
-    <View style={styles.pageIntro}>
-      <Text style={styles.eyebrow}>A LITTLE ROOM TO BREATHE</Text>
-      <Text style={styles.pageTitle}>Discover</Text>
-      <Text style={styles.pageDescription}>A few gentle ways to reflect, reset, and return to the things that matter. Your journal and wellbeing entries stay on this device.</Text>
-    </View>
-    <View style={styles.moreList}>
-      {items.map(item => <Pressable
-        key={item.id}
-        accessibilityRole="button"
-        accessibilityLabel={item.label}
-        accessibilityHint={item.description}
-        onPress={() => onNavigate(item.id)}
-        style={({ pressed }) => [styles.moreItem, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}
-      >
-        <View style={styles.moreItemIconWrap}><Text style={styles.moreItemIcon}>{item.icon}</Text></View>
-        <View style={styles.moreItemCopy}>
-          <Text style={styles.moreItemTitle}>{item.label}</Text>
-          <Text style={styles.moreItemDescription}>{item.description}</Text>
-        </View>
-        <Text accessibilityElementsHidden style={styles.moreItemChevron}>›</Text>
-      </Pressable>)}
-    </View>
-  </ScrollView>;
+  return <>
+    <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
+      <View style={styles.pageIntro}>
+        <Text style={styles.eyebrow}>A LITTLE ROOM TO BREATHE</Text>
+        <Text style={styles.pageTitle}>Discover</Text>
+      </View>
+      <View style={styles.moreList}>
+        {items.map(item => <View key={item.id} style={styles.moreItem}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={item.label}
+            onPress={() => onNavigate(item.id)}
+            style={({ pressed }) => [styles.discoverItemMain, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}
+          >
+            <View style={styles.moreItemIconWrap}><Text style={styles.moreItemIcon}>{item.icon}</Text></View>
+            <View style={styles.moreItemCopy}>
+              <Text style={styles.moreItemTitle}>{item.label}</Text>
+            </View>
+            <Text accessibilityElementsHidden style={styles.moreItemChevron}>›</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`About ${item.label}`}
+            accessibilityHint="Shows a short explanation"
+            onPress={() => setInfoItem({ label: item.label, description: item.description })}
+            hitSlop={8}
+            style={({ pressed }) => [styles.discoverInfoButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.discoverInfoGlyph}>i</Text>
+          </Pressable>
+        </View>)}
+      </View>
+    </ScrollView>
+    <Modal visible={!!infoItem} transparent animationType="fade" onRequestClose={() => setInfoItem(null)}>
+      <Pressable style={styles.discoverInfoBackdrop} onPress={() => setInfoItem(null)}>
+        <Pressable style={styles.discoverInfoCard} onPress={() => undefined}>
+          <View style={styles.discoverInfoTop}>
+            <View style={styles.discoverInfoBadge}><Text style={styles.discoverInfoGlyph}>i</Text></View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setInfoItem(null)} style={styles.discoverInfoClose}>
+              <Text style={styles.discoverInfoCloseText}>×</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.discoverInfoTitle}>{infoItem?.label}</Text>
+          <Text style={styles.discoverInfoDescription}>{infoItem?.description}</Text>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  </>;
 }
 
 export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
@@ -2859,6 +2884,17 @@ const styles = StyleSheet.create({
   journalEmptyText: { color: C.muted, marginTop: 18, lineHeight: 21 },
   memoryErrorActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 4 },
   moreList: { gap: 10 },
+  discoverItemMain: { flex: 1, minWidth: 0, minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingLeft: 13 },
+  discoverInfoButton: { width: 42, height: 58, alignItems: 'center', justifyContent: 'center', marginRight: 5 },
+  discoverInfoGlyph: { width: 21, height: 21, borderRadius: 11, borderWidth: 1.4, borderColor: '#A99A8B', color: '#806D5C', textAlign: 'center', textAlignVertical: 'center', fontSize: 13, lineHeight: 19, fontWeight: '700', overflow: 'hidden' },
+  discoverInfoBackdrop: { flex: 1, backgroundColor: 'rgba(39, 36, 32, 0.28)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  discoverInfoCard: { width: '100%', maxWidth: 360, borderRadius: 22, backgroundColor: C.paper, padding: 21, borderWidth: 1, borderColor: C.line, shadowColor: '#302821', shadowOpacity: 0.12, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
+  discoverInfoTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 },
+  discoverInfoBadge: { width: 36, height: 36, borderRadius: 13, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' },
+  discoverInfoClose: { width: 34, height: 34, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' },
+  discoverInfoCloseText: { color: C.muted, fontSize: 23, lineHeight: 26 },
+  discoverInfoTitle: { color: C.ink, fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
+  discoverInfoDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 8 },
   moreItem: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 17, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper },
   moreItemIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   moreItemIcon: { color: C.cocoaDark, fontSize: 21, lineHeight: 25 },
