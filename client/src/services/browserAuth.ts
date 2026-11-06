@@ -193,7 +193,8 @@ export class BrowserAuthService {
         accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
       });
       if (!saved) throw new Error('Secure setup storage rejected the value.');
-    } catch {
+    } catch (error) {
+      if (error instanceof AuthServiceError) throw error;
       throw new AuthServiceError(
         'Teddy Bud could not save the account setup securely on this device. Check device storage and try again. Your saved chats have not been deleted.',
         'storage',
