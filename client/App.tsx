@@ -1342,15 +1342,17 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
   const { width } = useWindowDimensions();
   const translateX = useRef(new Animated.Value(0)).current;
   const previousIndex = useRef(primaryTabIndex(transitionKey as Page));
-  const previousKey = useRef(transitionKey);
   const onSwipeRef = useRef(onSwipe);
+  const enabledRef = useRef(enabled);
+  const reduceMotionRef = useRef(reduceMotion);
   onSwipeRef.current = onSwipe;
+  enabledRef.current = enabled;
+  reduceMotionRef.current = reduceMotion;
 
   useEffect(() => {
     const nextIndex = primaryTabIndex(transitionKey as Page);
     const previousPageIndex = previousIndex.current;
     previousIndex.current = nextIndex;
-    previousKey.current = transitionKey;
     translateX.stopAnimation();
     if (previousPageIndex === nextIndex || reduceMotion) {
       translateX.setValue(0);
@@ -1369,7 +1371,7 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: (_event, gesture) =>
-      enabled && !reduceMotion && Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.35,
+      enabledRef.current && !reduceMotionRef.current && Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.35,
     onPanResponderRelease: (_event, gesture) => {
       if (Math.abs(gesture.dx) < 58 || Math.abs(gesture.dx) < Math.abs(gesture.dy) * 1.25) return;
       onSwipeRef.current(gesture.dx < 0 ? 1 : -1);
