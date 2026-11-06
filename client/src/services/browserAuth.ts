@@ -130,21 +130,26 @@ export class BrowserAuthService {
     return this.save(result);
   }
 
-  async shouldCreateAccount(): Promise<boolean> {
+  private async readSetupMarker(): Promise<string | null> {
     if (Platform.OS === 'web') {
-      try { return localStorage.getItem(SETUP_KEY) !== 'true'; } catch { return true; }
+      try { return localStorage.getItem(SETUP_KEY); } catch { return null; }
     }
-    const setup = await Keychain.getGenericPassword({ service: NATIVE_SETUP_SERVICE });
-    return !setup;
+    const marker = await Keychain.getGenericPassword({ service: NATIVE_SETUP_SERVICE });
+    return marker && typeof marker !== 'boolean' ? marker.password : null;
   }
 
-  async markSetupComplete(): Promise<void> {
+  async shouldCreateAccount(): Promise<boolean> {
+    return !(await this.readSetupMarker());
+  }
+
+  async markSetupComplete(username?: string): Promise<void> {
+    const marker = username ? `username:${username.trim().toLowerCase()}` : 'true';
     if (Platform.OS === 'web') {
-      try { localStorage.setItem(SETUP_KEY, 'true'); } catch { /* Sign-in still works if storage is unavailable. */ }
+      try { localStorage.setItem(SETUP_KEY, marker); } catch { /* Sign-in still works if storage is unavailable. */ }
       return;
     }
     try {
-      const saved = await Keychain.setGenericPassword('setup', 'true', {
+      const saved = await Keychain.setGenericPassword('setup', marker, {
         service: NATIVE_SETUP_SERVICE,
         accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
       });
@@ -157,26 +162,40 @@ export class BrowserAuthService {
     }
   }
 
+  private async assertDeviceAccount(username: string): Promise<void> {
+    const marker = await this.readSetupMarker();
+    if (!marker?.startsWith('username:')) return;
+    const boundUsername = marker.slice('username:'.length);
+    if (boundUsername !== username) {
+      throw new AuthServiceError(
+        `This device is set up for @${boundUsername}. Teddy Bud keeps one account on each device. Sign in with that username, or use the device's account reset option before setting up another account.`,
+        'device-account-mismatch',
+      );
+    }
+  }
+
   async signIn(username: string, password: string): Promise<StoredSession> {
     const normalizedUsername = username.trim().toLowerCase();
+    await this.assertDeviceAccount(normalizedUsername);
     const email = usernameIdentity(normalizedUsername);
     const result = await request<LoginResponse>('/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    await this.markSetupComplete();
+    await this.markSetupComplete(normalizedUsername);
     pendingBiometricCredentials = { username: normalizedUsername, password };
     return this.save(result, normalizedUsername);
   }
 
   async createAccount(username: string, password: string, recoveryKey: string): Promise<StoredSession> {
     const normalizedUsername = username.trim().toLowerCase();
+    await this.assertDeviceAccount(normalizedUsername);
     const email = usernameIdentity(normalizedUsername);
     const result = await request<LoginResponse>('/auth/signup', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, recoveryKey }),
     });
-    await this.markSetupComplete();
+    await this.markSetupComplete(normalizedUsername);
     pendingBiometricCredentials = { username: normalizedUsername, password };
     return this.save(result, normalizedUsername);
   }
