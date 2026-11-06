@@ -222,29 +222,35 @@ function AccessGate() {
 }
 
 function AuthLoading() {
-  const breathe = useRef(new Animated.Value(0)).current;
-  const dots = useRef(new Animated.Value(0)).current;
+  const fill = useRef(new Animated.Value(0)).current;
+  const rotation = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const breathing = Animated.loop(Animated.sequence([
-      Animated.timing(breathe, { toValue: 1, duration: 1050, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(breathe, { toValue: 0, duration: 1050, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    const fillCycle = Animated.loop(Animated.sequence([
+      Animated.timing(fill, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(fill, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
     ]));
-    const loadingDots = Animated.loop(Animated.sequence([
-      Animated.timing(dots, { toValue: 1, duration: 650, useNativeDriver: true }),
-      Animated.timing(dots, { toValue: 0, duration: 650, useNativeDriver: true }),
-    ]));
-    breathing.start();
-    loadingDots.start();
-    return () => { breathing.stop(); loadingDots.stop(); };
-  }, [breathe, dots]);
+    const turn = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 2200, easing: Easing.linear, useNativeDriver: true }));
+    fillCycle.start();
+    turn.start();
+    return () => { fillCycle.stop(); turn.stop(); };
+  }, [fill, rotation]);
+  const liquidHeight = fill.interpolate({ inputRange: [0, 1], outputRange: ['8%', '92%'] });
+  const spin = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   return <View style={styles.authLoadingScreen} accessibilityLabel="Opening Teddy Bud">
-    <Animated.View style={[styles.authLoadingMark, { transform: [{ scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.055] }) }] }]}>
+    <Animated.View style={[styles.authLoadingMark, { transform: [{ scale: fill.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) }] }]}>
       <Image source={teddyBudLogo} style={styles.authLoadingLogo} accessibilityLabel="Teddy Bud" />
     </Animated.View>
     <Text style={styles.authLoadingTitle}>Opening your private space</Text>
     <Text style={styles.authLoadingBody}>Getting your cozy corner ready</Text>
-    <View style={styles.authLoadingDots} accessibilityLabel="Loading">
-      {[0, 1, 2].map((dot, index) => <Animated.View key={dot} style={[styles.authLoadingDot, { opacity: dots.interpolate({ inputRange: [0, 1], outputRange: index === 1 ? [0.35, 1] : index === 0 ? [1, 0.35] : [0.35, 0.8] }), transform: [{ translateY: dots.interpolate({ inputRange: [0, 1], outputRange: [0, index === 1 ? -4 : 2] }) }] }]} />)}
+    <View style={styles.authLoadingHourglass} accessibilityLabel="Loading">
+      <View style={styles.authLoadingGlassTop}>
+        <Animated.View style={[styles.authLoadingLiquidTop, { height: liquidHeight }]} />
+      </View>
+      <View style={styles.authLoadingGlassNeck} />
+      <View style={styles.authLoadingGlassBottom}>
+        <Animated.View style={[styles.authLoadingLiquidBottom, { height: liquidHeight }]} />
+      </View>
+      <Animated.View style={[styles.authLoadingShimmer, { transform: [{ rotate: spin }] }]} />
     </View>
   </View>;
 }
@@ -2745,7 +2751,7 @@ const styles = StyleSheet.create({
   authDivider: { color: C.muted, fontSize: 9, letterSpacing: 1.2, textAlign: 'center', marginVertical: 16 },
   authToggle: { alignSelf: 'center', minHeight: 38, justifyContent: 'center', marginTop: 8 },
   authToggleText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
-  authScreen: { flex: 1, backgroundColor: C.canvas }, authLoadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: C.canvas }, authLoadingMark: { width: 76, height: 76, borderRadius: 25, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24, overflow: 'hidden' }, authLoadingLogo: { width: 76, height: 76, borderRadius: 25 }, authLoadingTitle: { color: C.ink, fontSize: 20, lineHeight: 27, fontWeight: '600', textAlign: 'center', letterSpacing: -0.4 }, authLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 }, authLoadingDots: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 18 }, authLoadingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.cocoa }, authScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 24, justifyContent: 'flex-start' }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 22 }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 20 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
+  authScreen: { flex: 1, backgroundColor: C.canvas }, authLoadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: C.canvas }, authLoadingMark: { width: 76, height: 76, borderRadius: 25, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24, overflow: 'hidden' }, authLoadingLogo: { width: 76, height: 76, borderRadius: 25 }, authLoadingTitle: { color: C.ink, fontSize: 20, lineHeight: 27, fontWeight: '600', textAlign: 'center', letterSpacing: -0.4 }, authLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 }, authLoadingHourglass: { width: 42, height: 64, marginTop: 22, alignItems: 'center', justifyContent: 'center', position: 'relative' }, authLoadingGlassTop: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderTopWidth: 3, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidTop: { width: '100%', backgroundColor: '#D8AD83', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }, authLoadingGlassNeck: { width: 5, height: 5, backgroundColor: C.cocoa }, authLoadingGlassBottom: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderBottomWidth: 3, borderTopLeftRadius: 11, borderTopRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidBottom: { width: '100%', backgroundColor: '#D8AD83', borderTopLeftRadius: 8, borderTopRightRadius: 8 }, authLoadingShimmer: { position: 'absolute', width: 42, height: 1, backgroundColor: '#E8C6A7', opacity: 0.55 }, authScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 24, justifyContent: 'flex-start' }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 22 }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 20 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
   root: { flex: 1, flexDirection: 'row', backgroundColor: C.canvas }, main: { flex: 1, minWidth: 0 },
   newChatButton: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatButtonCollapsed: { paddingHorizontal: 0, justifyContent: 'center' }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
   headerPinnedButton: { backgroundColor: '#EEE5DB' }, headerPinnedButtonLabel: { color: C.cocoaDark },
