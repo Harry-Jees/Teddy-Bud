@@ -1,4 +1,5 @@
 import { browserAuthService } from '../src/services/browserAuth';
+import * as Keychain from 'react-native-keychain';
 
 jest.mock('react-native-keychain', () => ({
   ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly' },
@@ -28,6 +29,21 @@ function response(status: number, body: unknown) {
 }
 
 describe('BrowserAuthService public error behavior', () => {
+  test('keeps a device bound to its original username', async () => {
+    (Keychain.getGenericPassword as jest.Mock).mockResolvedValueOnce({
+      username: 'first_person',
+      password: 'true',
+      service: 'com.teddybud.auth-setup',
+    });
+
+    await expect(browserAuthService.signIn('another_person', 'password'))
+      .rejects.toMatchObject({
+        kind: 'device-account',
+        message: 'This device is already set up for @first_person. Sign in with that username to keep your private space here.',
+      });
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
   test('maps incorrect sign-in credentials to a safe, generic message', async () => {
     mockedFetch.mockResolvedValue(response(401, { error: 'user does not exist; internal account lookup' }));
 
