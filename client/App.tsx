@@ -1217,7 +1217,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
               <Pressable onPress={closeMemoryEditor} disabled={memorySaving} accessibilityRole="button" accessibilityLabel="Close memory editor" style={[styles.closeButton, memorySaving && styles.buttonDisabled]}><Text style={styles.closeText}>×</Text></Pressable>
             </View>
             <Text style={styles.modalTitle}>{editing ? 'Edit a memory' : 'Keep a small thing in mind'}</Text>
-            <Text style={styles.modalBody}>Add a detail to keep on this device. Saved memories are included with future chats sent to the AI provider.</Text>
+            <Text style={styles.modalBody}>Add a detail to keep on this device. Saved memories are included with future chats sent to Teddy’s online reply service.</Text>
             {memoryActionError && <View accessibilityRole="alert" style={styles.authError}><Text accessibilityLiveRegion="polite" style={styles.authErrorText}>{memoryActionError}</Text></View>}
             <TextInput accessibilityLabel="Memory text" autoFocus value={memoryDraft} onChangeText={value => { setMemoryDraft(value); setMemoryActionError(null); }} placeholder="Write a gentle reminder…" placeholderTextColor={C.muted} multiline maxLength={500} editable={!memorySaving} style={styles.memoryInput} textAlignVertical="top" />
             <View style={styles.modalActions}>
@@ -2041,7 +2041,7 @@ function MemorySuggestionCard({ fact, onSave, onDismiss }: { fact: string; onSav
   return <View accessibilityRole="summary" style={styles.memorySuggestionCard}>
     <Text style={styles.memorySuggestionTitle}>Would you like Teddy Bud to remember this?</Text>
     <Text style={styles.memorySuggestionFact}>{fact}</Text>
-    <Text style={styles.memorySuggestionBody}>Nothing is saved unless you approve. Saved memories stay on this device and are included with future chats sent to the AI provider.</Text>
+    <Text style={styles.memorySuggestionBody}>Nothing is saved unless you approve. Saved memories stay on this device and are included with future chats sent to Teddy’s online reply service.</Text>
     <View style={styles.memorySuggestionActions}>
       <Button label="Not now" tone="quiet" onPress={onDismiss} />
       <Button label="Add to memories" onPress={onSave} />
@@ -2054,7 +2054,7 @@ function OccasionWidget({ value, onChange, onSave, onDismiss }: { value: string;
     <Text style={styles.occasionTitle}>Save a good moment</Text>
     <Text style={styles.occasionDescription}>Write a happy memory or occasion you'd like Teddy Bud to remember. Review it before saving.</Text>
     <TextInput value={value} onChangeText={onChange} placeholder="What would you like to remember?" placeholderTextColor={C.muted} multiline maxLength={500} style={styles.occasionInput} accessibilityLabel="Memory to save" textAlignVertical="top" />
-    <Text style={styles.occasionPrivacy}>Saved on this device and included with future chats sent to the AI provider.</Text>
+    <Text style={styles.occasionPrivacy}>Saved on this device and included with future chats sent to Teddy’s online reply service.</Text>
     <View style={styles.memorySuggestionActions}>
       <Button label="Cancel" tone="quiet" onPress={onDismiss} />
       <Button label="Save memory" onPress={onSave} disabled={!value.trim()} />
@@ -2139,7 +2139,7 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete, 
         <Pressable accessibilityRole="button" onPress={onDismissActionError} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>
       </View>
     </View>}
-    <View style={styles.memoryNotice}><View style={styles.noticeIcon}><Text style={styles.noticeGlyph}>⌑</Text></View><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{memoryEnabled ? 'Saved on this device' : 'Saved memories are off'}</Text><Text style={styles.noticeBody}>{memoryEnabled ? "Memories stay in this app's local database across restarts and are included with future chats sent to the AI provider." : 'Turn on "Keep memories on this device" in Privacy settings to add memories.'}</Text></View></View>
+    <View style={styles.memoryNotice}><View style={styles.noticeIcon}><Text style={styles.noticeGlyph}>⌑</Text></View><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{memoryEnabled ? 'Saved on this device' : 'Saved memories are off'}</Text><Text style={styles.noticeBody}>{memoryEnabled ? "Memories stay in this app's local database across restarts and are included with future chats sent to Teddy’s online reply service." : 'Turn on "Keep memories on this device" in Privacy settings to add memories.'}</Text></View></View>
     <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>SAVED MEMORIES <Text style={styles.countText}>{memories.length}</Text></Text><Pressable accessibilityRole="button" accessibilityLabel="Add a memory" disabled={!memoryEnabled} onPress={onAdd} style={styles.addLink}><Text style={[styles.addLinkText, !memoryEnabled && styles.disabledText]}>{memoryEnabled ? 'Add a memory' : 'Memory is off'}</Text></Pressable></View>
     {memories.length ? memories.map(memory => <View key={memory.id} style={styles.memoryCard}><View style={styles.memoryMark}><Text style={styles.memoryMarkText}>✳</Text></View><View style={styles.memoryCopy}><Text style={styles.memoryText}>{memory.text}</Text><Text style={styles.memoryDate}>{memory.date}</Text></View><View style={styles.memoryActions}><Pressable accessibilityRole="button" accessibilityLabel="Edit memory" onPress={() => onEdit(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Edit</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Forget memory" onPress={() => onDelete(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Forget</Text></Pressable></View></View>) : <View style={styles.emptyCard}><View style={styles.emptyMark}><Text style={styles.emptyGlyph}>✳</Text></View><Text style={styles.emptyTitle}>{memoryEnabled ? 'A fresh page' : 'Memories are off'}</Text><Text style={styles.emptyBody}>{memoryEnabled ? "Nothing saved right now. Add a small detail you'd like to hold onto." : 'Turn on "Keep memories on this device" in Privacy settings when you are ready.'}</Text>{memoryEnabled && <Button label="Add your first memory" onPress={onAdd} />}</View>}
     {!!memories.length && <Text style={styles.memoriesFootnote}>Your memories are yours. Edit them, remove them, or clear local data from this device at any time.</Text>}
@@ -2474,7 +2474,7 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
     ? "Chats, profile notes, and memories are stored in this desktop app and encrypted with a key protected by your operating system. The open app can access its saved data. Messages and any context you choose below are sent through Teddy Bud’s online reply service when you chat."
     : Platform.OS === 'web'
       ? "Chats, profile notes, and memories are stored in this browser's local database and encrypted with a separate key for each account. This protects saved data at rest, but code running in this browser while Teddy Bud is open could access it. Messages and any context you choose below are sent through Teddy Bud’s online reply service when you chat."
-      : "Chats, profile notes, and memories are stored in this device's encrypted local database. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat.";
+      : "Chats, profile notes, and memories are stored in this device's encrypted local database. Messages and any context you enable below are sent through Teddy Bud’s online reply service when you chat.";
   const openPolicy = (url: string) => {
     setPolicyLinkError('');
     openExternalUrl(url).catch(() => setPolicyLinkError('Could not open this page. Check your connection and try again.'));
