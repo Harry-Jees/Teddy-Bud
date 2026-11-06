@@ -36,7 +36,7 @@ Teddy Bud is an AI companion, not a therapist, emergency service, or substitute 
 
 ## Navigation and scope
 
-The app's primary navigation should stay compact. The central **+** action starts a new chat immediately; it must not open a generic action picker. Secondary tools belong in their appropriate discovery/more surfaces, and Settings must remain easy to reach. Journals belong in Discover. Keep the app focused on companion conversation and personal reflection rather than adding generic document or productivity features.
+The app's primary navigation should stay compact. The four primary sections are **Chats**, **Discover**, **Memories**, and **Settings**. The central **+** action starts a new chat immediately; it must not open a generic action picker. Journal, emotional check-ins, wellbeing exercises, chat history, and privacy controls belong in Discover. Keep the app focused on companion conversation and personal reflection rather than adding generic document or productivity features.
 
 Teddy Bud is distributed as an Android app and supported desktop packages. The internal React Native Web renderer is used for development and Electron packaging only; it is not a standalone web app. The separate portfolio website is a presentation site, not the app.
 

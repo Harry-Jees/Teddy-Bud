@@ -27,5 +27,8 @@ Out of scope: text-to-speech, generated audio, spoken assistant replies, voice p
 - Unsupported browser/service, empty transcript, service error, repeated taps, and app background/unmount.
 - Text and image chat remain functional when speech recognition is unavailable.
 
+## Implementation note — 6 November 2026
+The chat composer now exposes the native Android speech-recognition bridge and the browser Web Speech API where available. The UI preserves the existing draft, displays listening and error states, and leaves the transcript editable. This is implementation evidence, not a substitute for the Android device, permission, browser compatibility, and lifecycle acceptance checks above.
+
 ## Release gates
 Run lint, type-check, unit tests, and supported platform builds. Test Android on a real device and supported desktop hosts. Do not claim platform support or completion without recorded evidence.

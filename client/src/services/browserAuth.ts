@@ -17,6 +17,7 @@ const SESSION_KEY = 'teddy-bud:browser-session';
 const NATIVE_SESSION_SERVICE = 'com.teddybud.account-auth';
 const NATIVE_SETUP_SERVICE = 'com.teddybud.auth-setup';
 const NATIVE_BIOMETRIC_SERVICE = 'com.teddybud.biometric-login';
+const NATIVE_BIOMETRIC_SETUP_SERVICE = 'com.teddybud.biometric-setup';
 let pendingBiometricCredentials: { username: string; password: string } | null = null;
 const SETUP_KEY = 'setup-complete';
 let inMemorySession: StoredSession | null = null;
@@ -181,6 +182,24 @@ export class BrowserAuthService {
   }
 
 
+  async hasBiometricSignIn(): Promise<boolean> {
+    if (Platform.OS !== 'android') return false;
+    try {
+      const marker = await Keychain.getGenericPassword({ service: NATIVE_BIOMETRIC_SETUP_SERVICE });
+      return Boolean(marker && typeof marker !== 'boolean' && marker.password === 'enabled');
+    } catch {
+      return false;
+    }
+  }
+
+  async disableBiometricSignIn(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    await Promise.all([
+      Keychain.resetGenericPassword({ service: NATIVE_BIOMETRIC_SERVICE }),
+      Keychain.resetGenericPassword({ service: NATIVE_BIOMETRIC_SETUP_SERVICE }),
+    ]);
+  }
+
   async supportsBiometrics(): Promise<boolean> {
     if (Platform.OS !== 'android') return false;
     try { return Boolean(await Keychain.getSupportedBiometryType()); } catch { return false; }
@@ -201,6 +220,11 @@ export class BrowserAuthService {
       },
     );
     if (!saved) throw new Error('Biometric sign-in could not be enabled on this device.');
+    const marker = await Keychain.setGenericPassword('biometric', 'enabled', {
+      service: NATIVE_BIOMETRIC_SETUP_SERVICE,
+      accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    });
+    if (!marker) throw new Error('Teddy Bud could not save the biometric sign-in setting.');
   }
 
   async signInWithBiometrics(): Promise<StoredSession> {
@@ -219,6 +243,7 @@ export class BrowserAuthService {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, recoveryKey, newPassword }),
     });
+    await this.disableBiometricSignIn();
   }
 
   async restore(): Promise<StoredSession | null> {

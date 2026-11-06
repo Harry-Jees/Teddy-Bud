@@ -3,12 +3,15 @@ import type { ImageSourcePropType } from 'react-native';
 import {
   Animated,
   AccessibilityInfo,
+  AppState,
   Alert,
   Easing,
   Image,
   KeyboardAvoidingView,
   Linking,
   Modal,
+  NativeEventEmitter,
+  NativeModules,
   Platform,
   Pressable,
   ScrollView,
@@ -42,12 +45,24 @@ import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/c
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
 
-type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio' | 'more';
+type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio' | 'discover';
 type Memory = LocalMemory;
 type MemorySuggestion = { conversationId: string; messageId: number; fact: string };
 type Message = LocalMessage;
 type Conversation = LocalConversation;
 type CreditBalance = { day: string; used: number; remaining: number; limit: number; resetAt: string };
+type SpeechResultEvent = { value?: string[] };
+type SpeechErrorEvent = { message?: string };
+type NativeSpeechModule = { start: (locale: string) => Promise<boolean>; stop: () => Promise<boolean>; cancel: () => Promise<boolean> };
+type SpeechRecognitionResultLike = { isFinal: boolean; 0: { transcript: string } };
+type SpeechRecognitionEventLike = { resultIndex: number; results: ArrayLike<SpeechRecognitionResultLike> };
+type SpeechRecognitionLike = {
+  lang: string; interimResults: boolean; continuous: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error?: string; message?: string }) => void) | null;
+  onend: (() => void) | null; start: () => void; stop: () => void; abort: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 const C = {
   canvas: '#F8F8F6', paper: '#FFFFFF', paperAlt: '#F2F2EF', ink: '#272724',
@@ -57,19 +72,18 @@ const C = {
 };
 
 const navItems: { id: Page; icon: string; label: string }[] = [
-  { id: 'chat', icon: '◌', label: 'Your space' },
+  { id: 'chat', icon: '◌', label: 'Chats' },
+  { id: 'discover', icon: '✧', label: 'Discover' },
   { id: 'memories', icon: '✳', label: 'Memories' },
-  { id: 'emotions', icon: '◉', label: 'Emotions' },
-  { id: 'journal', icon: '▤', label: 'Journal' },
-  { id: 'studio', icon: '☼', label: 'Wellbeing' },
-  { id: 'privacy', icon: '⌑', label: 'Privacy' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
 const mobileNavItems: { id: Page; icon: string; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Chats' },
+  { id: 'discover', icon: '✧', label: 'Discover' },
   { id: 'memories', icon: '✳', label: 'Memories' },
-  { id: 'more', icon: '···', label: 'More' },
+  { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
+const discoverPages: Page[] = ['discover', 'journal', 'emotions', 'studio', 'privacy'];
 
 const gatewayService = new GatewayService(GATEWAY_BASE_URL);
 const teddyBudLogo: ImageSourcePropType = typeof teddyBudLogoAsset === 'string'
@@ -214,6 +228,12 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    if (Platform.OS === 'android') browserAuthService.hasBiometricSignIn().then(enabled => { if (mounted) setBiometricEnabled(enabled); }).catch(() => undefined);
+    return () => { mounted = false; };
+  }, []);
 
   const clearFieldError = (field: AuthField) => {
     setFieldErrors(current => {
@@ -277,8 +297,8 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
     setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setConfirmPassword(''); setRecoveryPassphrase(''); setRecoveryPassphraseConfirmation('');
   };
 
-  const title = mode === 'create' ? 'Create your private space.' : mode === 'recover' ? 'Reset your password.' : mode === 'migrate' ? 'Keep your existing space.' : 'Welcome back.';
-  const actionLabel = mode === 'create' ? 'Create private space' : mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
+  const title = mode === 'create' ? 'Set up your private space.' : mode === 'recover' ? 'Reset your password.' : mode === 'migrate' ? 'Keep your existing space.' : 'Welcome back.';
+  const actionLabel = mode === 'create' ? 'Continue setup' : mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
 
   return <KeyboardAvoidingView style={styles.authScreen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.authScrollContent, compact && styles.authScrollContentCompact]}>
@@ -286,7 +306,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       <View style={styles.authMark}><Image source={teddyBudLogo} style={styles.authLogo} accessibilityLabel="Teddy Bud" /></View>
       <Text style={styles.authEyebrow}>Teddy Bud</Text>
       <Text style={styles.authTitle}>{title}</Text>
-      <Text style={styles.authBody}>{mode === 'create' ? 'Choose a username, password, and recovery passphrase. Your private space stays on this device.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in with your username to open your private space on this device.'}</Text>
+      <Text style={styles.authBody}>{mode === 'create' ? 'Choose a username, password, and recovery passphrase. This sets up your one private space on this device.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in with your username to open your private space on this device.'}</Text>
       {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authErrorText}>{formError || error}</Text></View>}
       {!!notice && <View style={styles.authNotice}><Text accessibilityLiveRegion="polite" style={styles.authNoticeText}>{notice}</Text></View>}
       {mode !== 'migrate' && <>
@@ -317,7 +337,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
       </Pressable>
-      {mode === 'login' && Platform.OS === 'android' && <Pressable accessibilityRole="button" disabled={submitting} onPress={async () => {
+      {mode === 'login' && Platform.OS === 'android' && biometricEnabled && <Pressable accessibilityRole="button" disabled={submitting} onPress={async () => {
         setSubmitting(true); setFormError(null);
         try { onAuthenticated(await browserAuthService.signInWithBiometrics()); }
         catch (biometricError) { setFormError(authErrorMessage(biometricError, 'sign-in')); }
@@ -325,7 +345,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       }} style={[styles.authLink, { borderWidth: 1, borderColor: C.line, borderRadius: 14, marginTop: 8 }]}><Text style={styles.authLinkText}>Use fingerprint / face unlock</Text></Pressable>}
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
       {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Keep chats from the existing account on this device</Text></Pressable>}
-      {mode === 'recover' ? <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>Back to sign in</Text></Pressable> : <Pressable accessibilityRole="button" onPress={() => changeMode(mode === 'login' ? 'create' : 'login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'login' ? 'Create a private space' : 'Already set up? Sign in'}</Text></Pressable>}
+      {(mode === 'recover' || mode === 'create') && <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'recover' ? 'Back to sign in' : 'Already set up? Sign in'}</Text></Pressable>}
       <Text style={styles.authFootnote}>Your chats stay encrypted on this device. Your password and recovery passphrase are never stored in plaintext.</Text>
     </View>
     </ScrollView>
@@ -387,7 +407,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const receivedReplyRef = useRef('');
   const responseAbortControllerRef = useRef<AbortController | null>(null);
 
-  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : page === 'more' ? 'More tools' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
+  const title = useMemo(() => page === 'history' ? 'Your chats' : page === 'settings' ? 'Settings' : page === 'emotions' ? 'Emotional landscape' : page === 'journal' ? 'Private journal' : page === 'studio' ? 'Wellbeing studio' : page === 'discover' ? 'Discover' : navItems.find(item => item.id === page)?.label ?? 'Your space', [page]);
   const owner = useMemo(() => ownerFromToken(sessionToken), [sessionToken]);
 
   const persistLocalSnapshot = useCallback(async (overrides: Partial<LocalAppData>) => {
@@ -1164,7 +1184,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
             setAssistantName(savedName);
             setAssistantCharacterNames(current => ({ ...current, [id]: savedName }));
           }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} />}
-          {page === 'more' && <MorePage wide={wide} onNavigate={setPage} />}
+          {page === 'discover' && <DiscoverPage wide={wide} onNavigate={setPage} />}
           </>}
         </View>
         {!wide && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
@@ -1361,6 +1381,11 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
 }) {
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const visualCollapsed = collapsed && !hoverExpanded;
+  const isNavItemSelected = (item: (typeof navItems)[number]) => {
+    if (item.id === 'chat') return page === 'chat' || page === 'history';
+    if (item.id === 'discover') return discoverPages.includes(page);
+    return item.id === page;
+  };
   const sidebarWidth = useRef(new Animated.Value(collapsed ? 78 : 258)).current;
   const sidebarPadding = sidebarWidth.interpolate({ inputRange: [78, 258], outputRange: [10, 18] });
   const chevronProgress = useRef(new Animated.Value(collapsed ? 1 : 0)).current;
@@ -1446,7 +1471,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
         <Text style={styles.newChatGlyph}>+</Text>{!labelsCollapsed && <Animated.Text style={[styles.newChatLabel, { opacity: labelOpacity }]}>New chat</Animated.Text>}
       </Pressable>
       {!labelsCollapsed && <Animated.Text style={[styles.sidebarLabel, { opacity: labelOpacity }]}>YOUR SPACE</Animated.Text>}
-      {navItems.map(item => <NavButton key={item.id} item={item} selected={item.id === page} collapsed={labelsCollapsed} labelOpacity={labelOpacity} onPress={() => onNavigate(item.id)} />)}
+      {navItems.map(item => <NavButton key={item.id} item={item} selected={isNavItemSelected(item)} collapsed={labelsCollapsed} labelOpacity={labelOpacity} onPress={() => onNavigate(item.id)} />)}
       {!labelsCollapsed && <Animated.Text style={[styles.sidebarLabel, { opacity: labelOpacity }]}>CHATS</Animated.Text>}
       <ScrollView style={[styles.sidebarChatList, labelsCollapsed && styles.sidebarChatListCollapsed, { opacity: labelOpacity }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={!labelsCollapsed} showsHorizontalScrollIndicator={false}>
         {!labelsCollapsed && <ConversationHistoryList
@@ -1506,22 +1531,21 @@ function useReducedMotionPreference() {
   return reduceMotion;
 }
 
-export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
+export function DiscoverPage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
   const reduceMotion = useReducedMotionPreference();
   const items: { id: Page; icon: string; label: string; description: string }[] = [
-    { id: 'history', icon: '▤', label: 'Chat history', description: 'Find a conversation from earlier' },
-    { id: 'journal', icon: '▤', label: 'Journal', description: 'Write, search, and export private reflections' },
-    { id: 'emotions', icon: '◉', label: 'Emotions', description: 'Check in with how you feel' },
-    { id: 'studio', icon: '☼', label: 'Wellbeing', description: 'Gentle exercises you can use offline' },
-    { id: 'privacy', icon: '⌑', label: 'Privacy', description: 'Choose what stays local and what is shared' },
-    { id: 'settings', icon: '⚙', label: 'Settings', description: 'Your companion, backup, and account' },
+    { id: 'history', icon: '▤', label: 'Chat history', description: 'Return to a conversation you want to pick up again' },
+    { id: 'journal', icon: '✎', label: 'Private journal', description: 'Write, search, edit, and export reflections saved on this device' },
+    { id: 'emotions', icon: '◉', label: 'Emotional check-in', description: 'Record how you feel and revisit your own check-in history' },
+    { id: 'studio', icon: '☼', label: 'Wellbeing studio', description: 'Try breathing, grounding, focus, and bedtime exercises offline' },
+    { id: 'privacy', icon: '⌑', label: 'Privacy controls', description: 'Choose which saved context, if any, can accompany a chat' },
   ];
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
     <View style={styles.pageIntro}>
-      <Text style={styles.eyebrow}>YOUR SPACE, YOUR WAY</Text>
-      <Text style={styles.pageTitle}>More tools</Text>
-      <Text style={styles.pageDescription}>Everything else, in one calm place. Your everyday essentials stay close at hand.</Text>
+      <Text style={styles.eyebrow}>A LITTLE ROOM TO BREATHE</Text>
+      <Text style={styles.pageTitle}>Discover</Text>
+      <Text style={styles.pageDescription}>A few gentle ways to reflect, reset, and return to the things that matter. Your journal and wellbeing entries stay on this device.</Text>
     </View>
     <View style={styles.moreList}>
       {items.map(item => <Pressable
@@ -1545,10 +1569,9 @@ export function MorePage({ wide, onNavigate }: { wide: boolean; onNavigate: (pag
 
 export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
   const reduceMotion = useReducedMotionPreference();
-  const moreSelected = page === 'more' || page === 'journal' || page === 'emotions' || page === 'studio' || page === 'privacy' || page === 'settings';
   const isSelected = (item: (typeof mobileNavItems)[number]) => {
     if (item.id === 'chat') return page === 'chat' || page === 'history';
-    if (item.id === 'more') return moreSelected;
+    if (item.id === 'discover') return discoverPages.includes(page);
     return item.id === page;
   };
   const renderItem = (item: (typeof mobileNavItems)[number]) => {
@@ -1557,7 +1580,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       key={item.id}
       accessibilityRole="button"
       accessibilityLabel={item.label}
-      accessibilityHint={item.id === 'more' ? 'Open wellbeing, privacy, settings, and chat history' : undefined}
+      accessibilityHint={item.id === 'discover' ? 'Open your journal, emotional check-ins, wellbeing exercises, privacy controls, and chat history' : undefined}
       accessibilityState={{ selected }}
       onPress={() => onNavigate(item.id)}
       style={({ pressed }) => [
@@ -1589,6 +1612,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       <View style={styles.bottomNavPlusBox}><Text style={styles.bottomNavPlusGlyph}>+</Text></View>
     </Pressable>
     {renderItem(mobileNavItems[2])}
+    {renderItem(mobileNavItems[3])}
   </View>;
 }
 
@@ -1604,6 +1628,10 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
   const scrollRef = useRef<ScrollView>(null);
   const shouldAutoScrollRef = useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [speechListening, setSpeechListening] = useState(false);
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const speechBaseDraftRef = useRef(draft);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const hasSafetyConcern = messages.some(message => message.author === 'you' && hasCrisisSignal(message.text));
 
   const jumpToLatest = () => {
@@ -1631,12 +1659,113 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     setShowJumpToLatest(false);
     scrollRef.current?.scrollToEnd({ animated: false });
   }, [conversationId]);
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !NativeModules.TeddyBudSpeechRecognition) return undefined;
+    const module = NativeModules.TeddyBudSpeechRecognition as NativeSpeechModule;
+    const emitter = new NativeEventEmitter(NativeModules.TeddyBudSpeechRecognition);
+    const mergeTranscript = (transcript: string) => {
+      const clean = transcript.trim();
+      if (!clean) return;
+      const base = speechBaseDraftRef.current;
+      setDraft(base ? base + (/\s$/.test(base) ? '' : ' ') + clean : clean);
+    };
+    const partial = emitter.addListener('speechPartialResults', (event: SpeechResultEvent) => mergeTranscript(event.value?.[0] ?? ''));
+    const final = emitter.addListener('speechResults', (event: SpeechResultEvent) => mergeTranscript(event.value?.[0] ?? ''));
+    const error = emitter.addListener('speechError', (event: SpeechErrorEvent) => {
+      setSpeechError(event.message || 'Speech recognition could not finish. Please try again.');
+      setSpeechListening(false);
+    });
+    const ended = emitter.addListener('speechEnd', () => setSpeechListening(false));
+    const appState = AppState.addEventListener('change', state => {
+      if (state !== 'active') {
+        module.cancel().catch(() => undefined);
+        setSpeechListening(false);
+      }
+    });
+    return () => {
+      partial.remove(); final.remove(); error.remove(); ended.remove(); appState.remove();
+      module.cancel().catch(() => undefined);
+    };
+  }, [setDraft]);
+
+  useEffect(() => () => {
+    speechRecognitionRef.current?.abort();
+    speechRecognitionRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (shouldAutoScrollRef.current && (messages.length > 0 || streamingReply)) {
       scrollRef.current?.scrollToEnd({ animated: !isSending });
     }
   }, [messages.length, isSending, streamingReply]);
+
+  const startSpeechInput = async () => {
+    if (speechListening) return;
+    setSpeechError(null);
+    speechBaseDraftRef.current = draft;
+    if (Platform.OS === 'android') {
+      const module = NativeModules.TeddyBudSpeechRecognition as NativeSpeechModule | undefined;
+      if (!module) {
+        setSpeechError('Voice input is unavailable in this build. You can still type your message.');
+        return;
+      }
+      try {
+        const permissionModule = NativeModules.PermissionsAndroid as { requestPermission: (permission: string) => Promise<string> } | undefined;
+        if (!permissionModule) throw new Error('Microphone permissions are unavailable in this build.');
+        const permission = await permissionModule.requestPermission('android.permission.RECORD_AUDIO');
+        if (permission !== 'granted') {
+          setSpeechError('Microphone permission was not granted. You can continue typing your message.');
+          return;
+        }
+        await module.start(Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
+        setSpeechListening(true);
+      } catch (error) {
+        setSpeechError(error instanceof Error ? error.message : 'Speech recognition could not start. Please try again.');
+      }
+      return;
+    }
+    if (Platform.OS === 'web') {
+      const speechWindow = window as unknown as { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor };
+      const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+      if (!Recognition) {
+        setSpeechError('Voice input is not supported by this browser. You can continue typing your message.');
+        return;
+      }
+      try {
+        const recognition = new Recognition();
+        recognition.lang = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
+        recognition.interimResults = true;
+        recognition.continuous = false;
+        recognition.onresult = event => {
+          const transcript = Array.from({ length: event.results.length }, (_, index) => event.results[index]?.[0]?.transcript ?? '').join(' ').trim();
+          if (!transcript) return;
+          const base = speechBaseDraftRef.current;
+          setDraft(base ? base + (/\s$/.test(base) ? '' : ' ') + transcript : transcript);
+        };
+        recognition.onerror = event => {
+          setSpeechError(event.error === 'not-allowed' ? 'Microphone access was blocked. Allow microphone access in your browser settings and try again.' : event.message || 'Speech recognition could not finish. Please try again.');
+          setSpeechListening(false);
+        };
+        recognition.onend = () => setSpeechListening(false);
+        speechRecognitionRef.current = recognition;
+        recognition.start();
+        setSpeechListening(true);
+      } catch (error) {
+        setSpeechError(error instanceof Error ? error.message : 'Speech recognition could not start. Please try again.');
+      }
+      return;
+    }
+    setSpeechError('Voice input is not available on this platform yet. You can continue typing your message.');
+  };
+
+  const stopSpeechInput = () => {
+    if (Platform.OS === 'android') {
+      const module = NativeModules.TeddyBudSpeechRecognition as NativeSpeechModule | undefined;
+      module?.stop().catch(() => setSpeechError('Could not stop voice input cleanly.'));
+    } else {
+      speechRecognitionRef.current?.stop();
+    }
+  };
 
   const submitMessage = () => {
     if (!canSend) return;
@@ -1755,10 +1884,15 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       {editingMessageId !== null && editingMessageId !== undefined && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={{ padding: 6 }}><Text style={{ color: C.cocoa, fontWeight: '700' }}>Cancel</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
+        <Pressable accessibilityRole="button" accessibilityLabel={speechListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Speech is transcribed into your editable message. Nothing is sent until you press Send." onPress={speechListening ? stopSpeechInput : () => { void startSpeechInput(); }} disabled={isSending} style={({ pressed }) => [styles.voiceButton, speechListening && styles.voiceButtonActive, isSending && styles.buttonDisabled, pressed && styles.pressed]}>
+          {speechListening ? <View style={styles.voiceStopIndicator} /> : <View style={styles.voiceMicIcon}><View style={styles.voiceMicHead} /><View style={styles.voiceMicArc} /><View style={styles.voiceMicStem} /><View style={styles.voiceMicBase} /></View>}
+        </Pressable>
         {isSending
           ? <Pressable accessibilityRole="button" accessibilityLabel="Stop response" onPress={onStop} style={({ pressed }) => [styles.sendButton, styles.stopButton, pressed && styles.pressed]}><View style={styles.stopIcon} /></Pressable>
           : <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={submitMessage} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, !canSend && styles.sendButtonDisabled, pressed && styles.pressed]}><PaperPlaneIcon /></Pressable>}
       </View>
+      {speechListening && <Text accessibilityLiveRegion="polite" style={styles.speechStatus}>Listening… Tap the microphone to stop. Review the transcript before sending.</Text>}
+      {!!speechError && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.speechError}>{speechError}</Text>}
       {wide && <Text style={styles.composerFootnote}>{isSending ? 'Sending to the companion service…' : 'Your conversation is saved on this device.'}</Text>}
     </View>
   </KeyboardAvoidingView>;
@@ -2564,7 +2698,7 @@ const styles = StyleSheet.create({
   chatActionsMenuButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 13, paddingHorizontal: 8 }, chatActionsMenuGlyph: { color: C.cocoaDark, fontSize: 24, lineHeight: 27, fontWeight: '700' }, chatActionsModalRoot: { flex: 1, justifyContent: 'flex-end' }, chatActionsScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(35, 29, 24, 0.28)' }, chatActionsSheet: { paddingHorizontal: 20, paddingTop: 18, backgroundColor: C.paper, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderColor: C.line, gap: 8 }, chatActionsSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }, chatActionsSheetTitle: { fontSize: 16, fontWeight: '700', color: C.cocoaDark }, chatActionsDismiss: { minHeight: 40, paddingHorizontal: 10, justifyContent: 'center' }, chatActionsDismissText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, chatActionsSheetItem: { minHeight: 48, justifyContent: 'center', borderRadius: 13, backgroundColor: C.paperAlt, paddingHorizontal: 14 }, chatActionsSheetItemText: { fontSize: 13, fontWeight: '600', color: C.cocoaDark }, chatScrollWrap: { flex: 1, minHeight: 0, position: 'relative' }, chatScroll: { flex: 1 }, jumpToLatestButton: { position: 'absolute', alignSelf: 'center', bottom: 10, minHeight: 40, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: '#DDD4C9', backgroundColor: C.paper, shadowColor: '#302821', shadowOpacity: 0.1, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 3 }, jumpToLatestText: { color: C.cocoaDark, fontSize: 12, fontWeight: '700' }, chatContent: { paddingHorizontal: 20, paddingBottom: 26, flexGrow: 1 }, chatContentWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64 }, emptyContent: { justifyContent: 'center' }, emptyState: { width: '100%', maxWidth: 720, alignSelf: 'center', alignItems: 'center', paddingTop: 14, paddingBottom: 20 }, emptyHeroMark: { width: 60, height: 60, borderRadius: 30, overflow: 'hidden', backgroundColor: '#FAF6ED', alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: C.cocoa, shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 }, emptyHeroLogo: { width: 90, height: 90 }, emptyGreeting: { color: C.ink, fontSize: 30, lineHeight: 38, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, emptyDescription: { maxWidth: 440, color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 9, marginBottom: 28 }, starterGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }, starterCard: { width: '31.8%', minWidth: 175, minHeight: 92, borderRadius: 18, borderWidth: 1, borderColor: '#E7E4DE', backgroundColor: '#FFFFFF', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#302821', shadowOpacity: 0.025, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, starterCardMobile: { width: '48%', minWidth: 120, minHeight: 78, padding: 10, gap: 7 }, starterCardPressed: { backgroundColor: '#F8F6F2', borderColor: '#D4C8BA' }, starterIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F3F0EB', alignItems: 'center', justifyContent: 'center' }, starterIconText: { color: C.cocoa, fontSize: 17 }, starterCopy: { flex: 1 }, starterTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, starterDescription: { color: C.muted, fontSize: 10, lineHeight: 14, marginTop: 4 }, starterArrow: { color: '#6F6256', fontSize: 13, alignSelf: 'flex-start' }, conversationColumn: { width: '100%', maxWidth: 760, alignSelf: 'center' }, dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 10, marginBottom: 24 }, dividerLine: { height: 1, backgroundColor: C.line, flex: 1 }, dayText: { color: '#75665A', fontSize: 9, letterSpacing: 1.5, fontWeight: '700' },
   connectCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2ECE3', borderRadius: 16, padding: 14, marginTop: 22, marginLeft: 44, gap: 12, maxWidth: 555 }, connectIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center' }, connectIconText: { color: C.cocoa, fontSize: 17 }, connectCopy: { flex: 1 }, connectTitle: { fontSize: 12, fontWeight: '700', color: C.ink, marginBottom: 4 }, connectBody: { fontSize: 11, color: C.muted, lineHeight: 16 }, connectArrow: { color: C.cocoa, fontSize: 24 }, promptWrap: { marginTop: 22, marginLeft: 44 }, promptHeading: { color: '#796D62', fontSize: 11, fontWeight: '600', marginBottom: 10, marginLeft: 2 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, promptChip: { borderWidth: 1, borderColor: '#E3D9CD', backgroundColor: '#FBF8F3', borderRadius: 18, paddingHorizontal: 14, minHeight: 38, justifyContent: 'center' }, promptChipText: { color: C.cocoaDark, fontSize: 11, fontWeight: '500' },
   messageRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 14 }, messageRowYou: { justifyContent: 'flex-end' }, messageBubble: { maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 }, teddyBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: C.cocoa, borderBottomRightRadius: 4 }, messageText: { color: C.ink, fontSize: 14, lineHeight: 21 }, markdownReply: { gap: 2 }, markdownStrong: { color: C.ink, fontWeight: '700' }, markdownItalic: { fontStyle: 'italic' }, markdownStrike: { textDecorationLine: 'line-through' }, markdownInlineCode: { color: '#61492F', backgroundColor: '#F2EDE4', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }, markdownLink: { color: '#76552F', textDecorationLine: 'underline' }, markdownHeading: { fontWeight: '700', marginTop: 5, marginBottom: 5 }, markdownHeadingLarge: { fontSize: 19 }, markdownListRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 }, markdownListText: { flex: 1 }, markdownFence: { color: C.ink, backgroundColor: '#F5F2ED', borderRadius: 8, padding: 10, marginVertical: 5, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, lineHeight: 18 }, markdownQuote: { borderLeftColor: '#D9B879', borderLeftWidth: 3, paddingLeft: 10, marginLeft: 0, marginVertical: 4 }, markdownRule: { height: 1, backgroundColor: C.line, marginVertical: 7 }, userMessageText: { color: C.white }, messageTime: { color: C.muted, fontSize: 9, textAlign: 'right', marginTop: 5 }, userMessageTime: { color: '#E8D9CC' }, sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, marginBottom: 8 }, typingBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }, typingText: { color: C.muted, fontSize: 12, fontWeight: '600' }, errorBanner: { backgroundColor: '#FCE9E3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 }, errorText: { color: '#8D473F', fontSize: 11, lineHeight: 16 }, retryButton: { alignSelf: 'flex-start', marginTop: 8, minHeight: 30, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#FFFFFF' }, retryButtonText: { color: '#8D473F', fontSize: 11, fontWeight: '700' },
-  composerWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 68, maxWidth: 760, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 9, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDDCD6', borderRadius: 24, paddingHorizontal: 11, paddingVertical: 8, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerCardFocused: { borderColor: '#B49A83', shadowColor: C.cocoa, shadowOpacity: 0.14, shadowRadius: 17, shadowOffset: { width: 0, height: 0 }, elevation: 3 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, maxWidth: 760, alignSelf: 'center', width: '100%', marginBottom: 7 }, chatToolButton: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', paddingHorizontal: 10 }, chatToolIcon: { color: C.cocoa, fontSize: 13 }, chatToolLabel: { color: C.cocoaDark, fontSize: 10, fontWeight: '600' }, toolIconButton: { width: 31, height: 31, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { flex: 1, minWidth: 0, color: C.ink, fontSize: 14, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 7, maxHeight: 110, minHeight: 46 }, sendButton: { flexShrink: 0, width: 46, height: 46, borderRadius: 17, backgroundColor: '#B9A797', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: C.cocoa }, sendButtonDisabled: { opacity: 0.72 }, sendArrowIcon: { width: 20, height: 20, position: 'relative' }, sendArrowShaft: { position: 'absolute', left: 2, top: 9, width: 15, height: 1.7, borderRadius: 1, backgroundColor: C.white, transform: [{ rotate: '-45deg' }] }, sendArrowTop: { position: 'absolute', left: 9, top: 3, width: 8, height: 1.7, borderRadius: 1, backgroundColor: C.white }, sendArrowRight: { position: 'absolute', right: 3, top: 3, width: 1.7, height: 8, borderRadius: 1, backgroundColor: C.white }, composerFootnote: { color: '#706458', fontSize: 11, textAlign: 'center', marginTop: 8, lineHeight: 14 },
+  composerWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 68, maxWidth: 760, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 9, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDDCD6', borderRadius: 24, paddingHorizontal: 11, paddingVertical: 8, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerCardFocused: { borderColor: '#B49A83', shadowColor: C.cocoa, shadowOpacity: 0.14, shadowRadius: 17, shadowOffset: { width: 0, height: 0 }, elevation: 3 }, voiceButton: { width: 42, height: 42, borderRadius: 15, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }, voiceButtonActive: { backgroundColor: '#F8E9DF', borderColor: '#D5A98F' }, voiceMicIcon: { width: 20, height: 24, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 1 }, voiceMicHead: { width: 7, height: 11, borderWidth: 1.6, borderColor: C.cocoa, borderRadius: 5, marginBottom: 1 }, voiceMicArc: { position: 'absolute', top: 6, width: 14, height: 9, borderWidth: 1.6, borderColor: C.cocoa, borderTopColor: 'transparent', borderRadius: 8 }, voiceMicStem: { width: 2, height: 4, backgroundColor: C.cocoa, marginTop: -1 }, voiceMicBase: { width: 9, height: 2, borderRadius: 1, backgroundColor: C.cocoa, marginTop: 1 }, voiceStopIndicator: { width: 8, height: 8, borderRadius: 2, backgroundColor: C.rose }, speechStatus: { maxWidth: 760, alignSelf: 'center', width: '100%', color: C.cocoaDark, fontSize: 11, marginTop: 6, paddingHorizontal: 4 }, speechError: { maxWidth: 760, alignSelf: 'center', width: '100%', color: C.rose, fontSize: 11, marginTop: 6, paddingHorizontal: 4 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, maxWidth: 760, alignSelf: 'center', width: '100%', marginBottom: 7 }, chatToolButton: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', paddingHorizontal: 10 }, chatToolIcon: { color: C.cocoa, fontSize: 13 }, chatToolLabel: { color: C.cocoaDark, fontSize: 10, fontWeight: '600' }, toolIconButton: { width: 31, height: 31, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { flex: 1, minWidth: 0, color: C.ink, fontSize: 14, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 7, maxHeight: 110, minHeight: 46 }, sendButton: { flexShrink: 0, width: 46, height: 46, borderRadius: 17, backgroundColor: '#B9A797', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: C.cocoa }, sendButtonDisabled: { opacity: 0.72 }, sendArrowIcon: { width: 20, height: 20, position: 'relative' }, sendArrowShaft: { position: 'absolute', left: 2, top: 9, width: 15, height: 1.7, borderRadius: 1, backgroundColor: C.white, transform: [{ rotate: '-45deg' }] }, sendArrowTop: { position: 'absolute', left: 9, top: 3, width: 8, height: 1.7, borderRadius: 1, backgroundColor: C.white }, sendArrowRight: { position: 'absolute', right: 3, top: 3, width: 1.7, height: 8, borderRadius: 1, backgroundColor: C.white }, composerFootnote: { color: '#706458', fontSize: 11, textAlign: 'center', marginTop: 8, lineHeight: 14 },
   bottomNav: { minHeight: 70, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingTop: 5, paddingHorizontal: 3 }, bottomNavItem: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 13, paddingHorizontal: 1, paddingVertical: 3 }, bottomNavItemActive: { backgroundColor: '#F6F0E9' }, bottomIcon: { fontSize: 19, color: '#75685C', lineHeight: 23 }, bottomIconActive: { color: C.cocoaDark }, bottomLabel: { fontSize: 10, color: '#6F6256', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' }, bottomNavPlusAction: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center' }, bottomNavPlusBox: { width: 46, height: 46, borderRadius: 14, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', shadowColor: '#302821', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 }, bottomNavPlusGlyph: { color: C.white, fontSize: 29, lineHeight: 32, fontWeight: '400', includeFontPadding: false }, squeezePressed: { transform: [{ scale: 0.965 }] },
   pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#6F6256', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#75685C', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#6E6054', fontSize: 17 }, deleteGlyph: { color: '#855748', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
   privacyBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: C.greenLight, borderRadius: 16, marginBottom: 27 }, privacyShield: { width: 35, height: 35, backgroundColor: '#D7E3D4', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, shieldGlyph: { color: C.green, fontSize: 19 }, privacyCopy: { flex: 1 }, privacyTitle: { color: '#435943', fontSize: 13, fontWeight: '700', marginBottom: 5 }, privacyBody: { color: '#65745F', fontSize: 12, lineHeight: 17 }, settingsSectionLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginTop: 3 }, settingsCard: { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, paddingHorizontal: 15, marginBottom: 23 }, settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 }, settingIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' }, settingGlyph: { color: C.cocoa, fontSize: 15 }, settingText: { flex: 1 }, settingTitle: { color: C.ink, fontSize: 12, fontWeight: '700', lineHeight: 17 }, settingDescription: { color: C.muted, fontSize: 12, lineHeight: 15, marginTop: 3 }, switchHitArea: { padding: 2 }, switchTrack: { width: 42, height: 25, borderRadius: 14, padding: 3, justifyContent: 'center' }, switchThumb: { width: 19, height: 19, borderRadius: 10, backgroundColor: C.white }, settingSeparator: { height: 1, backgroundColor: C.line, marginLeft: 44 }, gatewaySection: { borderRadius: 18 }, gatewaySectionFocused: { borderWidth: 1, borderColor: '#D6BAA5', padding: 10, marginHorizontal: -10, marginBottom: 14, backgroundColor: '#F8F0E8' }, gatewayIntro: { flexDirection: 'row', gap: 11, paddingTop: 16, paddingBottom: 14 }, gatewayIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, gatewayGlyph: { color: C.cocoa, fontSize: 16 }, inputLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.1, fontWeight: '700', marginBottom: 7 }, gatewayInput: { height: 45, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 12 }, gatewayActions: { paddingTop: 11, paddingBottom: 15, gap: 9 }, connectionStatus: { color: C.muted, fontSize: 11, lineHeight: 15 }, connectionReady: { color: C.green }, connectionError: { color: C.rose }, clearRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15 }, clearIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#F8EAE5', alignItems: 'center', justifyContent: 'center' }, clearGlyph: { color: C.rose, fontSize: 16 }, clearButton: { minHeight: 36, minWidth: 54, borderRadius: 11, borderWidth: 1, borderColor: '#E7D8D2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 }, clearButtonText: { color: C.rose, fontSize: 11, fontWeight: '700' }, versionText: { textAlign: 'center', color: '#6E6258', fontSize: 10, letterSpacing: 1.4, marginTop: 2, marginBottom: 16 },

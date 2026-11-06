@@ -16,7 +16,9 @@ Deliver a calm, mature, conversation-first companion app—**A little room to br
 ## Quality checklist
 - [ ] Consistent labels, tone, and account identity across every screen, dialog, validation error, empty state, tooltip, notification, and accessibility label.
 - [ ] No obsolete email/Gmail sign-in copy, unsupported web/iOS claims, dark-mode references, or voice-output claims in user-facing text.
-- [ ] Four primary mobile navigation destinations remain uncluttered; central plus starts a chat.
+- [x] Four primary mobile navigation destinations are Chats, Discover, Memories, and Settings; central plus starts a chat.
+- [x] Discover contains chat history, journal, emotional check-ins, wellbeing exercises, and privacy controls.
+- [x] Voice composer control is wired for Android and supported browsers; transcripts remain editable and are never sent automatically.
 - [ ] Every failing action has visible, actionable feedback; no raw server errors or secret values are shown.
 - [ ] Destructive actions explain consequences and require confirmation.
 - [ ] Respect safe areas, keyboard behavior, responsive desktop layouts, large text, reduced motion, screen-reader labels, focus order, and contrast.
@@ -24,4 +26,4 @@ Deliver a calm, mature, conversation-first companion app—**A little room to br
 - [ ] Run lint, typecheck, tests, and platform builds; separately complete real-device smoke tests.
 
 ## Verification status
-The current source has automated build/test evidence, but the Android username-auth and biometric flows, full accessibility matrix, and all-platform runtime behavior have not been confirmed on physical devices. Do not mark the UX fully verified solely because CI passes.
+The current source has automated build/test evidence. The Android Gradle build was not completed in the development sandbox because the Gradle distribution download timed out. Android microphone, username-auth and biometric flows, full accessibility matrix, and all-platform runtime behavior have not been confirmed on physical devices. Do not mark the UX fully verified solely because CI passes.
