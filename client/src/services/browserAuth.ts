@@ -168,7 +168,7 @@ export class BrowserAuthService {
     const boundUsername = marker.slice('username:'.length);
     if (boundUsername !== username) {
       throw new AuthServiceError(
-        `This device is set up for @${boundUsername}. Teddy Bud keeps one account on each device. Sign in with that username, or use the device's account reset option before setting up another account.`,
+        `This device is set up for @${boundUsername}. Teddy Bud keeps one account on each device. Sign in with @${boundUsername} to continue.`,
         'device-account-mismatch',
       );
     }
