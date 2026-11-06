@@ -71,7 +71,7 @@ test('create account explains mismatched passwords instead of silently blocking 
   });
 
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Create private space' }).props.onPress();
+    renderer.root.findByProps({ accessibilityLabel: 'Continue setup' }).props.onPress();
   });
   expect(renderer.root.findByProps({ accessibilityRole: 'alert' }).findAllByType(Text).map(node => node.props.children))
     .toContain('The passwords do not match.');
@@ -119,12 +119,23 @@ test('recovery-passphrase mismatch is not silently disabled', async () => {
     renderer.root.findByProps({ accessibilityLabel: 'Confirm recovery passphrase' }).props.onChangeText('different recovery phrase');
   });
 
-  expect(renderer.root.findByProps({ accessibilityLabel: 'Create private space' }).props.disabled).toBe(false);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Continue setup' }).props.disabled).toBe(false);
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Create private space' }).props.onPress();
+    renderer.root.findByProps({ accessibilityLabel: 'Continue setup' }).props.onPress();
   });
   expect(renderer.root.findByProps({ accessibilityRole: 'alert' }).findAllByType(Text).map(node => node.props.children))
     .toContain('The recovery passphrases do not match.');
 
   await ReactTestRenderer.act(async () => renderer.unmount());
 }, 15000);
+test('returning sign-in does not offer a second account setup path', async () => {
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
+    );
+  });
+  expect(renderer.root.findAll(node => node.props.accessibilityLabel === 'Create a private space')).toHaveLength(0);
+  expect(renderer.root.findAllByType(Text).some(node => node.props.children === 'Forgot password?')).toBe(true);
+  await ReactTestRenderer.act(async () => renderer.unmount());
+});

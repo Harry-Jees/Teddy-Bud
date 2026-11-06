@@ -14,8 +14,8 @@
 ## Layout and navigation
 - Mobile and desktop must adapt without clipped content, stretched text, or obstructed controls.
 - The central **+** creates a new chat immediately; do not route it to a generic action menu.
-- Keep Settings easy to reach from primary navigation.
-- Journals belong in Discover. Put secondary tools in their appropriate secondary surface instead of crowding chat.
+- Keep Settings easy to reach from primary navigation. The four primary sections are Chats, Discover, Memories, and Settings.
+- Discover contains the Journal, emotional check-ins, wellbeing exercises, chat history, and privacy controls. Keep secondary tools there instead of crowding chat.
 - Respect safe areas, keyboard movement, large text, reduced motion, screen readers, and focus order.
 
 ## Chat and forms

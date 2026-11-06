@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { BottomNav, ChatHistoryPage, MorePage } from '../App';
+import { BottomNav, ChatHistoryPage, DiscoverPage } from '../App';
 
 jest.mock('@react-native-documents/picker', () => ({
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
@@ -26,7 +26,7 @@ jest.mock('@op-engineering/op-sqlite', () => ({
 }));
 
 
-test('mobile navigation exposes four icons total and an immediate central New Chat action', async () => {
+test('mobile navigation exposes four sections around an immediate central New Chat action', async () => {
   const onNavigate = jest.fn();
   const onNewConversation = jest.fn();
   let renderer!: ReactTestRenderer.ReactTestRenderer;
@@ -40,11 +40,12 @@ test('mobile navigation exposes four icons total and an immediate central New Ch
   const labels = [...new Set(renderer.root.findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string').map(button => button.props.accessibilityLabel))];
   expect(labels).toEqual([
     'Chats',
-    'Memories',
+    'Discover',
     'Start a new chat',
-    'More',
+    'Memories',
+    'Settings',
   ]);
-  expect(labels.filter(label => label !== 'Start a new chat')).toHaveLength(3);
+  expect(labels.filter(label => label !== 'Start a new chat')).toHaveLength(4);
 
   const interactive = (label: string) => renderer.root
     .findAll(node => node.props.accessibilityLabel === label && typeof node.props.onPress === 'function')
@@ -56,27 +57,27 @@ test('mobile navigation exposes four icons total and an immediate central New Ch
   expect(onNavigate).not.toHaveBeenCalled();
 
   await ReactTestRenderer.act(async () => {
-    interactive('More')!.props.onPress();
+    interactive('Discover')!.props.onPress();
   });
-  expect(onNavigate).toHaveBeenCalledWith('more');
+  expect(onNavigate).toHaveBeenCalledWith('discover');
   await ReactTestRenderer.act(async () => renderer.unmount());
 });
 
-test('More screen keeps secondary tools discoverable and navigable', async () => {
+test('Discover keeps secondary tools discoverable and navigable', async () => {
   const onNavigate = jest.fn();
   let renderer!: ReactTestRenderer.ReactTestRenderer;
 
   await ReactTestRenderer.act(async () => {
-    renderer = ReactTestRenderer.create(<MorePage wide={false} onNavigate={onNavigate} />);
+    renderer = ReactTestRenderer.create(<DiscoverPage wide={false} onNavigate={onNavigate} />);
   });
 
   const labels = [...new Set(renderer.root
     .findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string')
     .map(button => button.props.accessibilityLabel))];
-  expect(labels).toEqual(['Chat history', 'Journal', 'Emotions', 'Wellbeing', 'Privacy', 'Settings']);
+  expect(labels).toEqual(['Chat history', 'Private journal', 'Emotional check-in', 'Wellbeing studio', 'Privacy controls']);
 
   const privacyControl = renderer.root
-    .findAll(node => node.props.accessibilityLabel === 'Privacy' && typeof node.props.onPress === 'function')
+    .findAll(node => node.props.accessibilityLabel === 'Privacy controls' && typeof node.props.onPress === 'function')
     .find(node => typeof node.props.onPress === 'function');
   await ReactTestRenderer.act(async () => {
     privacyControl!.props.onPress();
