@@ -26,7 +26,7 @@ jest.mock('@op-engineering/op-sqlite', () => ({
   isSQLCipher: () => true,
 }));
 
-test('sign-in gives actionable email/password validation and clears stale errors while editing', async () => {
+test('sign-in gives actionable username/password validation and clears stale errors while editing', async () => {
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
