@@ -25,13 +25,17 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
   const previousPulse = useRef(pulseKey);
 
   useEffect(() => {
+    if (reduceMotion) {
+      selected.setValue(active ? 1 : 0);
+      return;
+    }
     Animated.spring(selected, {
       toValue: active ? 1 : 0,
       speed: 19,
       bounciness: 4,
       useNativeDriver: true,
     }).start();
-  }, [active, selected]);
+  }, [active, selected, reduceMotion]);
 
   useEffect(() => {
     if (previousPulse.current === pulseKey) return;
@@ -82,7 +86,7 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
           <Animated.View style={[styles.compassNeedleWrap, { transform: [{ rotate }] }]}>
             <View style={[styles.compassNeedle, { borderBottomColor: activeColor }]} />
           </Animated.View>
-          <Animated.View style={[styles.compassSpark, { opacity: sparkle.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }), transform: [{ scale: sparkle.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1.45] }), { rotate: '45deg' }] }]} />
+          <Animated.View style={[styles.compassSpark, { opacity: sparkle.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }), transform: [{ scale: sparkle.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1.45] }) }, { rotate: '45deg' }] }]} />
         </View>;
       case 'memories':
         return <View style={styles.memoryIcon}>
