@@ -11,6 +11,7 @@ import {
   Linking,
   Modal,
   NativeEventEmitter,
+  PanResponder,
   NativeModules,
   Platform,
   Pressable,
@@ -751,6 +752,18 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   }, [activeConversationId, conversations, streamingConversationId, persistLocalSnapshot]); 
 
   const startNewConversation = useCallback(() => {
+    const activeEmpty = conversations.find(conversation => conversation.id === activeConversationId && conversation.messages.length === 0);
+    const reusableEmpty = activeEmpty ?? [...conversations]
+      .filter(conversation => conversation.messages.length === 0)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+
+    if (reusableEmpty) {
+      if (reusableEmpty.id !== activeConversationId) setDraft('');
+      setActiveConversationId(reusableEmpty.id);
+      setPage('chat');
+      return;
+    }
+
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     const now = new Date().toISOString();
     setConversations(current => [{
@@ -763,7 +776,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     setActiveConversationId(id);
     setPage('chat');
     setDraft('');
-  }, []);
+  }, [activeConversationId, conversations]);
 
   const selectConversation = useCallback((id: string) => {
     setActiveConversationId(id);
@@ -1211,7 +1224,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         </View>
 
         <View style={styles.contentArea}>
-          <SoftPageTransition transitionKey={page}>
+          <SoftPageTransition transitionKey={page} onSwipe={direction => {
+            const currentIndex = primaryTabIndex(page);
+            const nextIndex = Math.max(0, Math.min(mobileNavItems.length - 1, currentIndex + direction));
+            if (nextIndex !== currentIndex) setPage(mobileNavItems[nextIndex].id);
+          }} enabled={!wide}>
           {localDataError ? <LocalDataError error={localDataError} onRetry={retryLocalData} onClear={clearUnavailableLocalData} /> : !localDataReady || localDataOwner !== owner ? <LocalDataLoading /> : <>
           {localDataSaveError && <LocalDataSaveWarning error={localDataSaveError} onRetry={retryLocalData} />}
           {page === 'chat' && <ChatPage key={activeConversationId ?? 'new-chat'} wide={wide} bottomInset={insets.bottom} conversationId={activeConversationId} assistantName={assistantName} messages={messages} streamingReply={activeConversationId === streamingConversationId ? streamingReply : ''} isThinking={isSending && activeConversationId === streamingConversationId} conversationTitle={activeConversation?.title ?? 'A quiet place to be'} onOpenHistory={() => setPage('history')} onRenameChat={() => { if (activeConversation) beginRenameConversation(activeConversation); }} isPinned={activeConversation?.pinned === true} canManageChat={activeConversation !== null} onTogglePin={() => { if (activeConversation) setConversationPinned(activeConversation.id, !activeConversation.pinned); }} onOpenCrisisResources={openCrisisResources} emergencyCallOption={emergencyCallOption} crisisHelplineOption={crisisHelplineOption} onCallEmergency={callEmergencyServices} onCallHelpline={callCrisisHelpline} onTextHelpline={textCrisisHelpline} onOpenHelplineWebsite={openHelplineWebsite} onSaveOccasion={fact => {
@@ -1309,41 +1326,63 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   );
 }
 
-function SoftPageTransition({ transitionKey, children }: { transitionKey: string; children: React.ReactNode }) {
+function primaryTabIndex(page: Page): number {
+  const primaryPage = page === 'history' ? 'chat' : discoverPages.includes(page) ? 'discover' : page;
+  const index = mobileNavItems.findIndex(item => item.id === primaryPage);
+  return index < 0 ? 0 : index;
+}
+
+function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }: {
+  transitionKey: string;
+  children: React.ReactNode;
+  onSwipe: (direction: -1 | 1) => void;
+  enabled?: boolean;
+}) {
   const reduceMotion = useReducedMotionPreference();
-  const opacity = useRef(new Animated.Value(1)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
+  const { width } = useWindowDimensions();
+  const translateX = useRef(new Animated.Value(0)).current;
+  const previousIndex = useRef(primaryTabIndex(transitionKey as Page));
   const previousKey = useRef(transitionKey);
+  const onSwipeRef = useRef(onSwipe);
+  onSwipeRef.current = onSwipe;
 
   useEffect(() => {
-    if (previousKey.current === transitionKey) return;
+    const nextIndex = primaryTabIndex(transitionKey as Page);
+    const previousPageIndex = previousIndex.current;
+    previousIndex.current = nextIndex;
     previousKey.current = transitionKey;
-    opacity.stopAnimation();
-    translateY.stopAnimation();
-    if (reduceMotion) {
-      opacity.setValue(1);
-      translateY.setValue(0);
+    translateX.stopAnimation();
+    if (previousPageIndex === nextIndex || reduceMotion) {
+      translateX.setValue(0);
       return;
     }
-    opacity.setValue(0.72);
-    translateY.setValue(8);
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 210,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.spring(translateY, {
-        toValue: 0,
-        speed: 20,
-        bounciness: 2,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [transitionKey, reduceMotion, opacity, translateY]);
+    const direction = nextIndex > previousPageIndex ? 1 : -1;
+    translateX.setValue(direction * Math.min(width * 0.22, 88));
+    Animated.spring(translateX, {
+      toValue: 0,
+      speed: 19,
+      bounciness: 2,
+      useNativeDriver: true,
+    }).start();
+  }, [transitionKey, width, reduceMotion, translateX]);
 
-  return <Animated.View style={{ flex: 1, opacity, transform: [{ translateY }] }}>{children}</Animated.View>;
+  const panResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_event, gesture) =>
+      enabled && !reduceMotion && Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.35,
+    onPanResponderRelease: (_event, gesture) => {
+      if (Math.abs(gesture.dx) < 58 || Math.abs(gesture.dx) < Math.abs(gesture.dy) * 1.25) return;
+      onSwipeRef.current(gesture.dx < 0 ? 1 : -1);
+    },
+    onPanResponderTerminate: () => undefined,
+  })).current;
+
+  return <Animated.View
+    {...(enabled ? panResponder.panHandlers : {})}
+    style={{ flex: 1, transform: [{ translateX }] }}
+  >
+    {children}
+  </Animated.View>;
 }
 
 function ConversationHistoryList({ conversations, activeConversationId, busyConversationId, onSelect, onPin, onDelete, onRename }: {
