@@ -147,6 +147,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 function AccessGate() {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [busy, setBusy] = useState(true);
+  const loadingOpacity = useRef(new Animated.Value(1)).current;
   const [error, setError] = useState<string | null>(null);
   const [initialMode, setInitialMode] = useState<'login' | 'create'>('create');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
@@ -154,6 +155,7 @@ function AccessGate() {
   useEffect(() => {
     let mounted = true;
     const restore = async () => {
+      const loadingStartedAt = Date.now();
       try {
         const current = await browserAuthService.restore();
         if (mounted) {
@@ -167,14 +169,20 @@ function AccessGate() {
       } catch (restoreError) {
         if (mounted) setError(authErrorMessage(restoreError, 'session-restore'));
       } finally {
-        if (mounted) setBusy(false);
+        const remaining = Math.max(0, 2000 - (Date.now() - loadingStartedAt));
+        setTimeout(() => {
+          if (!mounted) return;
+          Animated.timing(loadingOpacity, { toValue: 0, duration: 320, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => {
+            if (mounted) setBusy(false);
+          });
+        }, remaining);
       }
     };
     restore();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [loadingOpacity]);
 
   useEffect(() => {
     if (!session) return undefined;
@@ -197,7 +205,7 @@ function AccessGate() {
     return () => clearTimeout(timer);
   }, [session]);
 
-  if (busy) return <AuthLoading />;
+  if (busy) return <Animated.View style={{ flex: 1, opacity: loadingOpacity }}><AuthLoading /></Animated.View>;
   if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
   return <TeddyBud sessionToken={session.accessToken} username={session.username ?? ''} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
@@ -214,10 +222,30 @@ function AccessGate() {
 }
 
 function AuthLoading() {
+  const breathe = useRef(new Animated.Value(0)).current;
+  const dots = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const breathing = Animated.loop(Animated.sequence([
+      Animated.timing(breathe, { toValue: 1, duration: 1050, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      Animated.timing(breathe, { toValue: 0, duration: 1050, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+    ]));
+    const loadingDots = Animated.loop(Animated.sequence([
+      Animated.timing(dots, { toValue: 1, duration: 650, useNativeDriver: true }),
+      Animated.timing(dots, { toValue: 0, duration: 650, useNativeDriver: true }),
+    ]));
+    breathing.start();
+    loadingDots.start();
+    return () => { breathing.stop(); loadingDots.stop(); };
+  }, [breathe, dots]);
   return <View style={styles.authLoadingScreen} accessibilityLabel="Opening Teddy Bud">
-    <View style={styles.authLoadingMark}><Image source={teddyBudLogo} style={styles.authLoadingLogo} accessibilityLabel="Teddy Bud" /></View>
+    <Animated.View style={[styles.authLoadingMark, { transform: [{ scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.055] }) }] }]}>
+      <Image source={teddyBudLogo} style={styles.authLoadingLogo} accessibilityLabel="Teddy Bud" />
+    </Animated.View>
     <Text style={styles.authLoadingTitle}>Opening your private space</Text>
-    <Text style={styles.authLoadingBody}>Checking your secure session…</Text>
+    <Text style={styles.authLoadingBody}>Getting your cozy corner ready</Text>
+    <View style={styles.authLoadingDots} accessibilityLabel="Loading">
+      {[0, 1, 2].map((dot, index) => <Animated.View key={dot} style={[styles.authLoadingDot, { opacity: dots.interpolate({ inputRange: [0, 1], outputRange: index === 1 ? [0.35, 1] : index === 0 ? [1, 0.35] : [0.35, 0.8] }), transform: [{ translateY: dots.interpolate({ inputRange: [0, 1], outputRange: [0, index === 1 ? -4 : 2] }) }] }]} />)}
+    </View>
   </View>;
 }
 
