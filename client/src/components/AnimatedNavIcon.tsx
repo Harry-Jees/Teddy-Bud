@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 
 export type AnimatedNavIconName = 'chat' | 'discover' | 'memories' | 'settings';
 
@@ -11,100 +11,108 @@ type Props = {
 };
 
 const COLORS = {
-  ink: '#78685B',
-  active: '#6B5140',
-  clay: '#EAD8C8',
-  peach: '#DDAF91',
-  cream: '#FFF9F2',
+  ink: '#82766C',
+  active: '#684D3B',
+  clay: '#F0E1D4',
+  peach: '#D9A987',
+  paper: '#FFFDF9',
 };
 
 export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const rotation = useRef(new Animated.Value(0)).current;
-  const halo = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const progress = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const press = useRef(new Animated.Value(1)).current;
+  const sparkle = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(halo, {
+    Animated.spring(progress, {
       toValue: active ? 1 : 0,
-      duration: reduceMotion ? 0 : 180,
+      speed: 20,
+      bounciness: 5,
       useNativeDriver: true,
     }).start();
-  }, [active, halo, reduceMotion]);
+  }, [active, progress]);
 
   useEffect(() => {
     if (reduceMotion) {
-      scale.setValue(1);
-      rotation.setValue(0);
+      press.setValue(1);
+      sparkle.setValue(0);
       return;
     }
-    scale.setValue(0.92);
-    rotation.setValue(0);
-    Animated.parallel([
-      Animated.sequence([
-        Animated.spring(scale, { toValue: 1.2, speed: 22, bounciness: 12, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1, speed: 18, bounciness: 8, useNativeDriver: true }),
-      ]),
-      Animated.sequence([
-        Animated.timing(rotation, { toValue: 1, duration: 110, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.spring(rotation, { toValue: 0, speed: 16, bounciness: 10, useNativeDriver: true }),
-      ]),
+    press.setValue(0.88);
+    Animated.sequence([
+      Animated.spring(press, { toValue: 1.12, speed: 24, bounciness: 7, useNativeDriver: true }),
+      Animated.spring(press, { toValue: 1, speed: 18, bounciness: 5, useNativeDriver: true }),
     ]).start();
-  }, [pulseKey, active, reduceMotion, rotation, scale]);
+    if (name === 'discover') {
+      sparkle.setValue(0);
+      Animated.sequence([
+        Animated.timing(sparkle, { toValue: 1, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(sparkle, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [pulseKey, name, reduceMotion, press, sparkle]);
 
-  const spin = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', name === 'settings' ? '32deg' : '-10deg'] });
+  const tint = progress.interpolate({ inputRange: [0, 1], outputRange: [COLORS.ink, COLORS.active] });
+  const activeScale = progress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+  const activeFill = progress.interpolate({ inputRange: [0, 1], outputRange: ['0', '1'] });
+  const strokeWidth = active ? 2.35 : 2;
+  const icon = (() => {
+    switch (name) {
+      case 'chat':
+        return <View style={styles.chatIcon}>
+          <View style={[styles.chatBubble, { borderWidth: strokeWidth, borderColor: active ? COLORS.active : COLORS.ink }]} />
+          <View style={[styles.chatTail, { borderColor: active ? COLORS.active : COLORS.ink }]} />
+          <View style={styles.chatDots}><View style={[styles.chatDot, { backgroundColor: active ? COLORS.active : COLORS.ink }]} /><View style={[styles.chatDot, { backgroundColor: active ? COLORS.active : COLORS.ink }]} /><View style={[styles.chatDot, { backgroundColor: active ? COLORS.active : COLORS.ink }]} /></View>
+        </View>;
+      case 'discover':
+        return <View style={styles.discoverIcon}>
+          <View style={[styles.compassOuter, { borderColor: active ? COLORS.active : COLORS.ink }]} />
+          <View style={[styles.compassNeedle, { borderBottomColor: active ? COLORS.active : COLORS.ink }]} />
+          <Animated.View style={[styles.compassSpark, { opacity: sparkle.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }), transform: [{ scale: sparkle.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1.2] }), rotate: '45deg' }] }]} />
+        </View>;
+      case 'memories':
+        return <View style={styles.memoryIcon}>
+          <View style={[styles.memoryBook, { borderColor: active ? COLORS.active : COLORS.ink, backgroundColor: active ? '#F4E6DA' : COLORS.paper }]} />
+          <View style={[styles.memorySpine, { backgroundColor: active ? COLORS.active : COLORS.ink }]} />
+          <View style={[styles.memoryLine, { backgroundColor: active ? COLORS.active : COLORS.ink }]} />
+          <View style={[styles.memoryLine, styles.memoryLineShort, { backgroundColor: active ? COLORS.active : COLORS.ink }]} />
+        </View>;
+      case 'settings':
+        return <View style={styles.settingsIcon}>
+          <View style={[styles.gearCore, { borderColor: active ? COLORS.active : COLORS.ink }]} />
+          {[0, 45, 90, 135].map(angle => <View key={angle} style={[styles.gearTooth, { backgroundColor: active ? COLORS.active : COLORS.ink, transform: [{ rotate: angle + 'deg' }] }]} />)}
+          <View style={[styles.gearHole, { backgroundColor: COLORS.paper }]} />
+        </View>;
+    }
+  })();
 
-  return (
-    <View style={styles.frame} accessible={false}>
-      <Animated.View pointerEvents="none" style={[styles.halo, { opacity: halo }]} />
-      <Animated.View style={{ transform: [{ scale }, { rotate: name === 'settings' || name === 'discover' ? spin : '0deg' }] }}>
-        {name === 'chat' && (
-          <View style={[styles.chatBubble, active && styles.activeOutline]}>
-            <View style={styles.chatDots}><View style={styles.dot} /><View style={styles.dot} /><View style={styles.dot} /></View>
-            <View style={[styles.chatTail, active && styles.activeTail]} />
-          </View>
-        )}
-        {name === 'discover' && (
-          <View style={styles.sparkleWrap}>
-            <Text style={[styles.sparkle, active && styles.activeGlyph]}>✦</Text>
-            <View style={styles.sparkleDot} />
-            <View style={styles.sparkleMini} />
-          </View>
-        )}
-        {name === 'memories' && (
-          <View style={styles.heartWrap}>
-            <Text style={[styles.heart, active && styles.activeGlyph]}>♡</Text>
-            <View style={styles.heartShine} />
-          </View>
-        )}
-        {name === 'settings' && (
-          <View style={styles.gearWrap}>
-            <Text style={[styles.gear, active && styles.activeGlyph]}>⚙</Text>
-            <View style={styles.gearCenter} />
-          </View>
-        )}
-      </Animated.View>
-    </View>
-  );
+  return <View style={styles.frame} accessible={false}>
+    <Animated.View pointerEvents="none" style={[styles.activePill, { opacity: progress, transform: [{ scale: activeScale }] }]} />
+    <Animated.View style={{ transform: [{ scale: press }, { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, -1.5] }) }] }}>
+      {icon}
+    </Animated.View>
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  frame: { width: 30, height: 29, alignItems: 'center', justifyContent: 'center' },
-  halo: { position: 'absolute', width: 29, height: 29, borderRadius: 15, backgroundColor: COLORS.clay },
-  chatBubble: { width: 21, height: 16, borderWidth: 1.8, borderColor: COLORS.ink, borderRadius: 7, backgroundColor: COLORS.cream, alignItems: 'center', justifyContent: 'center', marginTop: -2 },
-  activeOutline: { borderColor: COLORS.active, backgroundColor: '#F7E8DB' },
-  chatDots: { flexDirection: 'row', gap: 2.5, alignItems: 'center' },
-  dot: { width: 2.7, height: 2.7, borderRadius: 2, backgroundColor: COLORS.ink },
-  chatTail: { position: 'absolute', bottom: -4, left: 4, width: 7, height: 7, backgroundColor: COLORS.cream, borderLeftWidth: 1.6, borderBottomWidth: 1.6, borderColor: COLORS.ink, transform: [{ skewY: '-32deg' }] },
-  activeTail: { backgroundColor: '#F7E8DB', borderColor: COLORS.active },
-  sparkleWrap: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
-  sparkle: { color: COLORS.ink, fontSize: 24, lineHeight: 26, fontWeight: '500' },
-  activeGlyph: { color: COLORS.active },
-  sparkleDot: { position: 'absolute', width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.peach, top: 1, right: 0 },
-  sparkleMini: { position: 'absolute', width: 3, height: 3, borderRadius: 2, backgroundColor: COLORS.ink, bottom: 2, left: 1 },
-  heartWrap: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
-  heart: { color: COLORS.ink, fontSize: 28, lineHeight: 29, fontWeight: '400', marginTop: -1 },
-  heartShine: { position: 'absolute', width: 3, height: 3, borderRadius: 2, backgroundColor: COLORS.peach, top: 5, right: 4 },
-  gearWrap: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
-  gear: { color: COLORS.ink, fontSize: 22, lineHeight: 25 },
-  gearCenter: { position: 'absolute', width: 4, height: 4, borderRadius: 2, backgroundColor: COLORS.peach },
+  frame: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  activePill: { position: 'absolute', width: 34, height: 34, borderRadius: 12, backgroundColor: COLORS.clay },
+  chatIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  chatBubble: { position: 'absolute', top: 3, width: 21, height: 16, borderRadius: 6, backgroundColor: COLORS.paper },
+  chatTail: { position: 'absolute', bottom: 3, left: 5, width: 6, height: 6, borderLeftWidth: 1.8, borderBottomWidth: 1.8, backgroundColor: COLORS.paper, transform: [{ rotate: '-28deg' }] },
+  chatDots: { flexDirection: 'row', gap: 3, marginTop: -2 },
+  chatDot: { width: 2.6, height: 2.6, borderRadius: 2 },
+  discoverIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  compassOuter: { width: 21, height: 21, borderWidth: 2, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  compassNeedle: { position: 'absolute', width: 0, height: 0, borderLeftWidth: 4, borderRightWidth: 4, borderBottomWidth: 9, borderLeftColor: 'transparent', borderRightColor: 'transparent', top: 3, transform: [{ rotate: '22deg' }] },
+  compassSpark: { position: 'absolute', right: -1, top: 0, width: 5, height: 5, borderRadius: 3, backgroundColor: COLORS.peach },
+  memoryIcon: { width: 22, height: 24, alignItems: 'center', justifyContent: 'center' },
+  memoryBook: { width: 18, height: 21, borderWidth: 1.9, borderRadius: 4 },
+  memorySpine: { position: 'absolute', left: 4, top: 3, width: 1.5, height: 17, opacity: 0.8 },
+  memoryLine: { position: 'absolute', left: 9, top: 9, width: 8, height: 1.5, borderRadius: 1 },
+  memoryLineShort: { top: 13, width: 6 },
+  settingsIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  gearCore: { width: 17, height: 17, borderWidth: 2.4, borderRadius: 9 },
+  gearTooth: { position: 'absolute', width: 4, height: 22, borderRadius: 2 },
+  gearHole: { position: 'absolute', width: 6, height: 6, borderRadius: 3 },
 });
