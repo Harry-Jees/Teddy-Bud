@@ -34,7 +34,7 @@ jobs:
       WORKER_URL: https://teddy-bud-browser-gateway.harryjees.workers.dev
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
