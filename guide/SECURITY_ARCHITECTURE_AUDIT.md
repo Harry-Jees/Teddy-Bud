@@ -1,5 +1,7 @@
 # Teddy Bud — Architecture, Security and Delivery Audit
 
+> **Historical audit snapshot.** This document records findings from October 2026 and may describe superseded authentication, storage, or service architecture. For current requirements and release status, use `guide/PRD.md`, `guide/SECURITY_AND_PRIVACY.md`, and `docs/FEATURE_STATUS.md`. Do not treat historical findings below as current implementation claims.
+
 > Historical audit snapshot: the findings below describe the repository at the
 > revision and date shown, not the current implementation. Authentication,
 > email verification, session expiry, and local account-key isolation were
