@@ -30,7 +30,7 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 function emptyData(): LocalAppData {
-  return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' } };
+  return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, shareOnboardingSurvey: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' } };
 }
 
 describe('LocalDataService', () => {
@@ -56,6 +56,7 @@ describe('LocalDataService', () => {
       shareMemories: true,
       shareChatHistory: true,
       shareAboutMe: false,
+      shareOnboardingSurvey: false,
       aboutMe: '',
       assistantName: 'Teddy',
       assistantCharacterId: 'teddy-bud',
@@ -72,6 +73,12 @@ describe('LocalDataService', () => {
 
     expect(await service.load('account-a')).toEqual(emptyData());
     expect(await service.load('account-b')).toEqual({ ...emptyData(), shareMemories: true });
+  });
+
+  test('keeps setup-answer sharing off by default and preserves explicit opt-in', async () => {
+    expect(await service.load('account-a')).toMatchObject({ shareOnboardingSurvey: false });
+    await service.save('account-a', { ...emptyData(), shareOnboardingSurvey: true });
+    expect(await service.load('account-a')).toMatchObject({ shareOnboardingSurvey: true });
   });
 
   test('persists all chats, messages, and memories without application count limits', async () => {
