@@ -52,9 +52,7 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
     }
   }, [pulseKey, name, reduceMotion, press, sparkle]);
 
-  const tint = progress.interpolate({ inputRange: [0, 1], outputRange: [COLORS.ink, COLORS.active] });
   const activeScale = progress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
-  const activeFill = progress.interpolate({ inputRange: [0, 1], outputRange: ['0', '1'] });
   const strokeWidth = active ? 2.35 : 2;
   const icon = (() => {
     switch (name) {
