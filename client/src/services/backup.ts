@@ -83,6 +83,7 @@ function validateBackupData(value: unknown): LocalAppData {
   }
   if (typeof data.rememberInSession !== 'boolean' || typeof data.shareMemories !== 'boolean'
     || typeof data.shareChatHistory !== 'boolean' || typeof data.shareAboutMe !== 'boolean'
+    || (data.shareOnboardingSurvey !== undefined && typeof data.shareOnboardingSurvey !== 'boolean')
     || typeof data.aboutMe !== 'string' || data.aboutMe.length > 2_000
     || typeof data.assistantName !== 'string' || !data.assistantName.trim() || data.assistantName.length > 32) {
     throw new Error('Backup settings are invalid.');
