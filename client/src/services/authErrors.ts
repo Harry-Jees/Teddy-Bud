@@ -15,6 +15,7 @@ export type AuthErrorKind =
   | 'unavailable'
   | 'session-expired'
   | 'storage'
+  | 'device-account-mismatch'
   | 'unexpected';
 
 export class AuthServiceError extends Error {
