@@ -69,7 +69,7 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
           : <Pressable accessibilityRole="button" disabled={saving} onPress={() => void finish()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Finish'}</Text></Pressable>}
       </View>
       <Pressable accessibilityRole="button" disabled={saving} onPress={() => void finish(true)} style={styles.skip}><Text style={styles.skipText}>Skip the survey for now</Text></Pressable>
-      <Text style={styles.privacy}>Your responses are saved in this account’s encrypted local app data. They are not sent to Teddy Bud’s servers as survey records. You can change what you share in settings.</Text>
+      <Text style={styles.privacy}>Your responses are saved in this account’s encrypted local app data and are not sent as survey records. Only your selected response style and conversation tone may accompany a chat when you explicitly enable “Share About me notes” in Privacy.</Text>
     </ScrollView>
   </View>;
 }
