@@ -63,6 +63,23 @@ test('mobile navigation exposes four sections around an immediate central New Ch
   await ReactTestRenderer.act(async () => renderer.unmount());
 });
 
+
+test('Discover remains selected for its tools while chat history belongs to Chats', async () => {
+  const onNavigate = jest.fn();
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(<BottomNav page="journal" onNavigate={onNavigate} onNewConversation={jest.fn()} bottomInset={0} />);
+  });
+  const discover = renderer.root.findByProps({ accessibilityLabel: 'Discover' });
+  const chats = renderer.root.findByProps({ accessibilityLabel: 'Chats' });
+  expect(discover.props.accessibilityState.selected).toBe(true);
+  expect(chats.props.accessibilityState.selected).toBe(false);
+  await ReactTestRenderer.act(async () => renderer.update(<BottomNav page="history" onNavigate={onNavigate} onNewConversation={jest.fn()} bottomInset={0} />));
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Chats' }).props.accessibilityState.selected).toBe(true);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Discover' }).props.accessibilityState.selected).toBe(false);
+  await ReactTestRenderer.act(async () => renderer.unmount());
+});
+
 test('Discover keeps secondary tools discoverable and navigable', async () => {
   const onNavigate = jest.fn();
   let renderer!: ReactTestRenderer.ReactTestRenderer;

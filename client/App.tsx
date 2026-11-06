@@ -83,7 +83,7 @@ const mobileNavItems: { id: Page; icon: string; label: string }[] = [
   { id: 'memories', icon: '✳', label: 'Memories' },
   { id: 'settings', icon: '⚙', label: 'Settings' },
 ];
-const discoverPages: Page[] = ['discover', 'history', 'journal', 'emotions', 'studio', 'privacy'];
+const discoverPages: Page[] = ['discover', 'journal', 'emotions', 'studio', 'privacy'];
 
 const gatewayService = new GatewayService(GATEWAY_BASE_URL);
 const teddyBudLogo: ImageSourcePropType = typeof teddyBudLogoAsset === 'string'
@@ -1381,6 +1381,11 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
 }) {
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const visualCollapsed = collapsed && !hoverExpanded;
+  const isNavItemSelected = (item: (typeof navItems)[number]) => {
+    if (item.id === 'chat') return page === 'chat' || page === 'history';
+    if (item.id === 'discover') return discoverPages.includes(page);
+    return item.id === page;
+  };
   const sidebarWidth = useRef(new Animated.Value(collapsed ? 78 : 258)).current;
   const sidebarPadding = sidebarWidth.interpolate({ inputRange: [78, 258], outputRange: [10, 18] });
   const chevronProgress = useRef(new Animated.Value(collapsed ? 1 : 0)).current;
@@ -1466,7 +1471,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
         <Text style={styles.newChatGlyph}>+</Text>{!labelsCollapsed && <Animated.Text style={[styles.newChatLabel, { opacity: labelOpacity }]}>New chat</Animated.Text>}
       </Pressable>
       {!labelsCollapsed && <Animated.Text style={[styles.sidebarLabel, { opacity: labelOpacity }]}>YOUR SPACE</Animated.Text>}
-      {navItems.map(item => <NavButton key={item.id} item={item} selected={item.id === page} collapsed={labelsCollapsed} labelOpacity={labelOpacity} onPress={() => onNavigate(item.id)} />)}
+      {navItems.map(item => <NavButton key={item.id} item={item} selected={isNavItemSelected(item)} collapsed={labelsCollapsed} labelOpacity={labelOpacity} onPress={() => onNavigate(item.id)} />)}
       {!labelsCollapsed && <Animated.Text style={[styles.sidebarLabel, { opacity: labelOpacity }]}>CHATS</Animated.Text>}
       <ScrollView style={[styles.sidebarChatList, labelsCollapsed && styles.sidebarChatListCollapsed, { opacity: labelOpacity }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={!labelsCollapsed} showsHorizontalScrollIndicator={false}>
         {!labelsCollapsed && <ConversationHistoryList
