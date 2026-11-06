@@ -8,7 +8,7 @@ Run locally after collecting a complete CI artifact:
 python scripts/verify_distributions.py
 ```
 
-The verifier rejects Git LFS pointer text, implausibly small files, invalid package signatures/headers, missing payloads, and any unexpected or stale file. Windows installer PE headers are checked for structural validity. The PE machine type of an NSIS bootstrapper is not treated as proof of the embedded Electron payload architecture; the separate architecture-specific packaging jobs and artifact names establish the target. CI runs it before uploading the combined `teddy-bud-dist` artifact or committing the refreshed `dist/` folder.
+The verifier rejects Git LFS pointer text, implausibly small files, invalid package signatures/headers, missing payloads, and any unexpected or stale file. Windows installer PE headers are checked for structural validity. The PE machine type of an NSIS bootstrapper is not treated as proof of the embedded Electron payload architecture; the separate architecture-specific packaging jobs and artifact names establish the target. CI runs it before uploading the combined `teddy-bud-dist` artifact. Generated packages stay in downloadable GitHub Actions artifacts and are never committed to the source repository.
 
 ## Published package set
 
