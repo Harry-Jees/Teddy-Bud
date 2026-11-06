@@ -130,21 +130,56 @@ export class BrowserAuthService {
     return this.save(result);
   }
 
+  private async readDeviceUsername(): Promise<string | null> {
+    try {
+      if (Platform.OS === 'web') {
+        const marker = localStorage.getItem(SETUP_KEY);
+        return marker?.startsWith('username:') ? marker.slice('username:'.length) : null;
+      }
+      const marker = await Keychain.getGenericPassword({ service: NATIVE_SETUP_SERVICE });
+      if (!marker || typeof marker === 'boolean' || marker.username === 'setup' || marker.password !== 'true') return null;
+      return marker.username;
+    } catch {
+      throw new AuthServiceError('Teddy Bud could not verify the account assigned to this device. Check secure storage and try again.', 'storage');
+    }
+  }
+
+  private async assertDeviceUsername(username: string): Promise<void> {
+    const assignedUsername = await this.readDeviceUsername();
+    if (assignedUsername && assignedUsername !== username) {
+      throw new AuthServiceError(
+        `This device is already set up for @${assignedUsername}. Sign in with that username to keep your private space here.`,
+        'device-account',
+      );
+    }
+  }
+
   async shouldCreateAccount(): Promise<boolean> {
     if (Platform.OS === 'web') {
-      try { return localStorage.getItem(SETUP_KEY) !== 'true'; } catch { return true; }
+      try { return localStorage.getItem(SETUP_KEY) === null; } catch { return true; }
     }
     const setup = await Keychain.getGenericPassword({ service: NATIVE_SETUP_SERVICE });
     return !setup;
   }
 
-  async markSetupComplete(): Promise<void> {
+  async markSetupComplete(username?: string): Promise<void> {
+    const normalizedUsername = username?.trim().toLowerCase();
+    if (normalizedUsername && !/^[a-z0-9_]{3,24}$/.test(normalizedUsername)) {
+      throw new AuthServiceError('The username saved for this device is not valid. Sign in again to verify it.', 'storage');
+    }
     if (Platform.OS === 'web') {
-      try { localStorage.setItem(SETUP_KEY, 'true'); } catch { /* Sign-in still works if storage is unavailable. */ }
+      try {
+        const current = localStorage.getItem(SETUP_KEY);
+        localStorage.setItem(SETUP_KEY, normalizedUsername ? `username:${normalizedUsername}` : current ?? 'true');
+      } catch { /* Sign-in still works if storage is unavailable. */ }
       return;
     }
     try {
-      const saved = await Keychain.setGenericPassword('setup', 'true', {
+      const existing = await Keychain.getGenericPassword({ service: NATIVE_SETUP_SERVICE });
+      const existingUsername = existing && typeof existing !== 'boolean' && existing.username !== 'setup'
+        ? existing.username
+        : null;
+      const saved = await Keychain.setGenericPassword(normalizedUsername ?? existingUsername ?? 'setup', 'true', {
         service: NATIVE_SETUP_SERVICE,
         accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
       });
@@ -159,24 +194,26 @@ export class BrowserAuthService {
 
   async signIn(username: string, password: string): Promise<StoredSession> {
     const normalizedUsername = username.trim().toLowerCase();
+    await this.assertDeviceUsername(normalizedUsername);
     const email = usernameIdentity(normalizedUsername);
     const result = await request<LoginResponse>('/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    await this.markSetupComplete();
+    await this.markSetupComplete(normalizedUsername);
     pendingBiometricCredentials = { username: normalizedUsername, password };
     return this.save(result, normalizedUsername);
   }
 
   async createAccount(username: string, password: string, recoveryKey: string): Promise<StoredSession> {
     const normalizedUsername = username.trim().toLowerCase();
+    await this.assertDeviceUsername(normalizedUsername);
     const email = usernameIdentity(normalizedUsername);
     const result = await request<LoginResponse>('/auth/signup', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, recoveryKey }),
     });
-    await this.markSetupComplete();
+    await this.markSetupComplete(normalizedUsername);
     pendingBiometricCredentials = { username: normalizedUsername, password };
     return this.save(result, normalizedUsername);
   }
