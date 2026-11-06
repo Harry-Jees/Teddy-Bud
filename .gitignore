@@ -1,4 +1,5 @@
-dist/desktop/win-unpacked/
+dist/
+
 .playwright-mcp/
 .tools/
 

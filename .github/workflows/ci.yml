@@ -142,14 +142,6 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci --prefix client
-      - name: Clear tracked Linux package files before rebuilding
-        if: matrix.name == 'Linux Debian and AppImage'
-        shell: bash
-        run: |
-          set -euo pipefail
-          # The checkout may contain LFS pointers from the previous distribution.
-          # Remove them so they cannot be mistaken for freshly generated packages.
-          rm -f dist/desktop/TeddyBud.v.1.0-linux-*.deb dist/desktop/TeddyBud.v.1.0-linux-*.AppImage
       - name: Package desktop application
         run: npm run ${{ matrix.command }} --prefix client
         env:
@@ -193,10 +185,10 @@ jobs:
 
   collect-dist:
     if: ${{ always() && (inputs.source_run_id != '' || (needs.client-checks.result == 'success' && needs.worker-tests.result == 'success' && needs.android-build.result == 'success' && needs.desktop-packages.result == 'success')) }}
-    name: Collect supported platform builds
+    name: Collect and verify downloadable platform artifacts
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: read
       actions: read
     needs:
       - client-checks
@@ -208,7 +200,6 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
-          lfs: true
       - name: Download artifacts from the selected run
         uses: actions/download-artifact@v4
         with:
@@ -241,19 +232,3 @@ jobs:
           name: teddy-bud-dist
           path: dist/
           if-no-files-found: error
-      # Keep compiled distributions out of feature branches and PRs; only refresh them on main.
-      - name: Commit replaced distributions to main
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+Harry-Jees@users.noreply.github.com"
-          git lfs install --local
-          git add -A dist/
-          if git diff --cached --quiet -- dist/; then
-            echo "Distribution files are already up to date."
-          else
-            git commit -m "chore: replace compiled distributions with verified builds"
-            target_ref="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-            git push origin "HEAD:${target_ref}"
-          fi
