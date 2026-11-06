@@ -1154,8 +1154,24 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
 
   const rootInsetsStyle = { paddingTop: insets.top, paddingBottom: wide ? insets.bottom : 0 };
   if (localDataReady && localDataOwner === owner && onboardingSurveyAnswers === undefined) {
-    return <OnboardingSurvey onComplete={async answers => {
+    return <OnboardingSurvey onComplete={async (answers, createInitialMap) => {
       await persistLocalSnapshot({ onboardingSurveyAnswers: answers });
+      if (createInitialMap && answers.length) {
+        try {
+          const snapshot = await gatewayService.evaluateOnboardingEmotions(answers, sessionToken);
+          await saveEmotionCheckIn({
+            id: 'survey-' + Date.now().toString(36),
+            createdAt: new Date().toISOString(),
+            emotions: snapshot.emotions,
+            energy: snapshot.energy,
+            support: 'unsure',
+            origin: 'survey-ai',
+            note: 'AI-estimated starting snapshot based on the optional onboarding survey. This is a reflection aid, not a diagnosis.',
+          });
+        } catch {
+          Alert.alert('Starting emotion web not ready', 'Your survey is saved. Teddy Bud could not create the starting estimate right now; you can add a check-in later.');
+        }
+      }
       if (Platform.OS === 'android' && await browserAuthService.supportsBiometrics()) {
         Alert.alert('Make sign-in easier', 'Use your device biometrics to sign in to Teddy Bud next time. Your password stays in Android’s protected credential storage.', [
           { text: 'Not now', style: 'cancel' },
@@ -2417,6 +2433,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
       emotions: ratings,
       energy,
       support,
+      origin: 'self',
       ...(note.trim() ? { note: note.trim().slice(0, 2000) } : {}),
     };
     setSaving(true);
@@ -2488,9 +2505,10 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
         {actionError && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss check-in notice" onPress={() => setActionError(null)} style={styles.journalDismiss}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>}
       </View>}
       <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:24,padding:16,marginTop:20}}>
-        <Text style={{fontSize:17,fontWeight:'700',color:C.cocoaDark}}>{latest ? 'Latest check-in' : 'Your emotion web'}</Text>
+        <Text style={{fontSize:17,fontWeight:'700',color:C.cocoaDark}}>{latest?.origin === 'survey-ai' ? 'Your starting emotion web' : latest ? 'Latest check-in' : 'Your emotion web'}</Text>
         {renderWeb(latest?.emotions)}
-        <Text accessibilityRole="text" style={{textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}}>{latest ? 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString() : 'Your web appears after your first check-in.'}</Text>
+        <Text accessibilityRole="text" style={{textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}}>{latest ? (latest.origin === 'survey-ai' ? 'AI-estimated from your onboarding answers · '+new Date(latest.createdAt).toLocaleString() : 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString()) : 'Your web appears after your first check-in.'}</Text>
+        {latest?.origin === 'survey-ai' ? <Text style={{fontSize:11,lineHeight:16,color:C.muted,textAlign:'center',marginTop:5}}>A gentle estimate from your answers, not a clinical assessment. You can replace it with your own check-in at any time.</Text> : null}
         {latest ? <Text style={{fontSize:13,lineHeight:20,color:C.cocoaDark,marginTop:8}}>Highest ratings: {EMOTION_AXES.filter(a=>(latest.emotions[a.id]??0)>0).sort((a,b)=>(latest.emotions[b.id]??0)-(latest.emotions[a.id]??0)).slice(0,3).map(a=>a.label+' '+latest.emotions[a.id]+'/5').join(' · ') || 'No emotions rated'} · Energy {latest.energy}/5</Text> : null}
         <Pressable accessibilityRole="button" accessibilityLabel={showForm ? 'Close check-in form' : 'Add a check-in'} onPress={toggleForm} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:16 }, pressed && styles.pressed]}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
       </View>
