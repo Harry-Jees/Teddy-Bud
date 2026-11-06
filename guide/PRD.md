@@ -19,6 +19,8 @@
 - One account per device, username and password only. Display identity as `@username`; do not present email/Gmail as an account identifier.
 - Password recovery may use the account recovery passphrase. Recovery must not imply that local history or encryption keys can be restored on another device.
 - Android biometric sign-in may be enabled after onboarding completion. Password remains the fallback.
+- The device is bound to one username after successful setup/sign-in; a different account cannot be used on the same device through the normal sign-in flow.
+- Onboarding answers remain local by default. A separate, off-by-default privacy control is required before they may accompany Teddy conversations.
 - Free-first usage policy: 40 credits per UTC day; each text or image request costs one credit. Credits are usage limits, not exact provider-cost accounting.
 
 ## Data and privacy
