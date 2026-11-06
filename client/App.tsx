@@ -2460,9 +2460,9 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
   const [policyLinkError, setPolicyLinkError] = useState('');
   const isDesktopApp = Platform.OS === 'web' && typeof window !== 'undefined' && !!window.teddyBudDesktop?.isDesktop;
   const storagePrivacyDescription = isDesktopApp
-    ? "Chats, profile notes, and memories are stored in this desktop app and encrypted with a key protected by your operating system. The open app can access its saved data. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat."
+    ? "Chats, profile notes, and memories are stored in this desktop app and encrypted with a key protected by your operating system. The open app can access its saved data. Messages and any context you choose below are sent through Teddy Bud’s online reply service when you chat."
     : Platform.OS === 'web'
-      ? "Chats, profile notes, and memories are stored in this browser's local database and encrypted with a separate key for each account. This protects saved data at rest, but code running in this browser while Teddy Bud is open could access it. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat."
+      ? "Chats, profile notes, and memories are stored in this browser's local database and encrypted with a separate key for each account. This protects saved data at rest, but code running in this browser while Teddy Bud is open could access it. Messages and any context you choose below are sent through Teddy Bud’s online reply service when you chat."
       : "Chats, profile notes, and memories are stored in this device's encrypted local database. Messages and any context you enable below are sent to the configured AI gateway and provider when you chat.";
   const openPolicy = (url: string) => {
     setPolicyLinkError('');
@@ -2473,7 +2473,7 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
     <View style={styles.privacyBanner}><View style={styles.privacyShield}><Text style={styles.shieldGlyph}>⌑</Text></View><View style={styles.privacyCopy}><Text style={styles.privacyTitle}>Your chats stay on this device</Text><Text style={styles.privacyBody}>{storagePrivacyDescription}</Text></View></View>
     <Text style={styles.settingsSectionLabel}>MEMORY & CONTEXT</Text>
     <View style={styles.settingsCard}>
-      <SettingRow icon="✳" title="Suggest memory notes" description="Let the assistant suggest durable details from your messages. Turning this off keeps existing notes but stops new suggestions." value={rememberInSession} onChange={onRememberChange} />
+      <SettingRow icon="✳" title="Suggest memory notes" description="Let Teddy gently suggest meaningful details from your messages. Turning this off keeps existing notes but stops new suggestions." value={rememberInSession} onChange={onRememberChange} />
       <View style={styles.settingSeparator} />
       <SettingRow icon="↗" title="Share saved memories" description="Include your saved memory notes as context with new messages." value={shareMemories} onChange={onShareMemoriesChange} />
       <View style={styles.settingSeparator} />
