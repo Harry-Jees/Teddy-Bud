@@ -537,6 +537,68 @@ export class GatewayService {
     return content.trim();
   }
 
+
+  async evaluateOnboardingEmotions(answers: { question: string; answer: string }[], sessionToken?: string): Promise<{ emotions: Record<string, number>; energy: number }> {
+    if (!answers.length) throw new Error('There are no survey answers to evaluate.');
+    const axes = ['happy', 'calm', 'connected', 'hopeful', 'energized', 'sad', 'anxious', 'angry', 'lonely', 'overwhelmed'] as const;
+    const properties = Object.fromEntries(axes.map(axis => [axis, { type: 'integer', minimum: 0, maximum: 5 }]));
+    const accessToken = await this.token(sessionToken);
+    const response = await this.requestWithToken<{
+      choices?: Array<{ message?: { tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> } }>;
+      error?: { message?: string };
+    }>('/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: PREFERRED_CHAT_MODELS[0],
+        messages: [
+          {
+            role: 'system',
+            content: 'You create a cautious, non-clinical reflection snapshot from optional wellbeing survey answers. Use only the supplied answers. Estimate the current intensity (0 to 5) of each listed emotion from the answers; positive emotions measure their apparent presence, while difficult emotions measure their apparent intensity. Do not diagnose, predict, infer a disorder, or treat missing/prefer-not-to-say answers as evidence. When evidence is weak, choose a neutral low-to-moderate estimate rather than inventing certainty. Energy is an estimate from sleep, rest, and daytime energy answers. Return only the requested structured tool result.',
+          },
+          { role: 'user', content: JSON.stringify({ survey_answers: answers }) },
+        ],
+        provider: { data_collection: 'deny' },
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'emit_initial_emotion_snapshot',
+            description: 'Return cautious 0–5 starting estimates for the emotion web and energy.',
+            strict: true,
+            parameters: {
+              type: 'object',
+              properties: { emotions: { type: 'object', properties, required: [...axes], additionalProperties: false }, energy: { type: 'integer', minimum: 0, maximum: 5 } },
+              required: ['emotions', 'energy'],
+              additionalProperties: false,
+            },
+          },
+        }],
+        tool_choice: { type: 'function', function: { name: 'emit_initial_emotion_snapshot' } },
+        metadata: { teddyBudTask: 'onboarding_emotion_snapshot' },
+        stream: false,
+        max_tokens: 300,
+        temperature: 0,
+        reasoning_effort: 'low',
+      }),
+    }, accessToken, 1);
+    const args = response.choices?.[0]?.message?.tool_calls?.find(call => call.function?.name === 'emit_initial_emotion_snapshot')?.function?.arguments;
+    if (typeof args !== 'string') throw new Error(response.error?.message ?? 'The emotion snapshot could not be generated.');
+    let parsed: unknown;
+    try { parsed = JSON.parse(args); } catch { throw new Error('The emotion snapshot returned an invalid result.'); }
+    if (!parsed || typeof parsed !== 'object') throw new Error('The emotion snapshot returned an invalid result.');
+    const result = parsed as { emotions?: Record<string, unknown>; energy?: unknown };
+    if (!result.emotions || typeof result.emotions !== 'object' || typeof result.energy !== 'number' || !Number.isInteger(result.energy) || result.energy < 0 || result.energy > 5) {
+      throw new Error('The emotion snapshot was incomplete.');
+    }
+    const emotions: Record<string, number> = {};
+    for (const axis of axes) {
+      const score = result.emotions[axis];
+      if (typeof score !== 'number' || !Number.isInteger(score) || score < 0 || score > 5) throw new Error('The emotion snapshot was incomplete.');
+      emotions[axis] = score;
+    }
+    return { emotions, energy: result.energy };
+  }
+
   async suggestMemory(message: string, sessionToken?: string): Promise<string | null> {
     const text = message.trim();
     if (!text) return null;
