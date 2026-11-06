@@ -386,6 +386,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const [shareMemories, setShareMemories] = useState(false);
   const [shareChatHistory, setShareChatHistory] = useState(false);
   const [shareAboutMe, setShareAboutMe] = useState(false);
+  const [shareOnboardingSurvey, setShareOnboardingSurvey] = useState(false);
   const [aboutMe, setAboutMe] = useState('');
   const [assistantName, setAssistantName] = useState('Teddy');
   const [assistantCharacterId, setAssistantCharacterId] = useState<AssistantCharacterId>(DEFAULT_ASSISTANT_CHARACTER_ID);
@@ -424,6 +425,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       shareMemories,
       shareChatHistory,
       shareAboutMe,
+      shareOnboardingSurvey,
       aboutMe,
       assistantName,
       assistantCharacterId,
@@ -444,13 +446,14 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     if ('shareMemories' in overrides) setShareMemories(nextSnapshot.shareMemories);
     if ('shareChatHistory' in overrides) setShareChatHistory(nextSnapshot.shareChatHistory);
     if ('shareAboutMe' in overrides) setShareAboutMe(nextSnapshot.shareAboutMe);
+    if ('shareOnboardingSurvey' in overrides) setShareOnboardingSurvey(nextSnapshot.shareOnboardingSurvey ?? false);
     if ('aboutMe' in overrides) setAboutMe(nextSnapshot.aboutMe);
     if ('assistantName' in overrides) setAssistantName(nextSnapshot.assistantName);
     if ('assistantCharacterId' in overrides) setAssistantCharacterId(nextSnapshot.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
     if ('assistantCharacterNames' in overrides) setAssistantCharacterNames(nextSnapshot.assistantCharacterNames ?? {});
     if ('onboardingSurveyAnswers' in overrides) setOnboardingSurveyAnswers(nextSnapshot.onboardingSurveyAnswers);
     if (!pendingLocalAction) setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, pendingLocalAction]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, pendingLocalAction]);
   const refreshCreditBalance = useCallback(async () => {
     try {
       setCreditBalance(await gatewayService.getCreditBalance(sessionToken));
@@ -486,6 +489,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       setShareMemories(data.shareMemories);
       setShareChatHistory(data.shareChatHistory);
       setShareAboutMe(data.shareAboutMe);
+      setShareOnboardingSurvey(data.shareOnboardingSurvey ?? false);
       setAboutMe(data.aboutMe);
       setAssistantName(data.assistantName);
       setAssistantCharacterId(data.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
@@ -955,7 +959,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         task: 'conversation',
         imageDataUrl,
         memories: shareMemories ? memories.map(memory => memory.text) : [],
-        aboutMe: shareAboutMe ? aboutMe : '',
+        aboutMe: [shareAboutMe ? aboutMe : '', shareOnboardingSurvey && onboardingSurveyAnswers?.length ? onboardingSurveyAnswers.map(answer => answer.question + ': ' + answer.answer).join('\n') : ''].filter(Boolean).join('\n\n').slice(0, 1800),
         assistantName,
         assistantCharacterId,
         crossChatContext: shareChatHistory
@@ -1179,7 +1183,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
           {page === 'studio' && <WellbeingStudio wide={wide} />}
           {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
           {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
-          {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
+          {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
           {page === 'settings' && <SettingsPage wide={wide} username={username} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
             const savedName = name.trim().slice(0, 32);
             if (!savedName) return;
@@ -2451,7 +2455,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
   </ScrollView>;
 }
 
-function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, onRememberChange, onShareMemoriesChange, onShareChatHistoryChange, onShareAboutMeChange, onClear }: { wide: boolean; rememberInSession: boolean; shareMemories: boolean; shareChatHistory: boolean; shareAboutMe: boolean; onRememberChange: (value: boolean) => void; onShareMemoriesChange: (value: boolean) => void; onShareChatHistoryChange: (value: boolean) => void; onShareAboutMeChange: (value: boolean) => void; onClear: () => void }) {
+function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, onRememberChange, onShareMemoriesChange, onShareChatHistoryChange, onShareAboutMeChange, shareOnboardingSurvey, onShareOnboardingSurveyChange, onClear }: { wide: boolean; rememberInSession: boolean; shareMemories: boolean; shareChatHistory: boolean; shareAboutMe: boolean; shareOnboardingSurvey: boolean; onRememberChange: (value: boolean) => void; onShareMemoriesChange: (value: boolean) => void; onShareChatHistoryChange: (value: boolean) => void; onShareAboutMeChange: (value: boolean) => void; onShareOnboardingSurveyChange: (value: boolean) => void; onClear: () => void }) {
   const [policyLinkError, setPolicyLinkError] = useState('');
   const isDesktopApp = Platform.OS === 'web' && typeof window !== 'undefined' && !!window.teddyBudDesktop?.isDesktop;
   const storagePrivacyDescription = isDesktopApp
@@ -2474,7 +2478,9 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
       <View style={styles.settingSeparator} />
       <SettingRow icon="⌕" title="Use other chats for context" description="Select a few relevant excerpts on this device and include them with your message." value={shareChatHistory} onChange={onShareChatHistoryChange} />
       <View style={styles.settingSeparator} />
-      <SettingRow icon="▤" title="Share About me notes" description="Include the profile notes you wrote in Settings in the assistant's system context." value={shareAboutMe} onChange={onShareAboutMeChange} />
+      <SettingRow icon="▤" title="Share About me notes" description="Include the profile notes you wrote in Settings with your conversations." value={shareAboutMe} onChange={onShareAboutMeChange} />
+      <View style={styles.settingSeparator} />
+      <SettingRow icon="♡" title="Use my setup answers with Teddy" description="When enabled, your answers about routines, mood, and support may accompany messages to Teddy. This stays off until you choose to turn it on." value={shareOnboardingSurvey} onChange={onShareOnboardingSurveyChange} />
     </View>
     <Text style={styles.settingsSectionLabel}>DATA</Text>
     <View style={styles.settingsCard}>
