@@ -29,7 +29,7 @@ npm ci
 npm test
 ```
 
-Run `python scripts/verify_distributions.py` from the repository root when you intentionally change committed distribution artifacts. Do not rebuild or commit generated distributions for documentation-only changes.
+Generated packages are ignored by Git and must not be committed. CI builds and verifies the supported packages; the release workflow publishes verified files as GitHub Release assets.
 
 ## Contribution expectations
 
