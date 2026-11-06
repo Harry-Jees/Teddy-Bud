@@ -170,8 +170,14 @@ export class BrowserAuthService {
     if (Platform.OS === 'web') {
       try {
         const current = localStorage.getItem(SETUP_KEY);
+        const existingUsername = current?.startsWith('username:') ? current.slice('username:'.length) : null;
+        if (normalizedUsername && existingUsername && existingUsername !== normalizedUsername) {
+          throw new AuthServiceError(`This device is already set up for @${existingUsername}. Sign in with that username to keep your private space here.`, 'device-account');
+        }
         localStorage.setItem(SETUP_KEY, normalizedUsername ? `username:${normalizedUsername}` : current ?? 'true');
-      } catch { /* Sign-in still works if storage is unavailable. */ }
+      } catch (error) {
+        if (error instanceof AuthServiceError) throw error;
+      }
       return;
     }
     try {
@@ -179,6 +185,9 @@ export class BrowserAuthService {
       const existingUsername = existing && typeof existing !== 'boolean' && existing.username !== 'setup'
         ? existing.username
         : null;
+      if (normalizedUsername && existingUsername && existingUsername !== normalizedUsername) {
+        throw new AuthServiceError(`This device is already set up for @${existingUsername}. Sign in with that username to keep your private space here.`, 'device-account');
+      }
       const saved = await Keychain.setGenericPassword(normalizedUsername ?? existingUsername ?? 'setup', 'true', {
         service: NATIVE_SETUP_SERVICE,
         accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
