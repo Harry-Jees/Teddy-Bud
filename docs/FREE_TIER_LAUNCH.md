@@ -21,14 +21,16 @@ Credits are a product-level usage guard, not an exact provider-cost ledger. Clou
 
 ## Deployment status and safety
 
-The Cloudflare Workers AI migration and enterprise model-routing adapter are under validation. Do not assume the branch is production-ready from a staged deployment or direct provider smoke test alone. Check the latest CI results and run authenticated end-to-end tests before directing production traffic.
+**Production deployment confirmed — 2026-11-06.** Cloudflare deployment metadata reports the production Worker on 100% traffic, with the Workers AI binding and required secret bindings present. The protected deployment workflow includes health checks, authentication-guard checks, CORS checks, and automatic rollback safeguards.
 
-Before deployment:
+This confirms deployment and configuration, not a complete client acceptance test. Authenticated text and image requests from the current Android and desktop builds still require end-to-end smoke testing. Do not mark the full migration release-verified until both paths succeed.
+
+Release verification:
 1. Run gateway tests and client type checks/build.
-2. Verify `AI` binding is present in the staged Worker version.
-3. Verify the required secret *names* are available to the new version without exposing secret values.
+2. Verify the production `AI` binding is present in the deployed Worker version.
+3. Verify the required secret *names* are available to the deployed version without exposing secret values.
 4. Verify daily credit reservation/refund, UTC reset, concurrency, text/image routing, and quota exhaustion.
-5. Deploy via the protected workflow with automatic rollback; then perform authenticated text and image smoke tests. For enterprise deployments, separately validate the dedicated company endpoint using [ENTERPRISE_WHITE_LABEL.md](./ENTERPRISE_WHITE_LABEL.md).
+5. Confirm the protected production deployment and automatic rollback safeguards; then perform authenticated text and image smoke tests. For enterprise deployments, separately validate the dedicated company endpoint using [ENTERPRISE_WHITE_LABEL.md](./ENTERPRISE_WHITE_LABEL.md).
 6. Monitor Cloudflare AI usage and keep an emergency way to disable inference if spending exceeds budget.
 
 ## Launch messaging
