@@ -158,7 +158,7 @@ function AccessGate() {
         const current = await browserAuthService.restore();
         if (mounted) {
           setSession(current);
-          if (current) await browserAuthService.markSetupComplete();
+          if (current) await browserAuthService.markSetupComplete(current.username);
           else {
             setInitialMode(await browserAuthService.shouldCreateAccount() ? 'create' : 'login');
             setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
