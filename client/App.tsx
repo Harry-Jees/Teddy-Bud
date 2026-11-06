@@ -101,6 +101,15 @@ function openExternalUrl(url: string): Promise<void> {
 function mayContainDurableMemory(text: string): boolean {
   return /\b(?:my (?:long[- ]term )?(?:goal|dream|plan)|long[- ]term goal|i (?:plan|hope|want) to|i(?:'m| am) (?:a|an) [a-z-]+|i work as|i live in|i care for|i(?:'ve| have) been (?:working toward|studying))\b/i.test(text);
 }
+function sharedOnboardingStylePreferences(answers: { question: string; answer: string }[] | undefined): string {
+  if (!answers?.length) return '';
+  const responseStyle = answers.find(answer => answer.question === 'How would you like Teddy Bud to respond?')?.answer;
+  const conversationTone = answers.find(answer => answer.question === 'What tone feels most comfortable?')?.answer;
+  return [
+    responseStyle ? `Preferred support style: ${responseStyle}.` : '',
+    conversationTone ? `Preferred conversation tone: ${conversationTone}.` : '',
+  ].filter(Boolean).join(' ');
+}
 
 function App() {
   return (
@@ -952,7 +961,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         task: 'conversation',
         imageDataUrl,
         memories: shareMemories ? memories.map(memory => memory.text) : [],
-        aboutMe: shareAboutMe ? aboutMe : '',
+        aboutMe: shareAboutMe ? [aboutMe.trim(), sharedOnboardingStylePreferences(onboardingSurveyAnswers)].filter(Boolean).join('\\n') : '',
         assistantName,
         assistantCharacterId,
         crossChatContext: shareChatHistory
@@ -2498,7 +2507,7 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
       <View style={styles.settingSeparator} />
       <SettingRow icon="⌕" title="Use other chats for context" description="Select a few relevant excerpts on this device and include them with your message." value={shareChatHistory} onChange={onShareChatHistoryChange} />
       <View style={styles.settingSeparator} />
-      <SettingRow icon="▤" title="Share About me notes" description="Include the profile notes you wrote in Settings in the assistant's system context." value={shareAboutMe} onChange={onShareAboutMeChange} />
+      <SettingRow icon="▤" title="Share About me notes" description="Include your profile notes and selected response-style preferences from onboarding in the assistant context." value={shareAboutMe} onChange={onShareAboutMeChange} />
     </View>
     <Text style={styles.settingsSectionLabel}>DATA</Text>
     <View style={styles.settingsCard}>
