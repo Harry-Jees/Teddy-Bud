@@ -156,7 +156,10 @@ export class BrowserAuthService {
 
   async shouldCreateAccount(): Promise<boolean> {
     if (Platform.OS === 'web') {
-      try { return localStorage.getItem(SETUP_KEY) === null; } catch { return true; }
+      try { return localStorage.getItem(SETUP_KEY) === null; }
+      catch {
+        throw new AuthServiceError('Teddy Bud could not check this device\'s account setup. Check browser storage and try again.', 'storage');
+      }
     }
     const setup = await Keychain.getGenericPassword({ service: NATIVE_SETUP_SERVICE });
     return !setup;
@@ -177,6 +180,10 @@ export class BrowserAuthService {
         localStorage.setItem(SETUP_KEY, normalizedUsername ? `username:${normalizedUsername}` : current ?? 'true');
       } catch (error) {
         if (error instanceof AuthServiceError) throw error;
+        throw new AuthServiceError(
+          'Teddy Bud could not save the account setup on this device. Check browser storage and try again.',
+          'storage',
+        );
       }
       return;
     }
