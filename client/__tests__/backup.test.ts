@@ -39,6 +39,7 @@ const sampleData: LocalAppData = {
   shareMemories: false,
   shareChatHistory: false,
   shareAboutMe: true,
+  shareOnboardingSurvey: true,
   aboutMe: 'Likes short answers',
   assistantName: 'Buddy',
   assistantCharacterId: 'teddy-bud',
