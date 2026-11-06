@@ -811,7 +811,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     }
     setLocalDataSaveError(null);
     try {
-      await localDataService.save(owner, { conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames });
+      await localDataService.save(owner, { conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers });
     } catch (error) {
       setLocalDataSaveError(localDataErrorMessage(error, 'save'));
     }
@@ -823,10 +823,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       conversations, activeConversationId, memories, emotionCheckIns: nextEntries, journalEntries,
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     });
     setEmotionCheckIns(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers]);
 
   const deleteEmotionCheckIn = useCallback(async (id: string) => {
     const nextEntries = emotionCheckIns.filter(entry => entry.id !== id);
@@ -834,10 +835,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       conversations, activeConversationId, memories, emotionCheckIns: nextEntries, journalEntries,
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     });
     setEmotionCheckIns(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers]);
 
   const saveJournalEntry = useCallback(async (entry: JournalEntry) => {
     const nextEntries = [entry, ...journalEntries.filter(existing => existing.id !== entry.id)].slice(0, 1000);
@@ -845,10 +847,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       conversations, activeConversationId, memories, emotionCheckIns, journalEntries: nextEntries,
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     });
     setJournalEntries(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers]);
 
   const deleteJournalEntry = useCallback(async (id: string) => {
     const nextEntries = journalEntries.filter(entry => entry.id !== id);
@@ -856,13 +859,14 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       conversations, activeConversationId, memories, emotionCheckIns, journalEntries: nextEntries,
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     });
     setJournalEntries(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers]);
 
   const exportBackup = (passphrase: string) => createEncryptedBackup({
-    conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames,
+    conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers,
   }, owner, passphrase);
 
   const importBackup = async (fileContents: string, passphrase: string) => {
@@ -892,6 +896,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       conversations, activeConversationId, memories, emotionCheckIns, journalEntries,
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
+      onboardingSurveyAnswers,
     };
     const restored = mode === 'merge' ? mergeLocalAppData(currentData, imported) : imported;
     // Persist the complete replacement in one storage operation before updating React state.
@@ -907,6 +912,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     setShareChatHistory(restored.shareChatHistory);
     setShareAboutMe(restored.shareAboutMe);
     setShareOnboardingSurvey(restored.shareOnboardingSurvey ?? false);
+    setOnboardingSurveyAnswers(restored.onboardingSurveyAnswers);
     setAboutMe(restored.aboutMe);
     setAssistantName(restored.assistantName);
     setAssistantCharacterId(restored.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
