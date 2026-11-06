@@ -1341,13 +1341,10 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
   const reduceMotion = useReducedMotionPreference();
   const { width } = useWindowDimensions();
   const translateX = useRef(new Animated.Value(0)).current;
-  const [displayedChildren, setDisplayedChildren] = useState(children);
-  const childrenRef = useRef(children);
   const previousIndex = useRef(primaryTabIndex(transitionKey as Page));
   const onSwipeRef = useRef(onSwipe);
   const enabledRef = useRef(enabled);
   const reduceMotionRef = useRef(reduceMotion);
-  childrenRef.current = children;
   onSwipeRef.current = onSwipe;
   enabledRef.current = enabled;
   reduceMotionRef.current = reduceMotion;
@@ -1357,37 +1354,18 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
     const previousPageIndex = previousIndex.current;
     previousIndex.current = nextIndex;
     translateX.stopAnimation();
-
     if (previousPageIndex === nextIndex || reduceMotion) {
-      setDisplayedChildren(childrenRef.current);
       translateX.setValue(0);
-      return undefined;
+      return;
     }
-
     const direction = nextIndex > previousPageIndex ? 1 : -1;
-    const offset = Math.min(width * 0.22, 88);
-    const exit = Animated.timing(translateX, {
-      toValue: -direction * offset,
-      duration: 115,
-      easing: Easing.out(Easing.cubic),
+    translateX.setValue(direction * Math.min(width * 0.22, 88));
+    Animated.spring(translateX, {
+      toValue: 0,
+      speed: 19,
+      bounciness: 2,
       useNativeDriver: true,
-    });
-    exit.start(({ finished }) => {
-      if (!finished) return;
-      setDisplayedChildren(childrenRef.current);
-      translateX.setValue(direction * offset);
-      Animated.spring(translateX, {
-        toValue: 0,
-        speed: 19,
-        bounciness: 2,
-        useNativeDriver: true,
-      }).start();
-    });
-
-    return () => {
-      exit.stop();
-      translateX.stopAnimation();
-    };
+    }).start();
   }, [transitionKey, width, reduceMotion, translateX]);
 
   const panResponder = useRef(PanResponder.create({
@@ -1404,7 +1382,7 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
     {...(enabled ? panResponder.panHandlers : {})}
     style={{ flex: 1, transform: [{ translateX }] }}
   >
-    {displayedChildren}
+    {children}
   </Animated.View>;
 }
 function ConversationHistoryList({ conversations, activeConversationId, busyConversationId, onSelect, onPin, onDelete, onRename }: {
