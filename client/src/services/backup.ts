@@ -72,7 +72,10 @@ function validateBackupData(value: unknown): LocalAppData {
       || !Array.isArray(conversation.messages)
       || !conversation.messages.every(message => message && typeof message === 'object'
         && Number.isFinite(message.id) && typeof message.text === 'string'
-        && (message.author === 'you' || message.author === 'teddy') && typeof message.time === 'string')) {
+        && (message.author === 'you' || message.author === 'teddy') && typeof message.time === 'string'
+        && (message.imageDataUrl === undefined || (typeof message.imageDataUrl === 'string'
+          && message.imageDataUrl.length <= 11_200_000
+          && /^data:image\\/(?:jpeg|png|webp|gif);base64,/i.test(message.imageDataUrl))))) {
       throw new Error('A saved chat in this backup is invalid.');
     }
   }
