@@ -295,16 +295,16 @@ export function findRelevantChatHistory(
 }
 
 function isLocalMessage(message: unknown): message is LocalMessage {
-  return Boolean(message)
-    && typeof message === 'object'
-    && typeof (message as LocalMessage).id === 'number'
-    && typeof (message as LocalMessage).text === 'string'
-    && ((message as LocalMessage).author === 'you' || (message as LocalMessage).author === 'teddy')
-    && typeof (message as LocalMessage).time === 'string'
-    && ((message as LocalMessage).imageDataUrl === undefined
-      || (typeof (message as LocalMessage).imageDataUrl === 'string'
-        && (message as LocalMessage).imageDataUrl.length <= 11_200_000
-        && /^data:image\/(?:jpeg|png|webp|gif);base64,/i.test((message as LocalMessage).imageDataUrl)));
+  if (!message || typeof message !== 'object') return false;
+  const candidate = message as LocalMessage;
+  return typeof candidate.id === 'number'
+    && typeof candidate.text === 'string'
+    && (candidate.author === 'you' || candidate.author === 'teddy')
+    && typeof candidate.time === 'string'
+    && (candidate.imageDataUrl === undefined
+      || (typeof candidate.imageDataUrl === 'string'
+        && candidate.imageDataUrl.length <= 11_200_000
+        && /^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(candidate.imageDataUrl)));
 }
 
 export class LocalDataService {
