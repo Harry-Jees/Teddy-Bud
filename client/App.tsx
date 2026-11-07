@@ -449,8 +449,8 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
         </View>
         {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
         <Text style={styles.authFootnote}>Enter this recovery passphrase once and save it somewhere safe. You’ll need it with your username to reset your password. Teddy Bud stores only a keyed verifier, never the phrase itself.</Text>
-      </Pressable>
-      {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
+      </>}
+            {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
       {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Keep chats from the existing account on this device</Text></Pressable>}
       {(mode === 'recover' || mode === 'create') && <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'recover' ? 'Back to sign in' : 'Already set up? Sign in'}</Text></Pressable>}
       <Text style={styles.authFootnote}>Your chats stay encrypted on this device. Your password and recovery passphrase are never stored in plaintext.</Text>
