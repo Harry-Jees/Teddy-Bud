@@ -1660,7 +1660,7 @@ export function ChatHistoryPage({ conversations, activeConversationId, busyConve
       </View>
       <Button label="Back to chat" onPress={onBack} tone="quiet" />
     </View>
-    <Button label="New chat" onPress={onNewConversation} />
+    <Button label="New chat" onPress={() => { triggerHaptic(); onNewConversation(); }} />
     <TextInput
       accessibilityLabel="Search chats"
       value={search}
@@ -1968,6 +1968,7 @@ export function DiscoverPage({ wide, onNavigate }: { wide: boolean; onNavigate: 
 
 export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: { page: Page; onNavigate: (page: Page) => void; onNewConversation: () => void; bottomInset: number }) {
   const reduceMotion = useReducedMotionPreference();
+  const triggerHaptic = useHapticFeedback();
   const [pulseKeys, setPulseKeys] = useState<Record<PrimaryNavPage, number>>({ chat: 0, discover: 0, memories: 0, settings: 0 });
   const isSelected = (item: (typeof mobileNavItems)[number]) => {
     if (item.id === 'chat') return page === 'chat' || page === 'history';
@@ -1982,7 +1983,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       accessibilityLabel={item.label}
       accessibilityHint={item.id === 'discover' ? 'Open your journal, emotional check-ins, wellbeing exercises, privacy controls, and chat history' : undefined}
       accessibilityState={{ selected }}
-      onPress={() => { setPulseKeys(current => ({ ...current, [item.id]: current[item.id] + 1 })); onNavigate(item.id); }}
+      onPress={() => { triggerHaptic(); setPulseKeys(current => ({ ...current, [item.id]: current[item.id] + 1 })); onNavigate(item.id); }}
       style={({ pressed }) => [
         styles.bottomNavItem,
         selected && styles.bottomNavItemActive,
