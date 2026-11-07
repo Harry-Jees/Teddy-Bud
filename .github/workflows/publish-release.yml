@@ -5,12 +5,6 @@ on:
     workflows: ["CI and platform builds"]
     types: [completed]
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      run_id:
-        description: "Successful main CI run ID containing the teddy-bud-dist artifact"
-        required: true
-        type: string
 
 permissions:
   actions: read
@@ -23,54 +17,75 @@ concurrency:
 jobs:
   publish:
     name: Publish verified packages to GitHub Releases
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Resolve source run
+      - name: Verify source workflow run and artifact provenance
         id: source
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
-          INPUT_RUN_ID: ${{ inputs.run_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
-            run_id="$EVENT_RUN_ID"
-          else
-            run_id="$INPUT_RUN_ID"
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
+          expected_workflow_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml" --jq '.id')"
+          test "$(jq -r '.workflow_id' <<<"$run_json")" = "$expected_workflow_id"
+          test "$(jq -r '.name' <<<"$run_json")" = "CI and platform builds"
+          test "$(jq -r '.head_branch' <<<"$run_json")" = "main"
+          test "$(jq -r '.head_repository.full_name' <<<"$run_json")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.head_sha' <<<"$run_json")" = "$EVENT_SHA"
+          test "$(jq -r '.conclusion' <<<"$run_json")" = "success"
+          event="$(jq -r '.event' <<<"$run_json")"
+          [[ "$event" == "push" || "$event" == "workflow_dispatch" ]]
+          latest_main_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.sha')"
+          if [[ "$latest_main_sha" != "$EVENT_SHA" ]]; then
+            echo "::error::Refusing to publish a stale build. main=$latest_main_sha, build=$EVENT_SHA"
+            exit 1
           fi
-          [[ "$run_id" =~ ^[0-9]+$ ]]
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts")"
+          artifact_count="$(jq '[.artifacts[] | select(.name == "teddy-bud-dist" and .expired == false)] | length' <<<"$artifacts")"
+          test "$artifact_count" = "1"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$EVENT_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Download verified distribution artifact
-        uses: actions/download-artifact@v4
+      - name: Checkout the exact source commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.source.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Download distribution from the verified source run
+        uses: actions/download-artifact@v5
         with:
           name: teddy-bud-dist
           path: release-files
           run-id: ${{ steps.source.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate SHA-256 manifest
+      - name: Verify exact package set and generate SHA-256 manifest
+        shell: bash
         run: |
           set -euo pipefail
-          test -s release-files/android/TeddyBud.v.1.0-Android-arm64.apk
-          test -s release-files/desktop/TeddyBud.v.1.0-win-x64.exe
-          test -s release-files/desktop/TeddyBud.v.1.0-win-arm64.exe
-          test -s release-files/desktop/TeddyBud.v.1.0-mac-arm64.dmg
-          test -s release-files/desktop/TeddyBud.v.1.0-mac-x64.dmg
-          test -s release-files/desktop/TeddyBud.v.1.0-linux-amd64.deb
-          test -s release-files/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          chmod +x release-files/desktop/*.AppImage
+          mkdir -p dist
+          cp -a release-files/. dist/
+          python scripts/verify_distributions.py
           (
             cd release-files
             find android desktop -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
           )
+          test -s release-files/SHA256SUMS.txt
           cat release-files/SHA256SUMS.txt
 
-      - name: Publish or refresh version 1.0 release
+      - name: Recreate version 1.0 release dated from this verified build
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: v1.0.0
-          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          TARGET_SHA: ${{ steps.source.outputs.head_sha }}
+        shell: bash
         run: |
           set -euo pipefail
           mapfile -t assets < <(find release-files/android release-files/desktop -maxdepth 1 -type f | sort)
@@ -78,14 +93,18 @@ jobs:
           cat > release-notes.md <<'EOF'
           # Teddy Bud 1.0
 
-          Verified Android ARM64 and desktop installers for Windows x64/ARM64, macOS Apple Silicon/Intel, and Linux x64.
+          Freshly rebuilt and verified Android ARM64 and desktop installers for Windows x64/ARM64, macOS Apple Silicon/Intel, and Linux x64.
 
-          These are development builds. Windows signing status is not verified; macOS packages are not signed or notarized. Review operating-system security prompts before installing.
+          These are development builds. Android is signed with the CI debug certificate unless a stable release keystore is configured. Windows signing status is not verified; macOS packages are not signed or notarized. Review operating-system security prompts before installing.
 
           Verify downloaded package hashes with the attached SHA-256 manifest.
           EOF
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --title "Teddy Bud 1.0" --notes-file release-notes.md --latest
+            gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
           fi
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "Teddy Bud 1.0" \
+            --notes-file release-notes.md \
+            --latest
