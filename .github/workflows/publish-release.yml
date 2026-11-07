@@ -69,6 +69,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          chmod +x release-files/desktop/*.AppImage
           mkdir -p dist
           cp -a release-files/. dist/
           python scripts/verify_distributions.py
@@ -101,4 +102,9 @@ jobs:
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
           fi
-          gh release create "$RELEASE_TAG" "${assets[@]}"             --repo "$GITHUB_REPOSITORY"             --target "$TARGET_SHA"             --title "Teddy Bud 1.0"             --notes-file release-notes.md             --latest
+          gh release create "$RELEASE_TAG" "${assets[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "Teddy Bud 1.0" \
+            --notes-file release-notes.md \
+            --latest
