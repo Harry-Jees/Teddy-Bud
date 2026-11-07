@@ -417,6 +417,10 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const { width } = useWindowDimensions();
   const wide = width >= 800;
   const [page, setPage] = useState<Page>('chat');
+  const [lastDiscoverPage, setLastDiscoverPage] = useState<Page>('discover');
+  useEffect(() => {
+    if (discoverPages.includes(page)) setLastDiscoverPage(page);
+  }, [page]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -1216,6 +1220,62 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     }} />;
   }
 
+  const discoverFramePage = discoverPages.includes(page) ? page : lastDiscoverPage;
+  const renderPageFrame = (tab: PrimaryNavPage) => (
+    localDataError ? <LocalDataError error={localDataError} onRetry={retryLocalData} onClear={clearUnavailableLocalData} /> : !localDataReady || localDataOwner !== owner ? <LocalDataLoading /> : <>
+              {localDataSaveError && <LocalDataSaveWarning error={localDataSaveError} onRetry={retryLocalData} />}
+              {tab === 'chat' && page !== 'history' && <ChatPage key={activeConversationId ?? 'new-chat'} wide={wide} bottomInset={insets.bottom} conversationId={activeConversationId} assistantName={assistantName} messages={messages} streamingReply={activeConversationId === streamingConversationId ? streamingReply : ''} isThinking={isSending && activeConversationId === streamingConversationId} conversationTitle={activeConversation?.title ?? 'A quiet place to be'} onOpenHistory={() => setPage('history')} onRenameChat={() => { if (activeConversation) beginRenameConversation(activeConversation); }} isPinned={activeConversation?.pinned === true} canManageChat={activeConversation !== null} onTogglePin={() => { if (activeConversation) setConversationPinned(activeConversation.id, !activeConversation.pinned); }} onOpenCrisisResources={openCrisisResources} emergencyCallOption={emergencyCallOption} crisisHelplineOption={crisisHelplineOption} onCallEmergency={callEmergencyServices} onCallHelpline={callCrisisHelpline} onTextHelpline={textCrisisHelpline} onOpenHelplineWebsite={openHelplineWebsite} onSaveOccasion={fact => {
+                const normalized = fact.trim().slice(0, 500);
+                if (normalized && !memories.some(memory => memory.text.toLowerCase() === normalized.toLowerCase())) {
+                  setMemories(current => [{ id: Date.now(), text: normalized, date: 'Added just now' }, ...current]);
+                }
+              }} memorySuggestion={memorySuggestion?.conversationId === activeConversationId ? memorySuggestion : null} onSaveMemorySuggestion={() => {
+                const fact = memorySuggestion?.fact;
+                if (fact && rememberPreferenceRef.current) {
+                  setMemories(current => current.some(memory => memory.text.toLowerCase() === fact.toLowerCase())
+                    ? current
+                    : [{ id: Date.now(), text: fact, date: 'Added just now' }, ...current]);
+                }
+                setMemorySuggestion(null);
+              }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => editingMessageId !== null ? sendMessage(undefined, imageDataUrl, false, editingMessageId) : sendMessage(undefined, imageDataUrl)} editingMessageId={editingMessageId} onEditMessage={message => { setEditingMessageId(message.id); setDraft(message.text); }} onCancelEdit={() => { setEditingMessageId(null); setDraft(''); }} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} onRegenerate={() => { const currentMessages = activeConversation?.messages ?? []; const lastMessage = currentMessages[currentMessages.length - 1]; const lastUser = [...currentMessages].reverse().find(message => message.author === 'you'); if (!lastMessage || lastMessage.author !== 'teddy' || !lastUser || isSending) return; setConversations(current => current.map(conversation => conversation.id === activeConversationId ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.filter(message => message.id !== lastMessage.id) } : conversation)); void sendMessage(lastUser.text, undefined, true); }} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
+              {tab === 'chat' && page === 'history' && <ChatHistoryPage
+                conversations={conversations}
+                activeConversationId={activeConversationId}
+                busyConversationId={streamingConversationId}
+                onBack={() => setPage('chat')}
+                onSelect={selectConversation}
+                onNewConversation={startNewConversation}
+                onPin={setConversationPinned}
+                onDelete={deleteConversation}
+                onRename={beginRenameConversation}
+              />}
+              {tab === 'discover' && discoverFramePage === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
+                const preparedMessage = `I'd like to talk about this journal entry with you.\\n\\n${entry.title}\\n\\n${entry.body}\\n\\nPlease help me reflect on it.`;
+                if (draft.trim()) {
+                  confirmAction('Keep your existing draft?', 'Your current chat draft is not empty. Continuing will append the journal entry so your draft is preserved.', () => {
+                    setDraft(current => current.trim() ? `${current}\\n\\n${preparedMessage}` : preparedMessage);
+                    setPage('chat');
+                  });
+                } else {
+                  setDraft(preparedMessage);
+                  setPage('chat');
+                }
+              }} />}
+              {tab === 'discover' && discoverFramePage === 'studio' && <WellbeingStudio wide={wide} />}
+              {tab === 'discover' && discoverFramePage === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
+              {tab === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
+              {tab === 'discover' && discoverFramePage === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
+              {tab === 'settings' && <SettingsPage wide={wide} username={username} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
+                const savedName = name.trim().slice(0, 32);
+                if (!savedName) return;
+                setAssistantCharacterId(id);
+                setAssistantName(savedName);
+                setAssistantCharacterNames(current => ({ ...current, [id]: savedName }));
+              }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} />}
+              {tab === 'discover' && discoverFramePage === 'discover' && <DiscoverPage wide={wide} onNavigate={setPage} />}
+              </>
+  );
+
   return (
     <View style={[styles.root, rootInsetsStyle]}>
       {wide && <Sidebar
@@ -1251,58 +1311,16 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
             const nextIndex = Math.max(0, Math.min(mobileNavItems.length - 1, currentIndex + direction));
             if (nextIndex !== currentIndex) setPage(mobileNavItems[nextIndex].id);
           }} enabled={!wide}>
-          {localDataError ? <LocalDataError error={localDataError} onRetry={retryLocalData} onClear={clearUnavailableLocalData} /> : !localDataReady || localDataOwner !== owner ? <LocalDataLoading /> : <>
-          {localDataSaveError && <LocalDataSaveWarning error={localDataSaveError} onRetry={retryLocalData} />}
-          {page === 'chat' && <ChatPage key={activeConversationId ?? 'new-chat'} wide={wide} bottomInset={insets.bottom} conversationId={activeConversationId} assistantName={assistantName} messages={messages} streamingReply={activeConversationId === streamingConversationId ? streamingReply : ''} isThinking={isSending && activeConversationId === streamingConversationId} conversationTitle={activeConversation?.title ?? 'A quiet place to be'} onOpenHistory={() => setPage('history')} onRenameChat={() => { if (activeConversation) beginRenameConversation(activeConversation); }} isPinned={activeConversation?.pinned === true} canManageChat={activeConversation !== null} onTogglePin={() => { if (activeConversation) setConversationPinned(activeConversation.id, !activeConversation.pinned); }} onOpenCrisisResources={openCrisisResources} emergencyCallOption={emergencyCallOption} crisisHelplineOption={crisisHelplineOption} onCallEmergency={callEmergencyServices} onCallHelpline={callCrisisHelpline} onTextHelpline={textCrisisHelpline} onOpenHelplineWebsite={openHelplineWebsite} onSaveOccasion={fact => {
-            const normalized = fact.trim().slice(0, 500);
-            if (normalized && !memories.some(memory => memory.text.toLowerCase() === normalized.toLowerCase())) {
-              setMemories(current => [{ id: Date.now(), text: normalized, date: 'Added just now' }, ...current]);
-            }
-          }} memorySuggestion={memorySuggestion?.conversationId === activeConversationId ? memorySuggestion : null} onSaveMemorySuggestion={() => {
-            const fact = memorySuggestion?.fact;
-            if (fact && rememberPreferenceRef.current) {
-              setMemories(current => current.some(memory => memory.text.toLowerCase() === fact.toLowerCase())
-                ? current
-                : [{ id: Date.now(), text: fact, date: 'Added just now' }, ...current]);
-            }
-            setMemorySuggestion(null);
-          }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => editingMessageId !== null ? sendMessage(undefined, imageDataUrl, false, editingMessageId) : sendMessage(undefined, imageDataUrl)} editingMessageId={editingMessageId} onEditMessage={message => { setEditingMessageId(message.id); setDraft(message.text); }} onCancelEdit={() => { setEditingMessageId(null); setDraft(''); }} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage)} onRegenerate={() => { const currentMessages = activeConversation?.messages ?? []; const lastMessage = currentMessages[currentMessages.length - 1]; const lastUser = [...currentMessages].reverse().find(message => message.author === 'you'); if (!lastMessage || lastMessage.author !== 'teddy' || !lastUser || isSending) return; setConversations(current => current.map(conversation => conversation.id === activeConversationId ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.filter(message => message.id !== lastMessage.id) } : conversation)); void sendMessage(lastUser.text, undefined, true); }} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
-          {page === 'history' && <ChatHistoryPage
-            conversations={conversations}
-            activeConversationId={activeConversationId}
-            busyConversationId={streamingConversationId}
-            onBack={() => setPage('chat')}
-            onSelect={selectConversation}
-            onNewConversation={startNewConversation}
-            onPin={setConversationPinned}
-            onDelete={deleteConversation}
-            onRename={beginRenameConversation}
-          />}
-          {page === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
-            const preparedMessage = `I'd like to talk about this journal entry with you.\\n\\n${entry.title}\\n\\n${entry.body}\\n\\nPlease help me reflect on it.`;
-            if (draft.trim()) {
-              confirmAction('Keep your existing draft?', 'Your current chat draft is not empty. Continuing will append the journal entry so your draft is preserved.', () => {
-                setDraft(current => current.trim() ? `${current}\\n\\n${preparedMessage}` : preparedMessage);
-                setPage('chat');
-              });
-            } else {
-              setDraft(preparedMessage);
-              setPage('chat');
-            }
-          }} />}
-          {page === 'studio' && <WellbeingStudio wide={wide} />}
-          {page === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
-          {page === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
-          {page === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
-          {page === 'settings' && <SettingsPage wide={wide} username={username} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
-            const savedName = name.trim().slice(0, 32);
-            if (!savedName) return;
-            setAssistantCharacterId(id);
-            setAssistantName(savedName);
-            setAssistantCharacterNames(current => ({ ...current, [id]: savedName }));
-          }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} />}
-          {page === 'discover' && <DiscoverPage wide={wide} onNavigate={setPage} />}
-          </>}
+          <SoftPageTransition transitionKey={page} onSwipe={direction => {
+            const currentIndex = primaryTabIndex(page);
+            const nextIndex = Math.max(0, Math.min(mobileNavItems.length - 1, currentIndex + direction));
+            if (nextIndex !== currentIndex) setPage(mobileNavItems[nextIndex].id);
+          }} enabled={!wide}>
+            <View style={styles.pagerFrame}>{renderPageFrame('chat')}</View>
+            <View style={styles.pagerFrame}>{renderPageFrame('discover')}</View>
+            <View style={styles.pagerFrame}>{renderPageFrame('memories')}</View>
+            <View style={styles.pagerFrame}>{renderPageFrame('settings')}</View>
+          </SoftPageTransition>
           </SoftPageTransition>
         </View>
         {!wide && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
