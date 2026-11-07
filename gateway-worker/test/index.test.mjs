@@ -473,7 +473,7 @@ test('signup retry does not replace an existing Teddy Bud recovery verifier', as
       recoveryKey: 'different-recovery-passphrase-2026',
     }), env));
     assert.equal(signup.status, 409);
-    assert.match(signup.body.error, /Switch to Sign in/);
+    assert.match(signup.body.error, /original password and recovery passphrase|sign in/i);
     assert.equal(recoveryRows[0].verifier, 'existing-verifier');
   } finally {
     globalThis.fetch = oldFetch;
