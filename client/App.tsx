@@ -323,17 +323,20 @@ function AuthLoading() {
 }
 
 export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const compact = width < 600;
+  const shortScreen = height < 760;
   const [mode, setMode] = useState<'login' | 'create' | 'recover' | 'migrate'>(initialMode);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [recoveryPassphrase, setRecoveryPassphrase] = useState('');
-  const [recoveryPassphraseConfirmation, setRecoveryPassphraseConfirmation] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
+  const [recoveryPassphraseVisible, setRecoveryPassphraseVisible] = useState(true);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const authScrollRef = useRef<ScrollView>(null);
@@ -365,21 +368,19 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       if (mode === 'login') {
         onAuthenticated(await browserAuthService.signIn(username.trim().toLowerCase(), password));
       } else if (mode === 'create') {
-        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.', 'password');
+        if (password.length < 15 || password.length > 128) throw new AuthValidationError('Choose a password with 15 to 128 characters.', 'password');
         if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.', 'confirmPassword');
         const phrase = recoveryPassphrase.trim();
         if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.', 'recoveryPassphrase');
-        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.', 'recoveryPassphraseConfirmation');
         onAuthenticated(await browserAuthService.createAccount(username.trim().toLowerCase(), password, phrase));
       } else if (mode === 'migrate') {
-        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a password between 6 and 128 characters.');
+        if (password.length < 15 || password.length > 128) throw new AuthValidationError('Choose a password with 15 to 128 characters.');
         if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.');
         const phrase = recoveryPassphrase.trim();
         if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.');
-        if (recoveryPassphraseConfirmation.trim() !== phrase) throw new AuthValidationError('The recovery passphrases do not match.');
         onAuthenticated(await browserAuthService.migrateLegacyAccount(password, phrase));
       } else {
-        if (password.length < 6 || password.length > 128) throw new AuthValidationError('Choose a new password between 6 and 128 characters.', 'password');
+        if (password.length < 15 || password.length > 128) throw new AuthValidationError('Choose a new password with 15 to 128 characters.', 'password');
         if (recoveryPassphrase.trim().length < 10) throw new AuthValidationError('Enter the recovery passphrase you chose when you created your account.', 'recoveryPassphrase');
         await browserAuthService.recoverPassword(username.trim().toLowerCase(), recoveryPassphrase.trim(), password);
         setMode('login'); setPassword(''); setRecoveryPassphrase('');
@@ -402,19 +403,19 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   };
 
   const changeMode = (next: 'login' | 'create' | 'recover' | 'migrate') => {
-    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setConfirmPassword(''); setRecoveryPassphrase(''); setRecoveryPassphraseConfirmation('');
+    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setConfirmPassword(''); setConfirmPasswordVisible(false); setRecoveryPassphrase(''); setRecoveryPassphraseVisible(true);
   };
 
   const title = mode === 'create' ? 'Set up your private space.' : mode === 'recover' ? 'Reset your password.' : mode === 'migrate' ? 'Keep your existing space.' : 'Welcome back.';
   const actionLabel = mode === 'create' ? 'Continue setup' : mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
 
-  return <KeyboardAvoidingView style={styles.authScreen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-    <ScrollView ref={authScrollRef} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.authScrollContent, compact && styles.authScrollContentCompact]}>
-    <View style={[styles.authCard, compact && styles.authCardCompact]}>
+  return <KeyboardAvoidingView style={[styles.authScreen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <ScrollView ref={authScrollRef} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.authScrollContent, compact && styles.authScrollContentCompact, shortScreen && styles.authScrollContentShort]}>
+    <View style={[styles.authCard, compact && styles.authCardCompact, shortScreen && styles.authCardShort]}>
       <View style={styles.authMark}><Image source={teddyBudLogo} style={styles.authLogo} accessibilityLabel="Teddy Bud" /></View>
       <Text style={styles.authEyebrow}>Teddy Bud</Text>
       <Text style={styles.authTitle}>{title}</Text>
-      <Text style={styles.authBody}>{mode === 'create' ? 'Choose a username, password, and recovery passphrase. This sets up your one private space on this device.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in with your username to open your private space on this device.'}</Text>
+      <Text style={styles.authBody}>{mode === 'create' ? 'Create your username, password, and a recovery passphrase. You’ll only enter the passphrase once—keep it somewhere safe.' : mode === 'recover' ? 'Enter the recovery passphrase you chose when you created your account, then choose a new password.' : mode === 'migrate' ? 'Set a password and recovery passphrase for the account already signed in on this device. Your existing chats stay with that account.' : 'Sign in with your username to open your private space on this device.'}</Text>
       {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authErrorText}>{formError || error}</Text></View>}
       {!!notice && <View style={styles.authNotice}><Text accessibilityLiveRegion="polite" style={styles.authNoticeText}>{notice}</Text></View>}
       {mode !== 'migrate' && <>
@@ -422,28 +423,32 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
         {fieldErrors.username && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.username}</Text>}
       </>}
       {mode === 'recover' && <>
-        <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.recoveryPassphrase && styles.authInputInvalid]} editable={!submitting} />
+        <View style={[styles.authPasswordRow, fieldErrors.recoveryPassphrase && styles.authInputInvalid]}>
+          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry={!recoveryPassphraseVisible} value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
+          <Pressable accessibilityRole="button" accessibilityLabel={recoveryPassphraseVisible ? 'Hide recovery passphrase' : 'Show recovery passphrase'} onPress={() => setRecoveryPassphraseVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}><AppIcon name={recoveryPassphraseVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} /></Pressable>
+        </View>
         {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
       </>}
       <View style={[styles.authPasswordRow, fieldErrors.password && styles.authInputInvalid]}>
-        <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} accessibilityHint={fieldErrors.password} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry={!passwordVisible} value={password} onChangeText={value => { setPassword(value); clearFieldError('password'); }} placeholder={mode === 'recover' ? 'New password (6–128 characters)' : 'Password (6–128 characters)'} placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
+        <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} accessibilityHint={fieldErrors.password} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry={!passwordVisible} value={password} onChangeText={value => { setPassword(value); clearFieldError('password'); }} placeholder={mode === 'recover' ? 'New password (15–128 characters)' : 'Password (15–128 characters)'} placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
         <Pressable accessibilityRole="button" accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'} accessibilityHint="Changes whether the password text is visible on this screen" disabled={submitting} onPress={() => setPasswordVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}>
-          <Text style={styles.showPasswordText}>{passwordVisible ? 'Hide' : 'Show'}</Text>
+          <AppIcon name={passwordVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} />
         </Pressable>
       </View>
       {fieldErrors.password && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.password}</Text>}
       {(mode === 'create' || mode === 'migrate') && <>
-        <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Confirm password" accessibilityHint={fieldErrors.confirmPassword} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearFieldError('confirmPassword'); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.confirmPassword && styles.authInputInvalid]} editable={!submitting} />
+        <View style={[styles.authPasswordRow, fieldErrors.confirmPassword && styles.authInputInvalid]}>
+          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Confirm password" accessibilityHint={fieldErrors.confirmPassword} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry={!confirmPasswordVisible} value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearFieldError('confirmPassword'); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
+          <Pressable accessibilityRole="button" accessibilityLabel={confirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'} onPress={() => setConfirmPasswordVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}><AppIcon name={confirmPasswordVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} /></Pressable>
+        </View>
         {fieldErrors.confirmPassword && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.confirmPassword}</Text>}
         <Text style={styles.authKeyLabel}>RECOVERY PASSPHRASE</Text>
-        <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Choose recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="10–128 characters" placeholderTextColor="#938A80" maxLength={128} style={[styles.authInput, fieldErrors.recoveryPassphrase && styles.authInputInvalid]} editable={!submitting} />
+        <View style={[styles.authPasswordRow, fieldErrors.recoveryPassphrase && styles.authInputInvalid]}>
+          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Choose recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry={!recoveryPassphraseVisible} value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="10–128 characters" placeholderTextColor="#938A80" maxLength={128} style={styles.authPasswordInput} editable={!submitting} />
+          <Pressable accessibilityRole="button" accessibilityLabel={recoveryPassphraseVisible ? 'Hide recovery passphrase' : 'Show recovery passphrase'} onPress={() => setRecoveryPassphraseVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}><AppIcon name={recoveryPassphraseVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} /></Pressable>
+        </View>
         {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
-        <Text style={styles.authFootnote}>Choose a unique recovery passphrase of at least 10 characters and keep it somewhere safe. You will need it with your username to reset your password. Teddy Bud stores only a keyed verifier, not the phrase.</Text>
-        <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Confirm recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphraseConfirmation} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry value={recoveryPassphraseConfirmation} onChangeText={value => { setRecoveryPassphraseConfirmation(value); clearFieldError('recoveryPassphraseConfirmation'); }} placeholder="Confirm recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={[styles.authInput, fieldErrors.recoveryPassphraseConfirmation && styles.authInputInvalid]} editable={!submitting} />
-        {fieldErrors.recoveryPassphraseConfirmation && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphraseConfirmation}</Text>}
-      </>}
-      <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
-        <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
+        <Text style={styles.authFootnote}>Enter this recovery passphrase once and save it somewhere safe. You’ll need it with your username to reset your password. Teddy Bud stores only a keyed verifier, never the phrase itself.</Text>
       </Pressable>
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
       {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Keep chats from the existing account on this device</Text></Pressable>}
@@ -3340,14 +3345,13 @@ const styles = StyleSheet.create({
   authFieldError: { color: C.rose, fontSize: 12, lineHeight: 17, marginTop: -9, marginBottom: 10 },
   authPasswordRow: { height: 50, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.line, borderRadius: 14, backgroundColor: '#FDFCFA', marginBottom: 14 },
   authPasswordInput: { flex: 1, height: '100%', paddingHorizontal: 14, color: C.ink, fontSize: 13 },
-  showPasswordButton: { minWidth: 55, height: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
-  showPasswordText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
+  showPasswordButton: { width: 48, height: '100%', alignItems: 'center', justifyContent: 'center' },
   googleAuthButton: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
   googleAuthButtonText: { color: C.ink, fontSize: 13, fontWeight: '700' },
   authDivider: { color: C.muted, fontSize: 9, letterSpacing: 1.2, textAlign: 'center', marginVertical: 16 },
   authToggle: { alignSelf: 'center', minHeight: 38, justifyContent: 'center', marginTop: 8 },
   authToggleText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
-  authScreen: { flex: 1, backgroundColor: C.canvas }, authLoadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: C.canvas }, authLoadingMark: { width: 76, height: 76, borderRadius: 30, overflow: 'hidden', backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLoadingLogo: { width: 76, height: 76, borderRadius: 30 }, authLoadingTitle: { color: C.ink, fontSize: 20, lineHeight: 27, fontWeight: '600', textAlign: 'center', letterSpacing: -0.4 }, authLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 }, authLoadingHourglass: { width: 42, height: 64, marginTop: 22, alignItems: 'center', justifyContent: 'center', position: 'relative' }, authLoadingGlassTop: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderTopWidth: 3, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidTop: { width: '100%', backgroundColor: '#D8AD83', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }, authLoadingGlassNeck: { width: 5, height: 5, backgroundColor: C.cocoa }, authLoadingGlassBottom: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderBottomWidth: 3, borderTopLeftRadius: 11, borderTopRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidBottom: { width: '100%', backgroundColor: '#D8AD83', borderTopLeftRadius: 8, borderTopRightRadius: 8 }, authLoadingShimmer: { position: 'absolute', width: 42, height: 1, backgroundColor: '#E8C6A7', opacity: 0.55 }, authScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 24, justifyContent: 'flex-start' }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 22 }, authMark: { width: 56, height: 56, borderRadius: 30, overflow: 'hidden', backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 30 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
+  authScreen: { flex: 1, minHeight: 0, width: '100%', backgroundColor: C.canvas }, authLoadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: C.canvas }, authLoadingMark: { width: 76, height: 76, borderRadius: 30, overflow: 'hidden', backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLoadingLogo: { width: 76, height: 76, borderRadius: 30 }, authLoadingTitle: { color: C.ink, fontSize: 20, lineHeight: 27, fontWeight: '600', textAlign: 'center', letterSpacing: -0.4 }, authLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 }, authLoadingHourglass: { width: 42, height: 64, marginTop: 22, alignItems: 'center', justifyContent: 'center', position: 'relative' }, authLoadingGlassTop: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderTopWidth: 3, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidTop: { width: '100%', backgroundColor: '#D8AD83', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }, authLoadingGlassNeck: { width: 5, height: 5, backgroundColor: C.cocoa }, authLoadingGlassBottom: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderBottomWidth: 3, borderTopLeftRadius: 11, borderTopRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidBottom: { width: '100%', backgroundColor: '#D8AD83', borderTopLeftRadius: 8, borderTopRightRadius: 8 }, authLoadingShimmer: { position: 'absolute', width: 42, height: 1, backgroundColor: '#E8C6A7', opacity: 0.55 }, authScrollContent: { flexGrow: 1, width: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 20 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 16, justifyContent: 'flex-start' }, authScrollContentShort: { justifyContent: 'flex-start', paddingTop: 12, paddingBottom: 18 }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 20 }, authCardShort: { paddingTop: 18, paddingBottom: 18 }, authMark: { width: 56, height: 56, borderRadius: 30, overflow: 'hidden', backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 30 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
   root: { flex: 1, flexDirection: 'row', backgroundColor: C.canvas }, main: { flex: 1, minWidth: 0 },
   pagerFrame: { flex: 1, width: '100%', minWidth: 0, height: '100%' },
   newChatButton: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatButtonCollapsed: { paddingHorizontal: 0, justifyContent: 'center' }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
