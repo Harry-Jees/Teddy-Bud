@@ -117,7 +117,7 @@ for (const group of groups.values()) {
     edits.push({
       start: body.start,
       end: body.start,
-      replacement: '{\n' + indent + declaration.code.trimStart(),
+      replacement: '{\n' + indent + declaration.code.trimStart() + 'return ',
     });
     edits.push({
       start: body.end,
