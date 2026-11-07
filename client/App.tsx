@@ -1199,7 +1199,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       if (Platform.OS === 'android' && await browserAuthService.supportsBiometrics()) {
         Alert.alert(
           'Set up secure sign-in',
-          'Use the fingerprint or face unlock already registered on this Android device. Android will show its own secure confirmation. Next time you open Teddy Bud, this check appears automatically; you can cancel and use your password instead.',
+          'Use the fingerprint unlock registered on this Android device. Android will show its own secure confirmation. Next time you open Teddy Bud, this check appears automatically; you can cancel and use your password instead.',
           [
             { text: 'Not now', style: 'cancel' },
             { text: 'Enable', onPress: async () => {
@@ -1398,6 +1398,9 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
     onPanResponderMove: (_event, gesture) => {
       const drag = Math.max(-width, Math.min(width, gesture.dx));
       translateX.setValue(drag);
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(translateX, { toValue: 0, speed: 22, bounciness: 2, useNativeDriver: true }).start();
     },
     onPanResponderRelease: (_event, gesture) => {
       const validSwipe = Math.abs(gesture.dx) >= Math.max(56, width * 0.16)
