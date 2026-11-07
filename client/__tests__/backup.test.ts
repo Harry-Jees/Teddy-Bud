@@ -59,6 +59,17 @@ describe('encrypted Teddy Bud backups', () => {
     await expect(readEncryptedBackup(backup, 'account-a', 'a long private passphrase')).resolves.toEqual(sampleData);
   });
 
+  test('round-trips uploaded chat images inside the encrypted backup', async () => {
+    const imageDataUrl = 'data:image/png;base64,aGVsbG8=';
+    const dataWithImage: LocalAppData = {
+      ...sampleData,
+      conversations: [{ ...sampleData.conversations[0], messages: [{ id: 9, text: 'What is this?', author: 'you', time: '9:10 AM', imageDataUrl }] }],
+    };
+    const backup = await createEncryptedBackup(dataWithImage, 'account-a', 'a long private passphrase');
+    expect(backup).not.toContain(imageDataUrl);
+    await expect(readEncryptedBackup(backup, 'account-a', 'a long private passphrase')).resolves.toEqual(dataWithImage);
+  });
+
   test('rejects a wrong passphrase and a backup owned by another account', async () => {
     const backup = await createEncryptedBackup(sampleData, 'account-a', 'a long private passphrase');
     await expect(readEncryptedBackup(backup, 'account-a', 'a different passphrase')).rejects.toThrow('could not be unlocked');
