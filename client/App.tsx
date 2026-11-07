@@ -1469,8 +1469,8 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
   >
     <Animated.View
       style={{
-        flex: 1,
         width: width * frames.length,
+        height: '100%',
         flexDirection: 'row',
         transform: [{ translateX }],
       }}
