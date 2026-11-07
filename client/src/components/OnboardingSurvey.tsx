@@ -1,3 +1,4 @@
+import { AppIcon } from './AppIcon';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -63,7 +64,7 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
         </Pressable>)}
       </View>
       {index === QUESTIONS.length - 1 && Object.keys(answers).length > 0 ? <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: createInitialMap }} onPress={() => setCreateInitialMap(value => !value)} style={styles.aiConsent}>
-        <View style={[styles.aiConsentBox, createInitialMap && styles.aiConsentBoxChecked]}>{createInitialMap ? <Text style={styles.aiConsentTick}>✓</Text> : null}</View>
+        <View style={[styles.aiConsentBox, createInitialMap && styles.aiConsentBoxChecked]}>{createInitialMap ? <AppIcon name="check" color="#536C53" size={13} /> : null}</View>
         <View style={styles.aiConsentCopy}>
           <Text style={styles.aiConsentTitle}>Create my starting emotion web</Text>
           <Text style={styles.aiConsentBody}>With your permission, Teddy Bud will send these answers once to its AI service to estimate the 10 emotion values and energy level. The result is labelled as an AI estimate and saved on this device. This is optional and not a diagnosis.</Text>
