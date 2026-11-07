@@ -99,6 +99,12 @@ test('password visibility has an accessible toggle and preserves the entered val
   expect(revealed.props.value).toBe('private-password');
   expect(renderer.root.findByProps({ accessibilityLabel: 'Hide password' })).toBeTruthy();
 
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Confirm password' }).props.onChangeText('confirm-password-value');
+    renderer.root.findByProps({ accessibilityLabel: 'Show confirm password' }).props.onPress();
+  });
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Confirm password' }).props.secureTextEntry).toBe(false);
+
   await ReactTestRenderer.act(async () => renderer.unmount());
 });
 
