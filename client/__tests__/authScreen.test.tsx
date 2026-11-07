@@ -64,10 +64,9 @@ test('create account explains mismatched passwords instead of silently blocking 
 
   await ReactTestRenderer.act(async () => {
     renderer.root.findByProps({ accessibilityLabel: 'Username' }).props.onChangeText('harry_jees');
-    renderer.root.findByProps({ accessibilityLabel: 'Password' }).props.onChangeText('first-password');
-    renderer.root.findByProps({ accessibilityLabel: 'Confirm password' }).props.onChangeText('different-password');
+    renderer.root.findByProps({ accessibilityLabel: 'Password' }).props.onChangeText('first-password-2026');
+    renderer.root.findByProps({ accessibilityLabel: 'Confirm password' }).props.onChangeText('different-password-2026');
     renderer.root.findByProps({ accessibilityLabel: 'Choose recovery passphrase' }).props.onChangeText('a safe recovery passphrase');
-    renderer.root.findByProps({ accessibilityLabel: 'Confirm recovery passphrase' }).props.onChangeText('a safe recovery passphrase');
   });
 
   await ReactTestRenderer.act(async () => {
@@ -103,31 +102,26 @@ test('password visibility has an accessible toggle and preserves the entered val
   await ReactTestRenderer.act(async () => renderer.unmount());
 });
 
-test('recovery-passphrase mismatch is not silently disabled', async () => {
+test('recovery passphrase is entered once, visible by default, and has an eye toggle', async () => {
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
       <BrowserLoginScreen error={null} initialMode="create" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
     );
   });
-
+  const phrase = renderer.root.findByProps({ accessibilityLabel: 'Choose recovery passphrase' });
+  expect(phrase.props.secureTextEntry).toBe(false);
+  expect(renderer.root.findAllByProps({ accessibilityLabel: 'Confirm recovery passphrase' })).toHaveLength(0);
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Username' }).props.onChangeText('harry_jees');
-    renderer.root.findByProps({ accessibilityLabel: 'Password' }).props.onChangeText('private-password');
-    renderer.root.findByProps({ accessibilityLabel: 'Confirm password' }).props.onChangeText('private-password');
-    renderer.root.findByProps({ accessibilityLabel: 'Choose recovery passphrase' }).props.onChangeText('first recovery phrase');
-    renderer.root.findByProps({ accessibilityLabel: 'Confirm recovery passphrase' }).props.onChangeText('different recovery phrase');
+    renderer.root.findByProps({ accessibilityLabel: 'Hide recovery passphrase' }).props.onPress();
   });
-
-  expect(renderer.root.findByProps({ accessibilityLabel: 'Continue setup' }).props.disabled).toBe(false);
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Choose recovery passphrase' }).props.secureTextEntry).toBe(true);
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Continue setup' }).props.onPress();
+    renderer.root.findByProps({ accessibilityLabel: 'Show recovery passphrase' }).props.onPress();
   });
-  expect(renderer.root.findByProps({ accessibilityRole: 'alert' }).findAllByType(Text).map(node => node.props.children))
-    .toContain('The recovery passphrases do not match.');
-
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Choose recovery passphrase' }).props.secureTextEntry).toBe(false);
   await ReactTestRenderer.act(async () => renderer.unmount());
-}, 15000);
+});
 test('returning sign-in does not offer a second account setup path', async () => {
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
