@@ -355,8 +355,14 @@ async function passwordSignUp(request, env) {
   if (resumedExistingAccount) {
     const existingVerifier = await findRecoveryVerifier(env, email);
     if (existingVerifier) {
-      // Do not silently replace an established recovery secret on a signup retry.
-      return json(409, { error: 'This account is already set up. Switch to Sign in instead.' });
+      // A prior signup may have completed server-side but the app may have
+      // lost its response. Resume only when both the password (verified by
+      // Supabase above) and the original recovery passphrase match.
+      const candidate = await recoveryVerifier(env, email, recoveryKey);
+      if (existingVerifier.user_id !== authPayload.user.id || !verifierMatches(existingVerifier.verifier, candidate)) {
+        return json(409, { error: 'This account is already set up. Use its original password and recovery passphrase, or sign in.' });
+      }
+      return authResponse(authPayload.user.id, 'password-user', env);
     }
   }
   const verifier = await recoveryVerifier(env, email, recoveryKey);
