@@ -5,7 +5,7 @@ import type { ViewStyle } from 'react-native';
 export type AppIconName =
   | 'sparkle' | 'edit' | 'close' | 'chevron' | 'info' | 'book'
   | 'heart' | 'plus' | 'shield' | 'search' | 'trash' | 'check'
-  | 'arrow' | 'sun' | 'cloud' | 'history' | 'image' | 'share' | 'menu';
+  | 'arrow' | 'sun' | 'cloud' | 'history' | 'image' | 'share' | 'menu' | 'eye' | 'eyeOff';
 
 type Props = { name: AppIconName; color?: string; size?: number };
 
@@ -68,6 +68,12 @@ export function AppIcon({ name, color = '#685443', size = 18 }: Props) {
       break;
     case 'share':
       parts = <>{ring({ width: size * .2, height: size * .2, left: size * .08, top: size * .4, borderWidth: 1.6 }, 'a')}{ring({ width: size * .2, height: size * .2, left: size * .7, top: size * .12, borderWidth: 1.6 }, 'b')}{ring({ width: size * .2, height: size * .2, left: size * .7, top: size * .7, borderWidth: 1.6 }, 'c')}{line({ width: size * .55, height: 1.6, left: size * .2, top: size * .35, transform: [{ rotate: '-25deg' }] }, 'l1')}{line({ width: size * .55, height: 1.6, left: size * .2, top: size * .63, transform: [{ rotate: '25deg' }] }, 'l2')}</>;
+      break;
+    case 'eye':
+      parts = <>{ring({ width: size * .88, height: size * .58, left: size * .06, top: size * .21, borderWidth: 1.7, borderRadius: size }, 'outline')}{ring({ width: size * .25, height: size * .25, left: size * .375, top: size * .375, borderWidth: 1.7 }, 'pupil')}</>;
+      break;
+    case 'eyeOff':
+      parts = <>{ring({ width: size * .88, height: size * .58, left: size * .06, top: size * .21, borderWidth: 1.7, borderRadius: size }, 'outline')}{ring({ width: size * .25, height: size * .25, left: size * .375, top: size * .375, borderWidth: 1.7 }, 'pupil')}{line({ width: size * 1.05, height: 1.8, left: -size * .025, top: size * .49, transform: [{ rotate: '-42deg' }] }, 'slash')}</>;
       break;
     case 'menu':
       parts = <>{[0,1,2].map(i=>line({ width: size * .7, height: 1.8, left: size * .15, top: size * (.25+i*.25) }, 'l'+i))}</>;
