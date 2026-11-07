@@ -2620,9 +2620,122 @@ export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
   </ScrollView>;
 }
 function WellbeingStudio({wide}:{wide:boolean}) {
- const [mode,setMode]=useState<'breathe'|'ground'|'focus'|'rest'>('breathe'); const [step,setStep]=useState(0);
- const content={breathe:{title:'Gentle breathing',description:'Try a comfortable pace. Stop whenever you want.',steps:['Breathe in gently','Breathe out slowly','Relax your shoulders']},ground:{title:'Grounding pause',description:'Notice what is around you, without needing to change anything.',steps:['Name 5 things you can see','Notice 4 things you can feel','Listen for 3 sounds','Notice 2 scents','Name 1 kind thing you can tell yourself']},focus:{title:'Small focus break',description:'A short reset, not another task to complete.',steps:['Put both feet somewhere comfortable','Choose one small next step','Give yourself permission to pause']},rest:{title:'Bedtime wind-down',description:'A quiet offline routine. No streaks, pressure, or score.',steps:['Lower the brightness if comfortable','Let your jaw and shoulders soften','Put tomorrow’s first thought on paper']}} as const;
- return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}><Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A softer moment</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>These gentle exercises work offline. They are optional wellbeing tools, not medical treatment.</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:18}}>{([{id:'breathe',label:'Breathe'},{id:'ground',label:'Grounding'},{id:'focus',label:'Focus break'},{id:'rest',label:'Wind down'}] as const).map(item=><Pressable key={item.id} onPress={()=>{setMode(item.id);setStep(0)}} style={{padding:12,borderRadius:14,backgroundColor:mode===item.id?'#E7D0C2':C.paper,borderWidth:1,borderColor:C.line}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{item.label}</Text></Pressable>)}</View><View style={{backgroundColor:C.paper,borderRadius:24,borderWidth:1,borderColor:C.line,padding:22,marginTop:14,alignItems:'center'}}><View style={{width:120,height:120,borderRadius:60,backgroundColor:'#E7D0C2',alignItems:'center',justifyContent:'center',marginBottom:18}}><Text style={{fontSize:34,color:C.cocoaDark}}>{mode==='breathe'?'◌':mode==='ground'?'⌂':mode==='focus'?'✳':'☾'}</Text></View><Text style={{fontSize:21,fontWeight:'700',color:C.cocoaDark}}>{content[mode].title}</Text><Text style={{textAlign:'center',color:C.muted,lineHeight:21,marginTop:8}}>{content[mode].description}</Text><Text style={{fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',marginTop:24,minHeight:54}}>{content[mode].steps[step]}</Text><View style={{flexDirection:'row',gap:10,marginTop:18}}><Pressable onPress={()=>setStep(s=>Math.max(0,s-1))} style={{padding:13,borderRadius:13,backgroundColor:'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>Previous</Text></Pressable><Pressable onPress={()=>setStep(s=>(s+1)%content[mode].steps.length)} style={{padding:13,borderRadius:13,backgroundColor:C.cocoaDark}}><Text style={{color:'#FFF',fontWeight:'700'}}>{step===content[mode].steps.length-1?'Start again':'Next step'}</Text></Pressable></View></View></ScrollView>;
+  const [mode, setMode] = useState<'breathe'|'ground'|'focus'|'rest'>('breathe');
+  const [duration, setDuration] = useState(3);
+  const [remaining, setRemaining] = useState(180);
+  const [active, setActive] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const startedAt = useRef<number | null>(null);
+  const routines = {
+    breathe: { title: 'A slower breath', intro: 'Settle into a comfortable rhythm. Nothing to get right.', total: 180, cues: ['Breathe in softly', 'Let the breath leave slowly', 'Rest for a moment'] },
+    ground: { title: 'Come back to now', intro: 'A gentle sensory pause. Let your attention wander naturally.', total: 180, cues: ['Notice the colours around you', 'Feel where your body is supported', 'Listen to the nearest sound', 'Notice the air on your skin', 'Let your eyes rest'] },
+    focus: { title: 'A little breathing room', intro: 'A quiet pocket of time for one thing, or for doing nothing at all.', total: 300, cues: ['Choose one small thing, if you want', 'Stay with it at your own pace', 'Let the rest wait for now'] },
+    rest: { title: 'Ease into rest', intro: 'A soft landing. You can keep your eyes open or closed.', total: 240, cues: ['Unclench your jaw and soften your shoulders', 'Let your hands rest', 'Allow the day to become a little quieter', 'There is nothing else to finish here'] },
+  } as const;
+  const routine = routines[mode];
+  const totalSeconds = duration * 60;
+  const elapsed = Math.max(0, totalSeconds - remaining);
+  const cueIndex = mode === 'breathe'
+    ? (Math.floor(elapsed / 5) % 3)
+    : Math.min(routine.cues.length - 1, Math.floor(elapsed / Math.max(1, totalSeconds / routine.cues.length)));
+  const cue = routine.cues[cueIndex] ?? routine.cues[0];
+  const progress = Math.min(1, elapsed / totalSeconds);
+  useEffect(() => {
+    if (!active) return undefined;
+    const timer = setInterval(() => {
+      setRemaining(current => {
+        if (current <= 1) {
+          setActive(false);
+          setCompleted(true);
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+  const chooseMode = (next: typeof mode) => {
+    setMode(next);
+    setActive(false);
+    setCompleted(false);
+    setDuration(next === 'focus' ? 5 : next === 'rest' ? 4 : 3);
+    setRemaining((next === 'focus' ? 5 : next === 'rest' ? 4 : 3) * 60);
+  };
+  const chooseDuration = (minutes: number) => {
+    setDuration(minutes);
+    setRemaining(minutes * 60);
+    setCompleted(false);
+  };
+  const startOrPause = () => {
+    if (active) {
+      setActive(false);
+      return;
+    }
+    if (remaining <= 0 || completed) {
+      setRemaining(totalSeconds);
+      setCompleted(false);
+    }
+    startedAt.current = Date.now();
+    setActive(true);
+  };
+  const reset = () => {
+    setActive(false);
+    setRemaining(totalSeconds);
+    setCompleted(false);
+  };
+  const clock = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
+  const phase = mode === 'breathe' ? cueIndex === 0 ? 'Breathe in' : cueIndex === 1 ? 'Breathe out' : 'Rest' : 'Take your time';
+  const orbScale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!active || mode !== 'breathe') {
+      Animated.spring(orbScale, { toValue: 1, useNativeDriver: true, speed: 1.2, bounciness: 2 }).start();
+      return undefined;
+    }
+    const target = cueIndex === 0 ? 1.13 : cueIndex === 1 ? 0.92 : 1;
+    Animated.spring(orbScale, { toValue: target, useNativeDriver: true, speed: 0.45, bounciness: 1 }).start();
+    return undefined;
+  }, [active, cueIndex, mode, orbScale]);
+  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
+    <Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A softer moment</Text>
+    <Text style={{color:C.muted,lineHeight:22,marginTop:8,maxWidth:600}}>Choose a feeling, settle in, and let the session guide itself. You do not need to keep tapping through steps.</Text>
+    <View style={{flexDirection:'row',flexWrap:'wrap',gap:9,marginTop:20}}>
+      {([{id:'breathe',label:'Breathe',symbol:'◌'},{id:'ground',label:'Grounding',symbol:'⌂'},{id:'focus',label:'Focus',symbol:'✳'},{id:'rest',label:'Wind down',symbol:'☾'}] as const).map(item=>
+        <Pressable key={item.id} accessibilityRole="button" accessibilityState={{selected:mode===item.id}} onPress={()=>chooseMode(item.id)} style={({pressed})=>[{paddingVertical:12,paddingHorizontal:15,borderRadius:18,backgroundColor:mode===item.id?'#E9D7CA':C.paper,borderWidth:1,borderColor:mode===item.id?'#B9957E':C.line,opacity:pressed?0.82:1}]}>
+          <Text style={{color:C.cocoaDark,fontWeight:'600'}}>{item.symbol}  {item.label}</Text>
+        </Pressable>
+      )}
+    </View>
+    <View style={{backgroundColor:'#F3EAE3',borderRadius:30,borderWidth:1,borderColor:'#E8D8CB',padding:wide?28:20,marginTop:16,alignItems:'center'}}>
+      <Text style={{fontSize:12,letterSpacing:1.5,fontWeight:'700',color:'#8A6D58'}}>A LITTLE SPACE FOR YOU</Text>
+      <Text style={{fontSize:23,fontWeight:'700',color:C.cocoaDark,marginTop:10,textAlign:'center'}}>{routine.title}</Text>
+      <Text style={{fontSize:14,lineHeight:21,color:C.muted,marginTop:7,textAlign:'center',maxWidth:420}}>{routine.intro}</Text>
+      <Animated.View style={{width:156,height:156,borderRadius:78,backgroundColor:'#D9BBA7',borderWidth:10,borderColor:'#EAD8CA',alignItems:'center',justifyContent:'center',marginTop:24,marginBottom:18,transform:[{scale:orbScale}]}}>
+        <View style={{width:116,height:116,borderRadius:58,backgroundColor:'#C69A7D',alignItems:'center',justifyContent:'center'}}>
+          <Text style={{fontSize:15,fontWeight:'700',color:'#FFF9F4'}}>{mode==='breathe'&&active?phase:active?'With you':'Take a pause'}</Text>
+        </View>
+      </Animated.View>
+      <Text accessibilityLiveRegion="polite" style={{fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',minHeight:28}}>{completed?'You made a little room for yourself.':active?cue:'Whenever you are ready'}</Text>
+      <Text style={{fontSize:35,fontWeight:'300',fontVariant:['tabular-nums'],color:C.cocoaDark,marginTop:8}}>{clock(remaining)}</Text>
+      <View style={{height:6,width:'100%',maxWidth:360,backgroundColor:'#E5D5C9',borderRadius:8,overflow:'hidden',marginTop:12}}>
+        <View style={{height:6,width:`${progress*100}%`,backgroundColor:'#96745E',borderRadius:8}}/>
+      </View>
+      <View style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10,flexWrap:'wrap',marginTop:22}}>
+        <Pressable accessibilityRole="button" onPress={startOrPause} style={({pressed})=>[{minWidth:148,paddingVertical:14,paddingHorizontal:22,borderRadius:18,backgroundColor:C.cocoaDark,alignItems:'center',opacity:pressed?0.86:1}]}>
+          <Text style={{color:'#FFF',fontWeight:'700'}}>{active?'Pause':completed?'Begin again':remaining<totalSeconds?'Resume':'Begin gently'}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={reset} style={{paddingVertical:13,paddingHorizontal:17,borderRadius:17,backgroundColor:'#E9D9CE'}}>
+          <Text style={{color:C.cocoaDark,fontWeight:'600'}}>Reset</Text>
+        </Pressable>
+      </View>
+      {!active && !completed ? <View style={{flexDirection:'row',alignItems:'center',gap:8,marginTop:18}}>
+        <Text style={{fontSize:12,color:C.muted}}>Time</Text>
+        {[2,3,5,10].map(minutes=><Pressable key={minutes} accessibilityRole="button" accessibilityState={{selected:duration===minutes}} onPress={()=>chooseDuration(minutes)} style={{paddingVertical:7,paddingHorizontal:11,borderRadius:12,backgroundColor:duration===minutes?'#DCC3B1':'#F8F3EF'}}>
+          <Text style={{fontSize:12,fontWeight:'600',color:C.cocoaDark}}>{minutes} min</Text>
+        </Pressable>)}
+      </View>:null}
+      <Text style={{fontSize:12,lineHeight:18,color:'#846F5F',textAlign:'center',marginTop:18,maxWidth:420}}>No streaks, scores, or pressure. You can pause, stop, or leave at any time. This is a gentle self-care tool, not medical treatment.</Text>
+    </View>
+  </ScrollView>;
 }
 export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entries: EmotionCheckIn[]; onSave: (entry: EmotionCheckIn) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
   const [ratings, setRatings] = useState<Record<string, number>>({});
