@@ -2038,6 +2038,12 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     style5: ({ color: C.cocoa, fontWeight: '700' }) as const,
   });
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
   const reduceMotion = useReducedMotionPreference();
   const mascotBreath = useRef(new Animated.Value(0)).current;
