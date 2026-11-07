@@ -119,7 +119,7 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       <View style={styles.actions}>
         <Pressable accessibilityRole="button" disabled={saving || index === 0} onPress={previous} style={[styles.backButton, index === 0 && styles.backButtonDisabled]}>
-          <AppIcon name="chevron-left" color={index === 0 ? "#B8B1A8" : "#514234"} size={20} />
+          
           <Text style={[styles.secondaryText, index === 0 && styles.disabledText]}>Back</Text>
         </Pressable>
         {index === QUESTIONS.length - 1
