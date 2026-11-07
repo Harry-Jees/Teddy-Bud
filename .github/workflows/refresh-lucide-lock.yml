@@ -1,6 +1,11 @@
 name: Refresh Lucide dependency lockfile
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - client/package.json
   push:
     branches:
       - fix/auth-media-icons-audit
