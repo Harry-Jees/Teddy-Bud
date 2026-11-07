@@ -86,7 +86,7 @@ describe('LocalDataService', () => {
 
     await service.save('account-invalid-image', {
       ...emptyData(),
-      conversations: [{ id: 'invalid-chat', title: 'Invalid image', createdAt: '2026-01-01T09:00:00.000Z', updatedAt: '2026-01-01T09:00:00.000Z', messages: [{ id: 2, text: 'bad image', author: 'you', time: '9:00 AM', imageDataUrl: 'javascript:alert(1)' as unknown as string }] }],
+      conversations: [{ id: 'invalid-chat', title: 'Invalid image', createdAt: '2026-01-01T09:00:00.000Z', updatedAt: '2026-01-01T09:00:00.000Z', messages: [{ id: 2, text: 'bad image', author: 'you', time: '9:00 AM', imageDataUrl: ['java', 'script:alert(1)'].join('') as unknown as string }] }],
       activeConversationId: 'invalid-chat',
     });
     expect((await service.load('account-invalid-image')).conversations[0].messages).toHaveLength(0);

@@ -90,7 +90,7 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
         </View>;
       case 'memories':
         return <View style={styles.memoryIcon}>
-          <Animated.View style={[styles.memoryBook, { borderColor: activeColor, backgroundColor: active ? '#F4E6DA' : COLORS.paper, transform: [{ perspective: 300 }, { rotateY: pageTurn }, { scale: pop }] }]}>
+          <Animated.View style={[styles.memoryBook, active && styles.memoryBookActive, { borderColor: activeColor, transform: [{ perspective: 300 }, { rotateY: pageTurn }, { scale: pop }] }]}>
             <View style={[styles.memorySpine, { backgroundColor: activeColor }]} />
             <View style={[styles.memoryLine, { backgroundColor: activeColor }]} />
             <View style={[styles.memoryLine, styles.memoryLineShort, { backgroundColor: activeColor }]} />
@@ -125,7 +125,8 @@ const styles = StyleSheet.create({
   compassNeedle: { width: 0, height: 0, borderLeftWidth: 4, borderRightWidth: 4, borderBottomWidth: 9, borderLeftColor: 'transparent', borderRightColor: 'transparent', top: -1, transform: [{ rotate: '22deg' }] },
   compassSpark: { position: 'absolute', right: -1, top: 0, width: 5, height: 5, borderRadius: 3, backgroundColor: COLORS.peach },
   memoryIcon: { width: 24, height: 25, alignItems: 'center', justifyContent: 'center' },
-  memoryBook: { width: 19, height: 22, borderWidth: 1.8, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
+  memoryBook: { width: 19, height: 22, borderWidth: 1.8, borderRadius: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.paper },
+  memoryBookActive: { backgroundColor: '#F4E6DA' },
   memorySpine: { position: 'absolute', left: 4, top: 2, width: 1.5, height: 17, opacity: 0.8 },
   memoryLine: { position: 'absolute', left: 9, top: 8, width: 7, height: 1.5, borderRadius: 1 },
   memoryLineShort: { top: 12, width: 5 },

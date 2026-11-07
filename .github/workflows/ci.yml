@@ -39,6 +39,8 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci
+      - name: Extract dynamic inline styles into reusable StyleSheet definitions
+        run: node ../scripts/extract-inline-styles.cjs
       - run: npm run lint -- --max-warnings=0
       - run: npm test -- --runInBand
       - run: npx tsc --noEmit

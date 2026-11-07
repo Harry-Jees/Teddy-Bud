@@ -104,6 +104,12 @@ function openExternalUrl(url: string): Promise<void> {
   return desktop ? desktop.openExternal(url) : Linking.openURL(url);
 }
 
+function runInBackground(task: Promise<unknown>): void {
+  task.then(undefined, error => {
+    console.error('A background Teddy Bud task failed.', error);
+  });
+}
+
 function mayContainDurableMemory(text: string): boolean {
   return /\b(?:my (?:long[- ]term )?(?:goal|dream|plan)|long[- ]term goal|i (?:plan|hope|want) to|i(?:'m| am) (?:a|an) [a-z-]+|i work as|i live in|i care for|i(?:'ve| have) been (?:working toward|studying))\b/i.test(text);
 }
@@ -236,7 +242,7 @@ function AccessGate() {
       if (nextState !== 'active' || !resumed || biometricResumeInFlight.current) return;
 
       biometricResumeInFlight.current = true;
-      void (async () => {
+      runInBackground((async () => {
         try {
           if (!await browserAuthService.hasBiometricSignIn()) return;
           setBusy(true);
@@ -251,7 +257,7 @@ function AccessGate() {
           setBusy(false);
           biometricResumeInFlight.current = false;
         }
-      })();
+      })());
     });
     return () => subscription.remove();
   }, [session]);
@@ -263,7 +269,7 @@ function AccessGate() {
       const message = authErrorMessage(logoutError, 'sign-out');
       setError(message);
       if (logoutError instanceof AuthServiceError && logoutError.kind === 'storage') {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert(message);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') Alert.alert('Sign out could not finish', message);
         else Alert.alert('Sign out could not finish', message);
         return;
       }
@@ -555,7 +561,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       setCreditBalance(null);
     }
   }, [sessionToken]);
-  useEffect(() => { void refreshCreditBalance(); }, [refreshCreditBalance]);
+  useEffect(() => { runInBackground(refreshCreditBalance()); }, [refreshCreditBalance]);
   const activeConversation = conversations.find(conversation => conversation.id === activeConversationId) ?? null;
   const messages = activeConversation?.messages ?? [];
   const deviceLocale = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -712,11 +718,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const removeMemory = (memory: Memory) => confirmAction(
     'Forget this memory?',
     'It will be removed from saved memories on this device.',
-    () => { void persistForgetMemory(memory); },
+    () => { runInBackground(persistForgetMemory(memory)); },
   );
 
   const retryMemoryDelete = () => {
-    if (memoryDeleteRetry) void persistForgetMemory(memoryDeleteRetry);
+    if (memoryDeleteRetry) runInBackground(persistForgetMemory(memoryDeleteRetry));
   };
 
   const setConversationPinned = useCallback((conversationId: string, pinned: boolean) => {
@@ -726,10 +732,10 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     const persistPin = async () => {
       await persistLocalSnapshot({ conversations: nextConversations });
     };
-    void persistPin().catch(() => {
+    runInBackground(persistPin().catch(() => {
       setPendingLocalAction(() => persistPin);
       setLocalDataSaveError('This chat change could not be saved. The saved version remains unchanged; retry to apply the change.');
-    });
+    }));
   }, [conversations, persistLocalSnapshot]);
 
   const beginRenameConversation = useCallback((conversation: Conversation) => {
@@ -791,10 +797,10 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
             setRetryMessage(null);
           }
         };
-        void persistDelete().catch(() => {
+        runInBackground(persistDelete().catch(() => {
           setPendingLocalAction(() => persistDelete);
           setLocalDataSaveError('This chat could not be deleted from saved data. The chat remains available; retry to confirm the removal.');
-        });
+        }));
       },
     );
   }, [activeConversationId, conversations, streamingConversationId, persistLocalSnapshot]); 
@@ -1108,7 +1114,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       };
 
       appendConversationMessage(conversationId, assistantMessage);
-      void refreshCreditBalance();
+      runInBackground(refreshCreditBalance());
       if (shouldGenerateTitle) {
         gatewayService.generateChatTitle(text, responseText, sessionToken).then(generatedTitle => {
           if (!generatedTitle) return;
@@ -1117,7 +1123,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
             : conversation));
         }).catch(() => {
           // Title generation is optional; keep the first-message fallback if it fails.
-        }).finally(() => { void refreshCreditBalance(); });
+        }).finally(() => { runInBackground(refreshCreditBalance()); });
       }
       streamBufferRef.current = '';
       if (streamUpdateTimerRef.current) clearTimeout(streamUpdateTimerRef.current);
@@ -1135,10 +1141,10 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
           if (!duplicate) setMemorySuggestion({ conversationId, messageId: assistantMessage.id, fact: suggestion });
         }).catch(() => {
           // Memory suggestions are optional background work; provider errors must not interrupt chat.
-        }).finally(() => { void refreshCreditBalance(); });
+        }).finally(() => { runInBackground(refreshCreditBalance()); });
       }
     } catch (error) {
-      void refreshCreditBalance();
+      runInBackground(refreshCreditBalance());
       if (abortController.signal.aborted) {
         const partialReply = receivedReplyRef.current.trim();
         if (partialReply) {
@@ -1274,7 +1280,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                     : [{ id: Date.now(), text: fact, date: 'Added just now' }, ...current]);
                 }
                 setMemorySuggestion(null);
-              }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => editingMessageId !== null ? sendMessage(undefined, imageDataUrl, false, editingMessageId) : sendMessage(undefined, imageDataUrl)} editingMessageId={editingMessageId} onEditMessage={message => { setEditingMessageId(message.id); setDraft(message.text); }} onCancelEdit={() => { setEditingMessageId(null); setDraft(''); }} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage, retryImageDataUrl ?? undefined)} onRegenerate={() => { const currentMessages = activeConversation?.messages ?? []; const lastMessage = currentMessages[currentMessages.length - 1]; const lastUser = [...currentMessages].reverse().find(message => message.author === 'you'); if (!lastMessage || lastMessage.author !== 'teddy' || !lastUser || isSending) return; setConversations(current => current.map(conversation => conversation.id === activeConversationId ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.filter(message => message.id !== lastMessage.id) } : conversation)); void sendMessage(lastUser.text, undefined, true); }} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
+              }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => editingMessageId !== null ? sendMessage(undefined, imageDataUrl, false, editingMessageId) : sendMessage(undefined, imageDataUrl)} editingMessageId={editingMessageId} onEditMessage={message => { setEditingMessageId(message.id); setDraft(message.text); }} onCancelEdit={() => { setEditingMessageId(null); setDraft(''); }} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage, retryImageDataUrl ?? undefined)} onRegenerate={() => { const currentMessages = activeConversation?.messages ?? []; const lastMessage = currentMessages[currentMessages.length - 1]; const lastUser = [...currentMessages].reverse().find(message => message.author === 'you'); if (!lastMessage || lastMessage.author !== 'teddy' || !lastUser || isSending) return; setConversations(current => current.map(conversation => conversation.id === activeConversationId ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.filter(message => message.id !== lastMessage.id) } : conversation)); runInBackground(sendMessage(lastUser.text, undefined, true)); }} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
               {tab === 'chat' && page === 'history' && <ChatHistoryPage
                 conversations={conversations}
                 activeConversationId={activeConversationId}
@@ -2177,12 +2183,12 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
           {message.author === 'teddy' && messages[messages.length - 1]?.id === message.id && onRegenerate && <Pressable accessibilityRole="button" accessibilityLabel="Generate another reply" disabled={isSending} onPress={onRegenerate} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Try another reply</Text></Pressable>}
           {message.author === 'teddy' && <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === 'web' ? 'Copy Teddy Bud reply' : 'Share Teddy Bud reply'} onPress={() => {
             if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-              void navigator.clipboard.writeText(message.text)
+              runInBackground(navigator.clipboard.writeText(message.text)
                 .then(() => Alert.alert('Reply copied', 'Teddy Bud’s reply was copied to your clipboard.'))
-                .catch(() => Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.')));
+                .catch(() => Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.'))));
               return;
             }
-            void Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.'));
+            runInBackground(Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.')));
           }} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4' }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>{Platform.OS === 'web' ? 'Copy reply' : 'Share reply'}</Text></Pressable>}
           {message.author === 'teddy' && memorySuggestion?.messageId === message.id && <MemorySuggestionCard fact={memorySuggestion.fact} onSave={onSaveMemorySuggestion} onDismiss={onDismissMemorySuggestion} />}
         </View>)}
@@ -2225,7 +2231,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       {editingMessageId !== null && editingMessageId !== undefined && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={{ padding: 6 }}><Text style={{ color: C.cocoa, fontWeight: '700' }}>Cancel</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
-        <Pressable accessibilityRole="button" accessibilityLabel={speechListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Speech is transcribed into your editable message. Nothing is sent until you press Send." onPress={speechListening ? stopSpeechInput : () => { void startSpeechInput(); }} disabled={isSending} style={({ pressed }) => [styles.voiceButton, speechListening && styles.voiceButtonActive, isSending && styles.buttonDisabled, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={speechListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Speech is transcribed into your editable message. Nothing is sent until you press Send." onPress={speechListening ? stopSpeechInput : () => { runInBackground(startSpeechInput()); }} disabled={isSending} style={({ pressed }) => [styles.voiceButton, speechListening && styles.voiceButtonActive, isSending && styles.buttonDisabled, pressed && styles.pressed]}>
           {speechListening ? <View style={styles.voiceStopIndicator} /> : <View style={styles.voiceMicIcon}><View style={styles.voiceMicHead} /><View style={styles.voiceMicArc} /><View style={styles.voiceMicStem} /><View style={styles.voiceMicBase} /></View>}
         </Pressable>
         {isSending
@@ -2341,7 +2347,7 @@ function renderInlineMarkdown(value: string): React.ReactNode[] {
     if (current[1] && current[2]) {
       const url = current[2];
       result.push(<Text key={`link-${current.index}`} accessibilityRole="link" style={styles.markdownLink} onPress={() => openExternalUrl(url).catch(() => {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert('Could not open this link. Copy it and try again in your browser.');
+        if (Platform.OS === 'web' && typeof window !== 'undefined') Alert.alert('Could not open this link', 'Copy it and try again in your browser.');
         else Alert.alert('Could not open link', 'Copy the link and try again in your browser.');
       })}>{current[1]}</Text>);
     } else if (current[4] !== undefined) result.push(<Text key={`strong-${current.index}`} style={styles.markdownStrong}>{current[4]}</Text>);
@@ -2879,7 +2885,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
       </Animated.View>
     </Pressable>;
   };
-  return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36,alignItems:'stretch'}}>
+  return <ScrollView contentContainerStyle={[styles.emotionsPageScroll, wide && styles.emotionsPageScrollWide]}>
     <View style={{maxWidth:760,width:'100%',alignSelf:'center'}}>
       <Text style={{fontSize:wide?30:25,fontWeight:'700',color:C.cocoaDark}}>Your emotional landscape</Text>
       <Text style={{fontSize:14,lineHeight:21,color:C.muted,marginTop:8}}>A private snapshot of how you feel. Rate only what feels relevant; there is no good or bad shape.</Text>
@@ -3050,7 +3056,7 @@ function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe
         <View style={{ height: '100%', width: `${Math.min(100, Math.max(0, (creditBalance?.remaining ?? 0) / 40 * 100))}%`, backgroundColor: C.cocoa, borderRadius: 4 }} />
       </View>
       <Text style={styles.settingDescription}>Text: 1 credit · Image analysis: 1 credit · Resets daily at 00:00 UTC.</Text>
-      <Pressable accessibilityRole="button" onPress={() => { void onRefreshCredits(); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => { runInBackground(onRefreshCredits()); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
       {!creditBalance && <Text style={styles.settingDescription}>Balance unavailable right now. Connect to the gateway and refresh.</Text>}
     </View>
     <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
