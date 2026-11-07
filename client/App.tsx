@@ -1211,7 +1211,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                 await browserAuthService.enableBiometricSignIn();
                 Alert.alert('Biometric sign-in enabled', 'Teddy Bud will ask for your device biometric as soon as it opens.');
               } catch {
-                Alert.alert('Could not enable biometric sign-in', 'Check that a fingerprint or face is registered in Android Settings. You can still use your username and password.');
+                Alert.alert('Could not enable biometric sign-in', 'Check that a fingerprint is registered in Android Settings. You can still use your username and password.');
               }
             } },
           ],
