@@ -68,6 +68,8 @@ export type LocalAppData = {
   assistantCharacterId?: AssistantCharacterId;
   assistantCharacterNames?: AssistantCharacterNames;
   onboardingSurveyAnswers?: { question: string; answer: string }[];
+  reduceMotion?: boolean;
+  hapticsEnabled?: boolean;
 };
 
 const DATA_KEY_PREFIX = 'teddy-bud:local-data:';
@@ -196,6 +198,8 @@ function normalize(value: unknown): LocalAppData {
     onboardingSurveyAnswers: Array.isArray(data.onboardingSurveyAnswers)
       ? data.onboardingSurveyAnswers.filter((answer): answer is { question: string; answer: string } => Boolean(answer && typeof answer.question === 'string' && answer.question.length <= 500 && typeof answer.answer === 'string' && answer.answer.length <= 500)).slice(0, 30)
       : undefined,
+    reduceMotion: data.reduceMotion === true,
+    hapticsEnabled: data.hapticsEnabled !== false,
   };
 }
 
