@@ -82,7 +82,7 @@ function messageForStatus(status: number, context: AuthErrorContext): AuthServic
   }
 
   if (status === 409 && context === 'create-account') {
-    return new AuthServiceError('This username may already be set up. Sign in with the original password; if setup was interrupted, retry with the original recovery passphrase.', 'validation', status);
+    return new AuthServiceError('We could not create an account with those details. If this username is already set up, sign in with the original password; if setup was interrupted, retry with the original recovery passphrase.', 'validation', status);
   }
 
   if (status === 429) {
