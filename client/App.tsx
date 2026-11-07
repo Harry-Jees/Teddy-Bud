@@ -1343,16 +1343,10 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
             const nextIndex = Math.max(0, Math.min(mobileNavItems.length - 1, currentIndex + direction));
             if (nextIndex !== currentIndex) setPage(mobileNavItems[nextIndex].id);
           }} enabled={!wide}>
-          <SoftPageTransition transitionKey={page} onSwipe={direction => {
-            const currentIndex = primaryTabIndex(page);
-            const nextIndex = Math.max(0, Math.min(mobileNavItems.length - 1, currentIndex + direction));
-            if (nextIndex !== currentIndex) setPage(mobileNavItems[nextIndex].id);
-          }} enabled={!wide}>
             <View style={styles.pagerFrame}>{renderPageFrame('chat')}</View>
             <View style={styles.pagerFrame}>{renderPageFrame('discover')}</View>
             <View style={styles.pagerFrame}>{renderPageFrame('memories')}</View>
             <View style={styles.pagerFrame}>{renderPageFrame('settings')}</View>
-          </SoftPageTransition>
           </SoftPageTransition>
         </View>
         {!wide && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
