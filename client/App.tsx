@@ -287,8 +287,8 @@ function AuthLoading() {
     const fillCycle = Animated.loop(Animated.sequence([
       Animated.timing(fill, { toValue: 1, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
       Animated.timing(fill, { toValue: 0, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
-    ]));
-    const turn = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: true }));
+    ]), { isInteraction: false });
+    const turn = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: true }), { isInteraction: false });
     entrance.start();
     fillCycle.start();
     turn.start();
@@ -1960,7 +1960,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         easing: Easing.inOut(Easing.sin),
         useNativeDriver: true,
       }),
-    ]));
+    ]), { isInteraction: false });
     breathing.start();
     return () => breathing.stop();
   }, [mascotBreath, reduceMotion]);
@@ -2430,7 +2430,7 @@ function TypingIndicator() {
       Animated.timing(dot, { toValue: 1, duration: 240, useNativeDriver: false }),
       Animated.timing(dot, { toValue: 0, duration: 240, useNativeDriver: false }),
       Animated.delay((dots.length - index - 1) * 150),
-    ])));
+    ]), { isInteraction: false }));
     animations.forEach(animation => animation.start());
     return () => animations.forEach(animation => animation.stop());
   }, [dots, reduceMotion]);
