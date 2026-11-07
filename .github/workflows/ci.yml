@@ -32,14 +32,14 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci
-      - run: npm run lint -- --max-warnings=120
+      - run: npm run lint -- --max-warnings=0
       - run: npm test -- --runInBand
       - run: npx tsc --noEmit
       - run: npm run build:web
@@ -52,8 +52,8 @@ jobs:
       run:
         working-directory: gateway-worker
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -66,13 +66,13 @@ jobs:
     name: Android release APK
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: client/package-lock.json
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
@@ -90,7 +90,7 @@ jobs:
           mkdir -p "$(dirname "$target")"
           cp "$source" "$target"
           test -s "$target"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: teddy-bud-android
           path: dist/android/TeddyBud.v.1.0-Android-arm64.apk
@@ -138,8 +138,8 @@ jobs:
               dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
               dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -180,7 +180,7 @@ jobs:
           for name in win-unpacked linux-unpacked mac mac-arm64; do
             rm -rf "dist/desktop/$name"
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.files }}
@@ -199,12 +199,12 @@ jobs:
       - android-build
       - desktop-packages
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
       - name: Download artifacts from the selected run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: teddy-bud-*
           path: source-artifacts
@@ -230,7 +230,7 @@ jobs:
           test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
           test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
           find dist -type f -printf '%P %s bytes\n' | sort
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: teddy-bud-dist
           path: dist/
