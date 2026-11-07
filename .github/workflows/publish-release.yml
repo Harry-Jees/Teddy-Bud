@@ -58,7 +58,7 @@ jobs:
           persist-credentials: false
 
       - name: Download distribution from the verified source run
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: teddy-bud-dist
           path: release-files

@@ -219,7 +219,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Download artifacts from this successful build run
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: teddy-bud-*
           path: source-artifacts
