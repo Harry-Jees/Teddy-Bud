@@ -83,7 +83,7 @@ test('password visibility has an accessible toggle and preserves the entered val
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
-      <BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
+      <BrowserLoginScreen error={null} initialMode="create" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
     );
   });
 
