@@ -243,20 +243,26 @@ function AccessGate() {
 function AuthLoading() {
   const fill = useRef(new Animated.Value(0)).current;
   const rotation = useRef(new Animated.Value(0)).current;
+  const opening = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    const entrance = Animated.spring(opening, { toValue: 1, speed: 13, bounciness: 5, useNativeDriver: true });
     const fillCycle = Animated.loop(Animated.sequence([
-      Animated.timing(fill, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
-      Animated.timing(fill, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(fill, { toValue: 1, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(fill, { toValue: 0, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
     ]));
-    const turn = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 2200, easing: Easing.linear, useNativeDriver: true }));
+    const turn = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: true }));
+    entrance.start();
     fillCycle.start();
     turn.start();
-    return () => { fillCycle.stop(); turn.stop(); };
-  }, [fill, rotation]);
+    return () => { entrance.stop(); fillCycle.stop(); turn.stop(); };
+  }, [fill, rotation, opening]);
   const liquidHeight = fill.interpolate({ inputRange: [0, 1], outputRange: ['8%', '92%'] });
   const spin = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const logoScale = opening.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] });
+  const logoLift = opening.interpolate({ inputRange: [0, 1], outputRange: [14, 0] });
+  const logoOpacity = opening.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
   return <View style={styles.authLoadingScreen} accessibilityLabel="Opening Teddy Bud">
-    <Animated.View style={[styles.authLoadingMark, { transform: [{ scale: fill.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) }] }]}>
+    <Animated.View style={[styles.authLoadingMark, { opacity: logoOpacity, transform: [{ translateY: logoLift }, { scale: logoScale }] }]}>
       <Image source={teddyBudLogo} style={styles.authLoadingLogo} accessibilityLabel="Teddy Bud" />
     </Animated.View>
     <Text style={styles.authLoadingTitle}>Opening your private space</Text>
@@ -288,7 +294,6 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
   const authScrollRef = useRef<ScrollView>(null);
   const keepFocusedFieldVisible = (target: number) => {
     const responder = authScrollRef.current?.getScrollResponder() as unknown as {
@@ -296,12 +301,6 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
     } | undefined;
     responder?.scrollResponderScrollNativeHandleToKeyboard?.(target, 120, true);
   };
-  useEffect(() => {
-    let mounted = true;
-    if (Platform.OS === 'android') browserAuthService.hasBiometricSignIn().then(enabled => { if (mounted) setBiometricEnabled(enabled); }).catch(() => undefined);
-    return () => { mounted = false; };
-  }, []);
-
   const clearFieldError = (field: AuthField) => {
     setFieldErrors(current => {
       if (!current[field]) return current;
@@ -404,12 +403,6 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
       </Pressable>
-      {mode === 'login' && Platform.OS === 'android' && biometricEnabled && <Pressable accessibilityRole="button" disabled={submitting} onPress={async () => {
-        setSubmitting(true); setFormError(null);
-        try { onAuthenticated(await browserAuthService.signInWithBiometrics()); }
-        catch (biometricError) { setFormError(authErrorMessage(biometricError, 'sign-in')); }
-        finally { setSubmitting(false); }
-      }} style={[styles.authLink, { borderWidth: 1, borderColor: C.line, borderRadius: 14, marginTop: 8 }]}><Text style={styles.authLinkText}>Use fingerprint / face unlock</Text></Pressable>}
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
       {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Keep chats from the existing account on this device</Text></Pressable>}
       {(mode === 'recover' || mode === 'create') && <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'recover' ? 'Back to sign in' : 'Already set up? Sign in'}</Text></Pressable>}
@@ -1204,10 +1197,21 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         }
       }
       if (Platform.OS === 'android' && await browserAuthService.supportsBiometrics()) {
-        Alert.alert('Make sign-in easier', 'Use your device biometrics to sign in to Teddy Bud next time. Your password stays in Android’s protected credential storage.', [
-          { text: 'Not now', style: 'cancel' },
-          { text: 'Enable', onPress: () => { browserAuthService.enableBiometricSignIn().catch(() => Alert.alert('Could not enable biometric sign-in', 'You can continue using your username and password.')); } },
-        ]);
+        Alert.alert(
+          'Set up secure sign-in',
+          'Use the fingerprint or face unlock already registered on this Android device. Android will show its own secure confirmation. Next time you open Teddy Bud, this check appears automatically; you can cancel and use your password instead.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Enable', onPress: async () => {
+              try {
+                await browserAuthService.enableBiometricSignIn();
+                Alert.alert('Biometric sign-in enabled', 'Teddy Bud will ask for your device biometric as soon as it opens.');
+              } catch {
+                Alert.alert('Could not enable biometric sign-in', 'Check that a fingerprint or face is registered in Android Settings. You can still use your username and password.');
+              }
+            } },
+          ],
+        );
       }
     }} />;
   }
