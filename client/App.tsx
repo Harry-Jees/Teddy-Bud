@@ -1929,6 +1929,31 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
   const reduceMotion = useReducedMotionPreference();
+  const mascotBreath = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    mascotBreath.stopAnimation();
+    if (reduceMotion) {
+      mascotBreath.setValue(0);
+      return undefined;
+    }
+    const breathing = Animated.loop(Animated.sequence([
+      Animated.timing(mascotBreath, {
+        toValue: 1,
+        duration: 2200,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: true,
+      }),
+      Animated.timing(mascotBreath, {
+        toValue: 0,
+        duration: 2200,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: true,
+      }),
+    ]));
+    breathing.start();
+    return () => breathing.stop();
+  }, [mascotBreath, reduceMotion]);
+  const mascotScale = mascotBreath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] });
   const canSend = (!!draft.trim() || !!selectedImage) && !isSending;
   const [composerFocused, setComposerFocused] = useState(false);
   const [manualCrisisSupport, setManualCrisisSupport] = useState(false);
@@ -2126,7 +2151,9 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       onContentSizeChange={handleChatContentSizeChange}
     >
       {messages.length === 0 ? <View style={styles.emptyState}>
-        <View style={styles.emptyHeroMark}><Image source={assistantIcon} style={styles.emptyHeroLogo} accessibilityLabel={assistantName} /></View>
+        <Animated.View style={[styles.emptyHeroMark, { transform: [{ scale: mascotScale }] }]}>
+          <Image source={assistantIcon} style={styles.emptyHeroLogo} accessibilityLabel={assistantName} />
+        </Animated.View>
         <Text style={styles.emptyGreeting}>What's on your mind?</Text>
         <Text style={styles.emptyDescription}>A calm space to talk things through, find a little perspective, or simply be heard.</Text>
         <View style={styles.starterGrid}>
