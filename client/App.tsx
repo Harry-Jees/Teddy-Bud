@@ -1330,7 +1330,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                 onDelete={deleteConversation}
                 onRename={beginRenameConversation}
               />}
-              {tab === 'discover' && discoverFramePage === 'journal' && <JournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
+              {tab === 'discover' && discoverFramePage === 'journal' && <DiscoverSectionTransition transitionKey={discoverFramePage}><JournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
                 const preparedMessage = `I'd like to talk about this journal entry with you.\\n\\n${entry.title}\\n\\n${entry.body}\\n\\nPlease help me reflect on it.`;
                 if (draft.trim()) {
                   confirmAction('Keep your existing draft?', 'Your current chat draft is not empty. Continuing will append the journal entry so your draft is preserved.', () => {
@@ -1341,11 +1341,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                   setDraft(preparedMessage);
                   setPage('chat');
                 }
-              }} />}
+              }} /></DiscoverSectionTransition>}
               {tab === 'discover' && discoverFramePage === 'studio' && <DiscoverSectionTransition transitionKey={discoverFramePage}><WellbeingStudio wide={wide} /></DiscoverSectionTransition>}
-              {tab === 'discover' && discoverFramePage === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
+              {tab === 'discover' && discoverFramePage === 'emotions' && <DiscoverSectionTransition transitionKey={discoverFramePage}><EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} /></DiscoverSectionTransition>}
               {tab === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
-              {tab === 'discover' && discoverFramePage === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
+              {tab === 'discover' && discoverFramePage === 'privacy' && <DiscoverSectionTransition transitionKey={discoverFramePage}><PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} /></DiscoverSectionTransition>}
               {tab === 'settings' && <SettingsPage wide={wide} username={username} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
                 const savedName = name.trim().slice(0, 32);
                 if (!savedName) return;
@@ -1353,7 +1353,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                 setAssistantName(savedName);
                 setAssistantCharacterNames(current => ({ ...current, [id]: savedName }));
               }} onExport={exportBackup} onImport={importBackup} onLogout={onLogout} />}
-              {tab === 'discover' && discoverFramePage === 'discover' && <DiscoverPage wide={wide} onNavigate={setPage} />}
+              {tab === 'discover' && discoverFramePage === 'discover' && <DiscoverSectionTransition transitionKey={discoverFramePage}><DiscoverPage wide={wide} onNavigate={setPage} /></DiscoverSectionTransition>}
               </>
   );
 
