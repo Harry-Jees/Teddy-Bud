@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ImageSourcePropType } from 'react-native';
 import {
   Animated,
@@ -19,6 +19,7 @@ import {
   ScrollView,
   Share,
   StatusBar,
+  Vibration,
   StyleSheet,
   Text,
   TextInput,
@@ -78,6 +79,8 @@ const C = {
 };
 
 type PrimaryNavPage = 'chat' | 'discover' | 'memories' | 'settings';
+
+const UISettingsContext = React.createContext({ reduceMotion: false, hapticsEnabled: true });
 
 const navItems: { id: PrimaryNavPage; label: string }[] = [
   { id: 'chat', label: 'Chats' },
@@ -506,6 +509,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const [assistantCharacterId, setAssistantCharacterId] = useState<AssistantCharacterId>(DEFAULT_ASSISTANT_CHARACTER_ID);
   const [assistantCharacterNames, setAssistantCharacterNames] = useState<AssistantCharacterNames>({ 'teddy-bud': 'Teddy' });
   const [onboardingSurveyAnswers, setOnboardingSurveyAnswers] = useState<{ question: string; answer: string }[] | undefined>(undefined);
+  const [reduceMotionPreference, setReduceMotionPreference] = useState(false);
+  const [hapticsEnabled, setHapticsEnabled] = useState(true);
   const [localDataReady, setLocalDataReady] = useState(false);
   const [localDataOwner, setLocalDataOwner] = useState<string | null>(null);
   const [localDataError, setLocalDataError] = useState<string | null>(null);
@@ -545,6 +550,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       assistantCharacterId,
       assistantCharacterNames,
       onboardingSurveyAnswers,
+      reduceMotion: reduceMotionPreference,
+      hapticsEnabled,
     };
     const nextSnapshot: LocalAppData = { ...currentSnapshot, ...overrides };
     await localDataService.save(owner, nextSnapshot);
@@ -609,6 +616,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       setAssistantCharacterId(data.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
       setAssistantCharacterNames(data.assistantCharacterNames ?? {});
       setOnboardingSurveyAnswers(data.onboardingSurveyAnswers);
+      setReduceMotionPreference(data.reduceMotion === true);
+      setHapticsEnabled(data.hapticsEnabled !== false);
       setLocalDataOwner(owner);
       setLocalDataReady(true);
     }).catch(error => {
@@ -1330,7 +1339,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
               {tab === 'discover' && discoverFramePage === 'emotions' && <DiscoverSectionTransition transitionKey={discoverFramePage}><EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} /></DiscoverSectionTransition>}
               {tab === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
               {tab === 'discover' && discoverFramePage === 'privacy' && <DiscoverSectionTransition transitionKey={discoverFramePage}><PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} /></DiscoverSectionTransition>}
-              {tab === 'settings' && <SettingsPage wide={wide} username={username} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
+              {tab === 'settings' && <SettingsPage wide={wide} username={username} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} onReduceMotionChange={value => { setReduceMotionPreference(value); runInBackground(persistLocalSnapshot({ reduceMotion: value })); }} onHapticsChange={value => { setHapticsEnabled(value); runInBackground(persistLocalSnapshot({ hapticsEnabled: value })); }} creditBalance={creditBalance} onRefreshCredits={refreshCreditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
                 const savedName = name.trim().slice(0, 32);
                 if (!savedName) return;
                 setAssistantCharacterId(id);
@@ -1855,6 +1864,7 @@ function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }:
 }
 
 function useReducedMotionPreference() {
+  const appSettings = useContext(UISettingsContext);
   const [reduceMotion, setReduceMotion] = useState(true);
 
   useEffect(() => {
@@ -1883,7 +1893,7 @@ function useReducedMotionPreference() {
     };
   }, []);
 
-  return reduceMotion;
+  return reduceMotion || appSettings.reduceMotion;
 }
 
 export function DiscoverPage({ wide, onNavigate }: { wide: boolean; onNavigate: (page: Page) => void }) {
@@ -3189,9 +3199,13 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
   </ScrollView>;
 }
 
-function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
+function SettingsPage({ wide, username, reduceMotion, hapticsEnabled, onReduceMotionChange, onHapticsChange, creditBalance, onRefreshCredits, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
   wide: boolean;
   username: string;
+  reduceMotion: boolean;
+  hapticsEnabled: boolean;
+  onReduceMotionChange: (value: boolean) => void;
+  onHapticsChange: (value: boolean) => void;
   creditBalance: CreditBalance | null;
   onRefreshCredits: () => Promise<void>;
   aboutMe: string;
@@ -3257,6 +3271,12 @@ function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text>{!!username && <Text style={__teddyBudExtractedStyles21.style0}>@{username}</Text>}<Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
+    <Text style={styles.settingsSectionLabel}>MOTION & FEEDBACK</Text>
+    <View style={styles.settingsCardForm}>
+      <SettingRow icon="sparkle" title="Reduce motion" description="Use calmer transitions and reduce non-essential movement." value={reduceMotion} onChange={onReduceMotionChange} />
+      <View style={styles.settingDivider} />
+      <SettingRow icon="heart" title="Haptic feedback" description="Use gentle vibration feedback for supported interactions." value={hapticsEnabled} onChange={onHapticsChange} />
+    </View>
     <Text style={styles.settingsSectionLabel}>DAILY USAGE</Text>
     <View style={styles.settingsCardForm}>
       <View style={__teddyBudExtractedStyles21.style1}>
