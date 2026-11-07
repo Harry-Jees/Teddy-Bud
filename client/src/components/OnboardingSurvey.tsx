@@ -1,5 +1,5 @@
-import { AppIcon } from './AppIcon';
 import React, { useMemo, useState } from 'react';
+import { AppIcon } from './AppIcon';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export type WellbeingSurveyAnswer = { question: string; answer: string };
