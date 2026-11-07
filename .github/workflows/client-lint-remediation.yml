@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'client/App.tsx'
+      - 'client/package.json'
+      - 'client/package-lock.json'
       - 'scripts/extract-inline-styles.cjs'
       - '.github/workflows/client-lint-remediation.yml'
 
@@ -32,8 +34,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: client/package-lock.json
-      - name: Install client dependencies
-        run: npm ci
+      - name: Install and update compatible client dependencies
+        run: npm install --no-audit --no-fund
         working-directory: client
       - name: Apply reusable style extraction
         run: node scripts/extract-inline-styles.cjs
