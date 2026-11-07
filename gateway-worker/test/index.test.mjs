@@ -151,6 +151,13 @@ function encodeJson(value) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
 }
 
+async function testRecoveryVerifier(email, recoveryKey) {
+  const secret = 'test-recovery-secret-with-more-than-32-characters';
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${email}\0${recoveryKey}`));
+  return Buffer.from(signature).toString('base64url');
+}
+
 async function signedInternalJwt(claims) {
   const header = encodeJson({ alg: 'HS256', typ: 'JWT' });
   const payload = encodeJson(claims);
@@ -387,6 +394,46 @@ test('signup resumes a previously-created unconfirmed account after verifying it
     assert.equal(recoveryRows.length, 1);
     assert.equal(recoveryRows[0].user_id, userId);
     assert.equal(recoveryRows[0].email, 'person@example.com');
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});
+
+
+test('signup retry resumes the existing account only when its original recovery passphrase matches', async () => {
+  const env = makeEnv();
+  env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+  env.RECOVERY_KEY_SECRET = 'test-recovery-secret-with-more-than-32-characters';
+  const userId = 'resumable-existing-user';
+  const email = 'person@example.com';
+  const phrase = 'original-recovery-phrase-2026';
+  const recoveryRows = [{ user_id: userId, email, verifier: await testRecoveryVerifier(email, phrase) }];
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    const method = init.method ?? (input instanceof Request ? input.method : 'GET');
+    if (url.pathname === '/auth/v1/signup' && method === 'POST') {
+      return new Response(JSON.stringify({ code: 'user_already_exists', msg: 'User already registered' }), { status: 422 });
+    }
+    if (url.pathname === '/auth/v1/token' && method === 'POST') {
+      return new Response(JSON.stringify({ access_token: 'supabase-existing-user-token', user: { id: userId, email } }), { status: 200 });
+    }
+    if (url.pathname === '/rest/v1/account_recovery_verifiers' && method === 'GET') {
+      return new Response(JSON.stringify(recoveryRows), { status: 200 });
+    }
+    if (url.pathname === '/rest/v1/user_profiles' && method === 'GET') {
+      return new Response(JSON.stringify([{ user_id: userId }]), { status: 200 });
+    }
+    throw new Error('Unexpected upstream request: ' + method + ' ' + url);
+  };
+  try {
+    const signup = await jsonResponse(await worker.fetch(request('/auth/signup', 'POST', {
+      email, password: 'a-secure-password-long-enough', recoveryKey: phrase,
+    }), env));
+    assert.equal(signup.status, 200);
+    assert.equal(typeof signup.body.accessToken, 'string');
+    assert.equal(recoveryRows.length, 1);
+    assert.equal(recoveryRows[0].verifier, await testRecoveryVerifier(email, phrase));
   } finally {
     globalThis.fetch = oldFetch;
   }
