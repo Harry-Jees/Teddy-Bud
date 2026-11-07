@@ -152,6 +152,7 @@ function AccessGate() {
   const [error, setError] = useState<string | null>(null);
   const [initialMode, setInitialMode] = useState<'login' | 'create'>('create');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
+  const biometricResumeInFlight = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -222,6 +223,35 @@ function AccessGate() {
     }
     const timer = setTimeout(expireSession, delay);
     return () => clearTimeout(timer);
+  }, [session]);
+
+  useEffect(() => {
+    if (!session || Platform.OS !== 'android') return undefined;
+    let previousState = AppState.currentState;
+    const subscription = AppState.addEventListener('change', nextState => {
+      const resumed = previousState === 'background' || previousState === 'inactive';
+      previousState = nextState;
+      if (nextState !== 'active' || !resumed || biometricResumeInFlight.current) return;
+
+      biometricResumeInFlight.current = true;
+      void (async () => {
+        try {
+          if (!await browserAuthService.hasBiometricSignIn()) return;
+          setBusy(true);
+          const unlockedSession = await browserAuthService.signInWithBiometrics();
+          setSession(unlockedSession);
+        } catch {
+          // A cancelled prompt returns to the regular password form.
+          setSession(null);
+          setInitialMode('login');
+          setError(null);
+        } finally {
+          setBusy(false);
+          biometricResumeInFlight.current = false;
+        }
+      })();
+    });
+    return () => subscription.remove();
   }, [session]);
 
   if (busy) return <Animated.View style={{ flex: 1, opacity: loadingOpacity }}><AuthLoading /></Animated.View>;
