@@ -5,7 +5,7 @@ import type { ViewStyle } from 'react-native';
 export type AppIconName =
   | 'sparkle' | 'edit' | 'close' | 'chevron' | 'info' | 'book'
   | 'heart' | 'plus' | 'shield' | 'search' | 'trash' | 'check'
-  | 'arrow' | 'sun' | 'history' | 'image' | 'share' | 'menu';
+  | 'arrow' | 'sun' | 'cloud' | 'history' | 'image' | 'share' | 'menu';
 
 type Props = { name: AppIconName; color?: string; size?: number };
 
@@ -56,6 +56,9 @@ export function AppIcon({ name, color = '#685443', size = 18 }: Props) {
       break;
     case 'sun':
       parts = <>{ring({ width: size * .38, height: size * .38, left: size * .31, top: size * .31, borderWidth: 1.7 }, 'c')}{[0,45,90,135].map((angle,i)=>line({ width: 1.6, height: size * .2, left: size * .47, top: size * .02, transform: [{ rotate: angle+'deg' }] }, 'ray'+i))}</>;
+      break;
+    case 'cloud':
+      parts = <>{ring({ width: size * .44, height: size * .44, left: size * .08, top: size * .38, borderWidth: 1.7 }, 'a')}{ring({ width: size * .5, height: size * .5, left: size * .28, top: size * .18, borderWidth: 1.7 }, 'b')}{ring({ width: size * .4, height: size * .4, left: size * .55, top: size * .38, borderWidth: 1.7 }, 'c')}{line({ width: size * .65, height: 1.7, left: size * .18, top: size * .72 }, 'base')}</>;
       break;
     case 'history':
       parts = <>{ring({ width: size * .78, height: size * .78, left: size * .11, top: size * .11, borderWidth: 1.7 }, 'r')}{line({ width: 1.7, height: size * .25, left: size * .49, top: size * .25 }, 'h')}{line({ width: size * .23, height: 1.7, left: size * .49, top: size * .48 }, 'm')}</>;
