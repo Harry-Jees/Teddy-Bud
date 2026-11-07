@@ -158,13 +158,31 @@ function AccessGate() {
     const restore = async () => {
       const loadingStartedAt = Date.now();
       try {
-        const current = await browserAuthService.restore();
-        if (mounted) {
-          setSession(current);
-          if (current) await browserAuthService.markSetupComplete(current.username);
-          else {
-            setInitialMode(await browserAuthService.shouldCreateAccount() ? 'create' : 'login');
-            setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
+        // If biometric sign-in was enrolled, require the device owner to unlock on every cold app launch.
+        // A cancelled/failed prompt deliberately falls back to the username + password screen.
+        const biometricReady = Platform.OS === 'android' && await browserAuthService.hasBiometricSignIn();
+        if (biometricReady) {
+          try {
+            const unlockedSession = await browserAuthService.signInWithBiometrics();
+            if (mounted) {
+              setSession(unlockedSession);
+              await browserAuthService.markSetupComplete(unlockedSession.username);
+            }
+          } catch {
+            if (mounted) {
+              setInitialMode('login');
+              setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
+            }
+          }
+        } else {
+          const current = await browserAuthService.restore();
+          if (mounted) {
+            setSession(current);
+            if (current) await browserAuthService.markSetupComplete(current.username);
+            else {
+              setInitialMode(await browserAuthService.shouldCreateAccount() ? 'create' : 'login');
+              setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
+            }
           }
         }
       } catch (restoreError) {
@@ -1359,11 +1377,12 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
       return;
     }
     const direction = nextIndex > previousPageIndex ? 1 : -1;
-    translateX.setValue(direction * Math.min(width * 0.22, 88));
+    // Treat each primary tab as a full-width page in a horizontal pager.
+    translateX.setValue(direction * width);
     Animated.spring(translateX, {
       toValue: 0,
-      speed: 19,
-      bounciness: 2,
+      speed: 20,
+      bounciness: 1,
       useNativeDriver: true,
     }).start();
   }, [transitionKey, width, reduceMotion, translateX]);
@@ -1371,10 +1390,36 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: (_event, gesture) =>
-      enabledRef.current && !reduceMotionRef.current && Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.35,
+      enabledRef.current && !reduceMotionRef.current && Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+    onPanResponderMove: (_event, gesture) => {
+      const drag = Math.max(-width, Math.min(width, gesture.dx));
+      translateX.setValue(drag);
+    },
     onPanResponderRelease: (_event, gesture) => {
-      if (Math.abs(gesture.dx) < 58 || Math.abs(gesture.dx) < Math.abs(gesture.dy) * 1.25) return;
-      onSwipeRef.current(gesture.dx < 0 ? 1 : -1);
+      const validSwipe = Math.abs(gesture.dx) >= Math.max(56, width * 0.16)
+        && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2;
+      if (!validSwipe) {
+        Animated.spring(translateX, { toValue: 0, speed: 22, bounciness: 2, useNativeDriver: true }).start();
+        return;
+      }
+      const direction = gesture.dx < 0 ? 1 : -1;
+      const currentIndex = primaryTabIndex(transitionKey as Page);
+      const nextIndex = Math.max(0, Math.min(mobileNavItems.length - 1, currentIndex + direction));
+      if (nextIndex === currentIndex) {
+        Animated.spring(translateX, { toValue: 0, speed: 22, bounciness: 2, useNativeDriver: true }).start();
+        return;
+      }
+      // Move the current frame completely off-screen, then let the next tab enter from its edge.
+      Animated.timing(translateX, {
+        toValue: direction > 0 ? -width : width,
+        duration: 175,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (!finished) return;
+        translateX.setValue(direction > 0 ? width : -width);
+        onSwipeRef.current(direction);
+      });
     },
   })).current;
 
