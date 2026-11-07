@@ -200,7 +200,17 @@ function AccessGate() {
           }
         }
       } catch (restoreError) {
-        if (mounted) setError(authErrorMessage(restoreError, 'session-restore'));
+        if (mounted) {
+          setError(authErrorMessage(restoreError, 'session-restore'));
+          // A failed restore on an already configured device must return to
+          // sign-in, never expose account creation as the default recovery path.
+          setInitialMode('login');
+          try {
+            setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
+          } catch {
+            setCanMigrateLegacy(false);
+          }
+        }
       } finally {
         const remaining = Math.max(0, 2000 - (Date.now() - loadingStartedAt));
         setTimeout(() => {
