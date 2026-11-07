@@ -285,7 +285,13 @@ export class BrowserAuthService {
     if (Platform.OS !== 'android') throw new Error('Biometric sign-in is available on Android only.');
     const credentials = await Keychain.getGenericPassword({
       service: NATIVE_BIOMETRIC_SERVICE,
-      authenticationPrompt: { title: 'Sign in to Teddy Bud' },
+      accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET,
+      authenticationPrompt: {
+        title: 'Unlock Teddy Bud',
+        subtitle: 'Verify your fingerprint to open your private space',
+        description: 'Your biometric stays on this device. Your password is the fallback.',
+        cancel: 'Use password',
+      },
     });
     if (!credentials || typeof credentials === 'boolean') throw new Error('Biometric sign-in has not been enabled on this device.');
     return this.signIn(credentials.username, credentials.password);
