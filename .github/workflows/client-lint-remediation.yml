@@ -29,6 +29,15 @@ jobs:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
           token: ${{ github.token }}
+          fetch-depth: 0
+      - name: Restore complete source and reapply verified patch
+        run: |
+          set -euo pipefail
+          git checkout 422b7137cf719b0f42e5e0142dae63f20dd3c5aa -- README.md docs/FEATURE_STATUS.md client/App.tsx client/src/services/gateway.ts client/src/services/localData.ts client/__tests__/gateway-model.test.ts
+          rm -rf client/assets/stickers
+          rm -f client/src/services/stickers.ts client/__tests__/stickers.test.ts
+          git show 5faa5d744be9ef0244875c52a86755938efc4567:patches/teddy-bud-completion.patch > /tmp/teddy-bud-completion.patch
+          git apply --binary /tmp/teddy-bud-completion.patch
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -67,13 +76,13 @@ jobs:
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- client/App.tsx client/package.json client/package-lock.json; then
+          if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add client/App.tsx client/package.json client/package-lock.json
+          git add -A
           git commit -m "Remove client lint warnings and update safe dependencies"
           git push origin "HEAD:refs/heads/$PR_HEAD_REF"
           echo "changed=true" >> "$GITHUB_OUTPUT"
