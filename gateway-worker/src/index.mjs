@@ -297,8 +297,8 @@ async function passwordSignUp(request, env) {
   const email = typeof parsed.value?.email === 'string' ? parsed.value.email.trim().toLowerCase() : '';
   const password = parsed.value?.password;
   const recoveryKey = parsed.value?.recoveryKey;
-  if (!validEmail(email) || typeof password !== 'string' || password.length < 6 || password.length > 128 || !validRecoveryPassphrase(recoveryKey)) {
-    return json(400, { error: 'Use a valid email, a password of at least 6 characters, and a recovery passphrase of 10 to 128 characters.' });
+  if (!validEmail(email) || typeof password !== 'string' || password.length < 15 || password.length > 128 || !validRecoveryPassphrase(recoveryKey)) {
+    return json(400, { error: 'Use a valid email, a password of 15 to 128 characters, and a recovery passphrase of 10 to 128 characters.' });
   }
   if (!await rateLimit(request, env, 'password-signup-account', 3, email)) return json(429, { error: 'Too many account requests. Try again later.' });
   const { response, payload } = await supabaseRequest(env, 'signup', {
@@ -355,8 +355,14 @@ async function passwordSignUp(request, env) {
   if (resumedExistingAccount) {
     const existingVerifier = await findRecoveryVerifier(env, email);
     if (existingVerifier) {
-      // Do not silently replace an established recovery secret on a signup retry.
-      return json(409, { error: 'This account is already set up. Switch to Sign in instead.' });
+      // A prior signup may have completed server-side but the app may have
+      // lost its response. Resume only when both the password (verified by
+      // Supabase above) and the original recovery passphrase match.
+      const candidate = await recoveryVerifier(env, email, recoveryKey);
+      if (existingVerifier.user_id !== authPayload.user.id || !verifierMatches(existingVerifier.verifier, candidate)) {
+        return json(409, { error: 'This account is already set up. Use its original password and recovery passphrase, or sign in.' });
+      }
+      return authResponse(authPayload.user.id, 'password-user', env);
     }
   }
   const verifier = await recoveryVerifier(env, email, recoveryKey);
@@ -394,8 +400,8 @@ async function recoverPassword(request, env) {
   const email = typeof parsed.value?.email === 'string' ? parsed.value.email.trim().toLowerCase() : '';
   const recoveryKey = parsed.value?.recoveryKey;
   const password = parsed.value?.newPassword;
-  if (!validEmail(email) || !validRecoveryPassphrase(recoveryKey) || typeof password !== 'string' || password.length < 6 || password.length > 128) {
-    return json(400, { error: 'Enter your email, a recovery passphrase of at least 10 characters, and a new password of at least 6 characters.' });
+  if (!validEmail(email) || !validRecoveryPassphrase(recoveryKey) || typeof password !== 'string' || password.length < 15 || password.length > 128) {
+    return json(400, { error: 'Enter your email, a recovery passphrase of at least 10 characters, and a new password of 15 to 128 characters.' });
   }
   if (!await rateLimit(request, env, 'password-recovery-account', 5, email)) return json(429, { error: 'Too many recovery attempts. Try again later.' });
   const record = await findRecoveryVerifier(env, email);
@@ -428,9 +434,9 @@ async function migrateLegacyAccount(request, env) {
   const parsed = await readJson(request);
   if (parsed.error) return parsed.error;
   const { password, recoveryKey } = parsed.value ?? {};
-  if (typeof password !== 'string' || password.length < 6 || password.length > 128
+  if (typeof password !== 'string' || password.length < 15 || password.length > 128
     || !validRecoveryPassphrase(recoveryKey)) {
-    return json(400, { error: 'Choose a password of at least 6 characters and a recovery passphrase of 10 to 128 characters.' });
+    return json(400, { error: 'Choose a password of 15 to 128 characters and a recovery passphrase of 10 to 128 characters.' });
   }
 
   const userResult = await supabaseAdminRequest(env, `admin/users/${encodeURIComponent(claims.sub)}`);

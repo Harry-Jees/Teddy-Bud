@@ -16,7 +16,7 @@ describe('safe authentication error messages', () => {
 
   test('does not disclose whether an account exists during account creation', () => {
     const error = authServiceErrorFromResponse(409, 'create-account');
-    expect(error.message).toMatch(/could not create an account/i);
+    expect(error.message).toMatch(/already set up/i);
     expect(error.message).not.toMatch(/already exists/i);
   });
 
