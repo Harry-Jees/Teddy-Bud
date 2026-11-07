@@ -1,8 +1,12 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Text } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { BrowserLoginScreen } from '../App';
+
+jest.mock('react-native-safe-area-context', () => ({
+  ...jest.requireActual('react-native-safe-area-context'),
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
 
 jest.mock('@react-native-documents/picker', () => ({
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },
@@ -31,7 +35,7 @@ test('sign-in gives actionable username/password validation and clears stale err
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
-      <SafeAreaProvider><BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} onAuthenticated={jest.fn()} /></SafeAreaProvider>,
+      <BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
     );
   });
 
@@ -59,7 +63,7 @@ test('create account explains mismatched passwords instead of silently blocking 
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
-      <SafeAreaProvider><BrowserLoginScreen error={null} initialMode="create" canMigrateLegacy={false} onAuthenticated={jest.fn()} /></SafeAreaProvider>,
+      <BrowserLoginScreen error={null} initialMode="create" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
     );
   });
 
@@ -84,7 +88,7 @@ test('password visibility has an accessible toggle and preserves the entered val
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
-      <SafeAreaProvider><BrowserLoginScreen error={null} initialMode="create" canMigrateLegacy={false} onAuthenticated={jest.fn()} /></SafeAreaProvider>,
+      <BrowserLoginScreen error={null} initialMode="create" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
     );
   });
 
@@ -113,7 +117,7 @@ test('recovery passphrase is entered once, visible by default, and has an eye to
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
-      <SafeAreaProvider><BrowserLoginScreen error={null} initialMode="create" canMigrateLegacy={false} onAuthenticated={jest.fn()} /></SafeAreaProvider>,
+      <BrowserLoginScreen error={null} initialMode="create" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
     );
   });
   const phrase = renderer.root.findByProps({ accessibilityLabel: 'Choose recovery passphrase' });
@@ -133,7 +137,7 @@ test('returning sign-in does not offer a second account setup path', async () =>
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
-      <SafeAreaProvider><BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} onAuthenticated={jest.fn()} /></SafeAreaProvider>,
+      <BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
     );
   });
   expect(renderer.root.findAll(node => node.props.accessibilityLabel === 'Create a private space')).toHaveLength(0);
