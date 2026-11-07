@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: gateway-worker/package-lock.json
       - name: Resolve current compatible Wrangler dependency tree
         working-directory: gateway-worker
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        run: npm update wrangler --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Export compressed lockfile for secure review
         working-directory: gateway-worker
         shell: bash
