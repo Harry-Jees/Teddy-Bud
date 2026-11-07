@@ -84,10 +84,10 @@ const navItems: { id: PrimaryNavPage; label: string }[] = [
   { id: 'settings', label: 'Settings' },
 ];
 const mobileNavItems: { id: PrimaryNavPage; label: string }[] = [
-  { id: 'chat', icon: '◌', label: 'Chats' },
-  { id: 'discover', icon: '✧', label: 'Discover' },
-  { id: 'memories', icon: '✳', label: 'Memories' },
-  { id: 'settings', icon: '⚙', label: 'Settings' },
+  { id: 'chat', label: 'Chats' },
+  { id: 'discover', label: 'Discover' },
+  { id: 'memories', label: 'Memories' },
+  { id: 'settings', label: 'Settings' },
 ];
 const discoverPages: Page[] = ['discover', 'journal', 'emotions', 'studio', 'privacy'];
 
@@ -1772,7 +1772,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
       </ScrollView>
       <View style={styles.sidebarBottom}>
         <View style={styles.sidebarRule} />
-        <Pressable accessibilityRole="button" accessibilityLabel={visualCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} accessibilityHint={visualCollapsed ? 'Show chat names and navigation labels' : 'Hide labels and keep the icon rail visible'} onPress={onToggleCollapsed} style={({ pressed }) => [styles.sidebarCollapseButton, styles.sidebarCollapseButtonBottom, visualCollapsed && styles.sidebarCollapseButtonCollapsed, pressed && styles.pressed]}><Animated.Text style={[styles.sidebarCollapseGlyph, { transform: [{ rotate: chevronRotation }] }]}>‹</Animated.Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={visualCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} accessibilityHint={visualCollapsed ? 'Show chat names and navigation labels' : 'Hide labels and keep the icon rail visible'} onPress={onToggleCollapsed} style={({ pressed }) => [styles.sidebarCollapseButton, styles.sidebarCollapseButtonBottom, visualCollapsed && styles.sidebarCollapseButtonCollapsed, pressed && styles.pressed]}><Animated.View style={{ transform: [{ rotate: chevronRotation }] }}><AppIcon name="chevron" color={C.cocoa} size={18} /></Animated.View></Pressable>
       </View>
     </Animated.View>
   );
