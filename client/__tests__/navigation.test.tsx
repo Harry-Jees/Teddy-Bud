@@ -91,7 +91,21 @@ test('Discover keeps secondary tools discoverable and navigable', async () => {
   const labels = [...new Set(renderer.root
     .findAll(node => node.props.accessibilityRole === 'button' && typeof node.props.accessibilityLabel === 'string')
     .map(button => button.props.accessibilityLabel))];
-  expect(labels).toEqual(['Chat history', 'Private journal', 'Emotional check-in', 'Wellbeing studio', 'Privacy controls']);
+  expect(labels).toEqual([
+    'Chat history',
+    'About Chat history',
+    'Private journal',
+    'About Private journal',
+    'Emotional check-in',
+    'About Emotional check-in',
+    'Wellbeing studio',
+    'About Wellbeing studio',
+    'Privacy controls',
+    'About Privacy controls',
+  ]);
+
+  const privacyInfo = renderer.root.findByProps({ accessibilityLabel: 'About Privacy controls' });
+  expect(typeof privacyInfo.props.onPress).toBe('function');
 
   const privacyControl = renderer.root
     .findAll(node => node.props.accessibilityLabel === 'Privacy controls' && typeof node.props.onPress === 'function')

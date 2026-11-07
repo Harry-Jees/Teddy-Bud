@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { AppIcon } from './AppIcon';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export type WellbeingSurveyAnswer = { question: string; answer: string };
@@ -31,18 +32,19 @@ const QUESTIONS: Question[] = [
   { prompt: 'Anything else you would like Teddy Bud to know?', options: ['No, that is enough for now', 'I would rather share naturally in chat'] },
 ];
 
-export function OnboardingSurvey({ onComplete }: { onComplete: (answers: WellbeingSurveyAnswer[]) => Promise<void> }) {
+export function OnboardingSurvey({ onComplete }: { onComplete: (answers: WellbeingSurveyAnswer[], createInitialMap: boolean) => Promise<void> }) {
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [index, setIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [createInitialMap, setCreateInitialMap] = useState(false);
   const question = QUESTIONS[index];
   const progress = useMemo(() => Math.round((Object.keys(answers).length / QUESTIONS.length) * 100), [answers]);
   const finish = async (skip = false) => {
     if (saving) return;
     setSaving(true); setError('');
     try {
-      await onComplete(skip ? [] : QUESTIONS.flatMap((item, i) => answers[i] ? [{ question: item.prompt, answer: answers[i] }] : []));
+      await onComplete(skip ? [] : QUESTIONS.flatMap((item, i) => answers[i] ? [{ question: item.prompt, answer: answers[i] }] : []), !skip && createInitialMap);
     } catch {
       setError('Your answers could not be saved. Please try again; you can also skip for now.');
       setSaving(false);
@@ -61,15 +63,22 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
           <Text style={[styles.optionText, answers[index] === option && styles.optionTextSelected]}>{option}</Text>
         </Pressable>)}
       </View>
+      {index === QUESTIONS.length - 1 && Object.keys(answers).length > 0 ? <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: createInitialMap }} onPress={() => setCreateInitialMap(value => !value)} style={styles.aiConsent}>
+        <View style={[styles.aiConsentBox, createInitialMap && styles.aiConsentBoxChecked]}>{createInitialMap ? <AppIcon name="check" color="#536C53" size={13} /> : null}</View>
+        <View style={styles.aiConsentCopy}>
+          <Text style={styles.aiConsentTitle}>Create my starting emotion web</Text>
+          <Text style={styles.aiConsentBody}>With your permission, Teddy Bud will send these answers once to its AI service to estimate the 10 emotion values and energy level. The result is labelled as an AI estimate and saved on this device. This is optional and not a diagnosis.</Text>
+        </View>
+      </Pressable> : null}
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
       <View style={styles.actions}>
         <Pressable accessibilityRole="button" disabled={saving || index === 0} onPress={() => setIndex(current => Math.max(0, current - 1))} style={styles.secondary}><Text style={styles.secondaryText}>Back</Text></Pressable>
         {index < QUESTIONS.length - 1
           ? <Pressable accessibilityRole="button" disabled={saving} onPress={() => setIndex(current => Math.min(QUESTIONS.length - 1, current + 1))} style={styles.primary}><Text style={styles.primaryText}>{answers[index] ? 'Continue' : 'Skip question'}</Text></Pressable>
-          : <Pressable accessibilityRole="button" disabled={saving} onPress={() => void finish()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Finish'}</Text></Pressable>}
+          : <Pressable accessibilityRole="button" disabled={saving} onPress={() => { finish().catch(() => undefined); }} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Finish'}</Text></Pressable>}
       </View>
-      <Pressable accessibilityRole="button" disabled={saving} onPress={() => void finish(true)} style={styles.skip}><Text style={styles.skipText}>Skip the survey for now</Text></Pressable>
-      <Text style={styles.privacy}>Your responses are saved in this account’s encrypted local app data. They are not sent to Teddy Bud’s servers as survey records. You can change what you share in settings.</Text>
+      <Pressable accessibilityRole="button" disabled={saving} onPress={() => { finish(true).catch(() => undefined); }} style={styles.skip}><Text style={styles.skipText}>Skip the survey for now</Text></Pressable>
+      <Text style={styles.privacy}>Your answers stay in this account’s encrypted local app data unless you opt in above. If enabled, they are sent once to the AI service only to create your starting emotion web; the generated scores are saved on this device.</Text>
     </ScrollView>
   </View>;
 }
@@ -97,5 +106,12 @@ const styles = StyleSheet.create({
   skip: { alignItems: 'center', padding: 16, marginTop: 4 },
   skipText: { color: '#685443', fontSize: 14, fontWeight: '600' },
   privacy: { color: '#85837D', fontSize: 12, lineHeight: 18, marginTop: 10 },
+  aiConsent: { flexDirection: 'row', alignItems: 'flex-start', gap: 11, padding: 14, borderRadius: 15, borderWidth: 1, borderColor: '#E2D5C9', backgroundColor: '#FBF6F1', marginTop: 20 },
+  aiConsentBox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, borderColor: '#A88D78', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  aiConsentBoxChecked: { backgroundColor: '#685443', borderColor: '#685443' },
+  aiConsentTick: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', lineHeight: 17 },
+  aiConsentCopy: { flex: 1, gap: 5 },
+  aiConsentTitle: { color: '#514234', fontSize: 13, fontWeight: '700' },
+  aiConsentBody: { color: '#73736E', fontSize: 11, lineHeight: 16 },
   error: { color: '#8D473F', marginTop: 12 },
 });

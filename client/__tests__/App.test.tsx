@@ -4,7 +4,7 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { Animated, Modal, ScrollView, Share, Text } from 'react-native';
+import { Animated, Image, Modal, ScrollView, Share, Text } from 'react-native';
 import { ChatPage, EmotionsPage, JournalPage } from '../App';
 
 jest.mock('@react-native-documents/picker', () => ({
@@ -118,6 +118,22 @@ test('chat composer sends on Enter and keeps the send button available after a f
   expect(renderer.root.findAllByProps({ accessibilityLabel: 'Attach an image' }).length).toBeGreaterThan(0);
   await ReactTestRenderer.act(async () => renderer.unmount());
 }, 15000);
+
+test('chat renders an uploaded image inside the sender message bubble', async () => {
+  const noop = jest.fn();
+  const imageDataUrl = 'data:image/png;base64,aGVsbG8=';
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <ChatPage wide={false} messages={[{ id: 7, author: 'you', text: 'What is this?', time: 'Now', imageDataUrl }]} conversationTitle="Image chat" onOpenHistory={noop} onRenameChat={noop} isPinned={false} onTogglePin={noop} onOpenCrisisResources={noop} emergencyCallOption={null} crisisHelplineOption={null} onCallEmergency={noop} onCallHelpline={noop} onTextHelpline={noop} onOpenHelplineWebsite={noop} memorySuggestion={null} onSaveMemorySuggestion={noop} onDismissMemorySuggestion={noop} draft="" setDraft={noop} onSend={noop} onStop={noop} onRetry={noop} retryPending={false} isSending={false} chatError={null} />,
+    );
+  });
+  const image = renderer.root.findByProps({ accessibilityLabel: 'Image you uploaded' });
+  expect(image.type).toBe(Image);
+  expect(image.props.source).toEqual({ uri: imageDataUrl });
+  expect(renderer.root.findAllByProps({ children: 'What is this?' }).length).toBeGreaterThan(0);
+  await ReactTestRenderer.act(async () => renderer.unmount());
+});
 
 test('chat shows three dots and announces when Teddy Bud is responding', async () => {
   const noop = jest.fn();

@@ -24,6 +24,7 @@ Teddy Bud is an AI companion, not a therapist, emergency service, or substitute 
 ## Product requirements
 
 - **Conversation first:** natural text conversations, streaming responses, history, and clear retry/error states.
+- **Contextual Teddy stickers:** nine separate bundled sticker poses can accompany an assistant reply when the moment fits; they are not a user-facing sticker picker and are suppressed for crisis-support conversations.
 - **Image understanding:** users can attach supported images and discuss them in chat.
 - **Voice input only:** speech-to-text is a composer aid. Users review and edit recognized text before sending. Teddy Bud does not speak replies or provide voice playback.
 - **Local-first personal data:** chats, memories, journals, and wellbeing entries stay on the device. They are not silently synchronized between devices.
@@ -36,7 +37,7 @@ Teddy Bud is an AI companion, not a therapist, emergency service, or substitute 
 
 ## Navigation and scope
 
-The app's primary navigation should stay compact. The four primary sections are **Chats**, **Discover**, **Memories**, and **Settings**. The central **+** action starts a new chat immediately; it must not open a generic action picker. Journal, emotional check-ins, wellbeing exercises, chat history, and privacy controls belong in Discover. Keep the app focused on companion conversation and personal reflection rather than adding generic document or productivity features.
+The app's primary navigation stays compact: **Chats**, **Discover**, **Memories**, and **Settings**. There is no oversized central **+** action. Journal, emotional check-ins, the emotion web, guided wellbeing exercises, chat history, and privacy controls belong in Discover. Keep the app focused on companion conversation and personal reflection rather than adding generic document or productivity features.
 
 Teddy Bud is distributed as an Android app and supported desktop packages. The internal React Native Web renderer is used for development and Electron packaging only; it is not a standalone web app. The separate portfolio website is a presentation site, not the app.
 

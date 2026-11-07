@@ -8,6 +8,8 @@ export type LocalMessage = {
   text: string;
   author: 'you' | 'teddy';
   time: string;
+  imageDataUrl?: string;
+  stickerId?: import('./stickers').TeddyStickerId;
 };
 
 export type LocalConversation = {
@@ -26,6 +28,7 @@ export type EmotionCheckIn = {
   energy: number;
   support: 'listen' | 'advice' | 'encouragement' | 'unsure';
   note?: string;
+  origin?: 'survey-ai' | 'self';
 };
 
 export const EMOTION_AXES = [
@@ -175,7 +178,7 @@ function normalize(value: unknown): LocalAppData {
     conversations,
     activeConversationId,
     emotionCheckIns: Array.isArray(data.emotionCheckIns)
-      ? data.emotionCheckIns.filter((entry): entry is EmotionCheckIn => Boolean(entry && typeof entry.id === 'string' && typeof entry.createdAt === 'string' && entry.emotions && typeof entry.emotions === 'object' && !Array.isArray(entry.emotions) && Object.entries(entry.emotions).every(([key, score]) => EMOTION_AXES.some(axis => axis.id === key) && typeof score === 'number' && Number.isInteger(score) && score >= 0 && score <= 5) && typeof entry.energy === 'number' && Number.isInteger(entry.energy) && entry.energy >= 0 && entry.energy <= 5 && ['listen', 'advice', 'encouragement', 'unsure'].includes(entry.support) && (entry.note === undefined || typeof entry.note === 'string'))).slice(0, 500)
+      ? data.emotionCheckIns.filter((entry): entry is EmotionCheckIn => Boolean(entry && typeof entry.id === 'string' && typeof entry.createdAt === 'string' && entry.emotions && typeof entry.emotions === 'object' && !Array.isArray(entry.emotions) && Object.entries(entry.emotions).every(([emotionKey, score]) => EMOTION_AXES.some(axis => axis.id === emotionKey) && typeof score === 'number' && Number.isInteger(score) && score >= 0 && score <= 5) && typeof entry.energy === 'number' && Number.isInteger(entry.energy) && entry.energy >= 0 && entry.energy <= 5 && ['listen', 'advice', 'encouragement', 'unsure'].includes(entry.support) && (entry.note === undefined || typeof entry.note === 'string'))).slice(0, 500)
       : [],
     journalEntries: Array.isArray(data.journalEntries) ? data.journalEntries.filter((entry): entry is JournalEntry => Boolean(entry && typeof entry.id === 'string' && typeof entry.createdAt === 'string' && typeof entry.title === 'string' && entry.title.length <= 160 && typeof entry.body === 'string' && entry.body.length <= 30000 && typeof entry.prompt === 'string')).slice(0, 1000) : [],
     memories: Array.isArray(data.memories)
@@ -293,12 +296,18 @@ export function findRelevantChatHistory(
 }
 
 function isLocalMessage(message: unknown): message is LocalMessage {
-  return Boolean(message)
-    && typeof message === 'object'
-    && typeof (message as LocalMessage).id === 'number'
-    && typeof (message as LocalMessage).text === 'string'
-    && ((message as LocalMessage).author === 'you' || (message as LocalMessage).author === 'teddy')
-    && typeof (message as LocalMessage).time === 'string';
+  if (!message || typeof message !== 'object') return false;
+  const candidate = message as LocalMessage;
+  return typeof candidate.id === 'number'
+    && typeof candidate.text === 'string'
+    && (candidate.author === 'you' || candidate.author === 'teddy')
+    && typeof candidate.time === 'string'
+    && (candidate.stickerId === undefined
+      || ['wave', 'giggle', 'hug', 'curious', 'sleepy', 'sad', 'celebrate', 'cozy', 'heart'].includes(candidate.stickerId))
+    && (candidate.imageDataUrl === undefined
+      || (typeof candidate.imageDataUrl === 'string'
+        && candidate.imageDataUrl.length <= 11_200_000
+        && /^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(candidate.imageDataUrl)));
 }
 
 export class LocalDataService {

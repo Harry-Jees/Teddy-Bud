@@ -274,18 +274,50 @@ export class BrowserAuthService {
       },
     );
     if (!saved) throw new Error('Biometric sign-in could not be enabled on this device.');
+
+    // Saving a protected credential does not itself invoke Android's prompt.
+    // Read it back now so the user explicitly confirms biometric setup in the system dialog.
+    try {
+      const confirmed = await Keychain.getGenericPassword({
+        service: NATIVE_BIOMETRIC_SERVICE,
+        accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET,
+        authenticationPrompt: {
+          title: 'Confirm Teddy Bud sign-in',
+          subtitle: 'Verify your fingerprint to finish setup',
+          cancel: 'Not now',
+        },
+      });
+      if (!confirmed || typeof confirmed === 'boolean'
+        || confirmed.username !== pendingBiometricCredentials.username
+        || confirmed.password !== pendingBiometricCredentials.password) {
+        throw new Error('Biometric confirmation was not completed.');
+      }
+    } catch (error) {
+      await Keychain.resetGenericPassword({ service: NATIVE_BIOMETRIC_SERVICE });
+      throw error;
+    }
+
     const marker = await Keychain.setGenericPassword('biometric', 'enabled', {
       service: NATIVE_BIOMETRIC_SETUP_SERVICE,
       accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
     });
-    if (!marker) throw new Error('Teddy Bud could not save the biometric sign-in setting.');
+    if (!marker) {
+      await Keychain.resetGenericPassword({ service: NATIVE_BIOMETRIC_SERVICE });
+      throw new Error('Teddy Bud could not save the biometric sign-in setting.');
+    }
   }
 
   async signInWithBiometrics(): Promise<StoredSession> {
     if (Platform.OS !== 'android') throw new Error('Biometric sign-in is available on Android only.');
     const credentials = await Keychain.getGenericPassword({
       service: NATIVE_BIOMETRIC_SERVICE,
-      authenticationPrompt: { title: 'Sign in to Teddy Bud' },
+      accessControl: Keychain.ACCESS_CONTROL.BIOMETRY_CURRENT_SET,
+      authenticationPrompt: {
+        title: 'Unlock Teddy Bud',
+        subtitle: 'Verify your fingerprint to open your private space',
+        description: 'Your biometric stays on this device. Your password is the fallback.',
+        cancel: 'Use password',
+      },
     });
     if (!credentials || typeof credentials === 'boolean') throw new Error('Biometric sign-in has not been enabled on this device.');
     return this.signIn(credentials.username, credentials.password);
@@ -346,6 +378,9 @@ export class BrowserAuthService {
         });
       }
     } finally {
+      // Explicit sign-out must revoke biometric auto-entry as well as the active session.
+      // Otherwise a saved device credential could silently sign the user back in.
+      await this.disableBiometricSignIn();
       await this.clear();
     }
   }

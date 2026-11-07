@@ -801,6 +801,41 @@ test('model catalog advertises only configured Cloudflare Workers AI models', as
   assert.ok(!result.body.data[1].capabilities.includes('vision'));
 });
 
+test('routes authenticated text and image requests to the correct Workers AI models', async () => {
+  const env = makeEnv();
+  const accessToken = await createSession(env, 'workers-ai-routing-user');
+  const calls = [];
+  env.AI.run = async (model, options) => {
+    calls.push({ model, options });
+    return { response: model === '@cf/qwen/qwen3.8-27b' ? 'Image understood.' : 'Text understood.' };
+  };
+
+  const textReply = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello Teddy.' }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(textReply.status, 200);
+  assert.equal(calls[0].model, '@cf/zai-org/glm-4.7-flash');
+  assert.equal(calls[0].options.messages.at(-1).content, 'Hello Teddy.');
+
+  const imageDataUrl = 'data:image/png;base64,AA==';
+  const imageReply = await jsonResponse(await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: [
+      { type: 'text', text: 'Describe this image.' },
+      { type: 'image_url', image_url: { url: imageDataUrl } },
+    ] }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(imageReply.status, 200);
+  assert.equal(calls[1].model, '@cf/qwen/qwen3.8-27b');
+  assert.deepEqual(calls[1].options.messages.at(-1).content, [
+    { type: 'text', text: 'Describe this image.' },
+    { type: 'image_url', image_url: { url: imageDataUrl } },
+  ]);
+});
+
 test('public health reports Cloudflare Workers AI binding status without inference', async () => {
   const env = makeEnv();
   const ready = await jsonResponse(await worker.fetch(request('/health'), env));
