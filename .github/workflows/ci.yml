@@ -9,7 +9,7 @@ on:
     branches: [main]
     paths-ignore:
       - 'dist/**'
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -27,6 +27,8 @@ jobs:
         working-directory: client
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -48,6 +50,8 @@ jobs:
         working-directory: gateway-worker
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -62,6 +66,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -147,6 +153,8 @@ jobs:
               dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -209,9 +217,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
+        with:
           repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event.pull_request.head.ref || github.ref }}
-      - name: Download artifacts from the selected run
+          persist-credentials: false
+      - name: Download artifacts from this successful build run
         uses: actions/download-artifact@v5
         with:
           pattern: teddy-bud-*
