@@ -2828,21 +2828,59 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
     const dx = b.x - a.x, dy = b.y - a.y;
     return <View key={color + a.x + a.y + b.x + b.y} pointerEvents="none" style={{ position: 'absolute', left: (a.x+b.x)/2-Math.sqrt(dx*dx+dy*dy)/2, top: (a.y+b.y)/2-width/2, width: Math.sqrt(dx*dx+dy*dy), height: width, backgroundColor: color, transform: [{ rotate: Math.atan2(dy,dx)+'rad' }] }} />;
   };
+  const webBounce = useRef(new Animated.Value(1)).current;
+  const curvedRing = (level: number, color: string, strokeWidth: number) => {
+    const ringPoints = EMOTION_AXES.map((_, i) => point(i, level));
+    return ringPoints.map((a, i) => {
+      const b = ringPoints[(i + 1) % axisCount]!;
+      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const control = { x: midpoint.x + (center - midpoint.x) * 0.34, y: midpoint.y + (center - midpoint.y) * 0.34 };
+      const samples = [0.25, 0.5, 0.75, 1].map(t => ({
+        x: (1-t)*(1-t)*a.x + 2*(1-t)*t*control.x + t*t*b.x,
+        y: (1-t)*(1-t)*a.y + 2*(1-t)*t*control.y + t*t*b.y,
+      }));
+      const chain = [a, ...samples];
+      return chain.slice(0, -1).map((from, segment) => line(from, chain[segment + 1]!, color, strokeWidth));
+    });
+  };
   const renderWeb = (data?: Record<string, number>) => {
     const values = EMOTION_AXES.map(axis => data?.[axis.id] ?? 0);
-    return <View accessibilityLabel="Spider web chart showing self-rated emotions from zero to five" style={{ width: size, height: size, alignSelf: 'center', position: 'relative' }}>
-      {[1,2,3,4,5].map(level => EMOTION_AXES.map((_, i) => line(point(i, level), point((i+1)%axisCount, level), '#E8DDD5', 1)))}
-      {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D8CBC2', 1))}
-      {EMOTION_AXES.map((axis,i) => {
-        const label = point(i,5.75);
-        return <React.Fragment key={axis.id}>
-          <Text style={{position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}}>{axis.label}</Text>
-          {data && values[i] > 0 ? <View style={{position:'absolute',left:point(i,values[i]).x-5,top:point(i,values[i]).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#B87862',borderWidth:2,borderColor:'#FFF9F4'}} /> : null}
-        </React.Fragment>;
-      })}
-      {data ? values.map((value,i) => line(point(i,value), point((i+1)%axisCount,values[(i+1)%axisCount]), '#B87862', 2.5)) : null}
-      <View style={{position:'absolute',left:center-4,top:center-4,width:8,height:8,borderRadius:4,backgroundColor:'#B87862'}} />
-    </View>;
+    return <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Emotion web. Touch to feel the web gently bounce."
+      accessibilityHint="The connected emotion web responds with a soft elastic movement."
+      onPressIn={() => Animated.spring(webBounce, { toValue: 0.965, useNativeDriver: true, speed: 1.1, bounciness: 8 }).start()}
+      onPressOut={() => Animated.sequence([
+        Animated.spring(webBounce, { toValue: 1.035, useNativeDriver: true, speed: 0.45, bounciness: 10 }),
+        Animated.spring(webBounce, { toValue: 1, useNativeDriver: true, speed: 0.65, bounciness: 5 }),
+      ]).start()}
+      style={{ width: size, height: size, alignSelf: 'center' }}
+    >
+      <Animated.View style={{ width: size, height: size, position: 'relative', transform: [{ scale: webBounce }] }}>
+        <View pointerEvents="none" style={{ position: 'absolute', left: center-radius*0.86, top: center-radius*0.86, width: radius*1.72, height: radius*1.72, borderRadius: radius, backgroundColor: 'rgba(150, 108, 78, 0.10)', borderWidth: 1, borderColor: 'rgba(150, 108, 78, 0.10)' }} />
+        {[1,2,3,4,5].map(level => <React.Fragment key={'ring-'+level}>{curvedRing(level, level===5?'#D5C1B2':'#E5D8CE', level===5?1.4:1)}</React.Fragment>)}
+        {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D5C5B8', 1))}
+        {EMOTION_AXES.map((axis,i) => {
+          const label = point(i,5.75);
+          const dot = point(i,5);
+          return <React.Fragment key={axis.id}>
+            <Text style={{position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}}>{axis.label}</Text>
+            <View pointerEvents="none" style={{position:'absolute',left:dot.x-4,top:dot.y-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D',borderWidth:1.5,borderColor:'#FFF9F4'}} />
+          </React.Fragment>;
+        })}
+        {data ? curvedRing(0.01, '#B87862', 0) : null}
+        {data ? values.map((value,i) => {
+          const a = point(i,value);
+          const b = point((i+1)%axisCount,values[(i+1)%axisCount]!);
+          const midpoint = {x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+          const control = {x:midpoint.x+(center-midpoint.x)*0.28,y:midpoint.y+(center-midpoint.y)*0.28};
+          const samples = [0.2,0.4,0.6,0.8,1].map(t=>({x:(1-t)*(1-t)*a.x+2*(1-t)*t*control.x+t*t*b.x,y:(1-t)*(1-t)*a.y+2*(1-t)*t*control.y+t*t*b.y}));
+          return <React.Fragment key={'data-'+i}>{[a,...samples].slice(0,-1).map((from,j)=>line(from,samples[j]!, '#A86F52', 2.6))}</React.Fragment>;
+        }) : null}
+        {data ? values.map((value,i) => value>0 ? <View key={'value-'+i} pointerEvents="none" style={{position:'absolute',left:point(i,value).x-5,top:point(i,value).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#A86F52',borderWidth:2,borderColor:'#FFF9F4'}} /> : null) : null}
+        <View pointerEvents="none" style={{position:'absolute',left:center-4,top:center-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D'}} />
+      </Animated.View>
+    </Pressable>;
   };
   return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36,alignItems:'stretch'}}>
     <View style={{maxWidth:760,width:'100%',alignSelf:'center'}}>
