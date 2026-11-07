@@ -189,25 +189,34 @@ jobs:
             status="$(curl --silent --show-error -o /dev/null -w '%{http_code}' "$WORKER_URL$path")"
             test "$status" = "401" || { echo "::error::$path expected HTTP 401 without a session, got $status."; exit 1; }
           done
-          curl --silent --show-error --fail -X OPTIONS \
-            -H 'Origin: teddybud-app://app' \
-            -H 'Access-Control-Request-Method: POST' \
-            -H 'Access-Control-Request-Headers: content-type' \
-            -D "$RUNNER_TEMP/desktop-cors-headers.txt" \
-            -o /dev/null "$WORKER_URL/auth/signup"
-          grep -Fqi 'Access-Control-Allow-Origin: teddybud-app://app' "$RUNNER_TEMP/desktop-cors-headers.txt" || {
-            echo "::error::Desktop custom-protocol origin is not allowed by production gateway CORS."
+          cors_ready=false
+          for attempt in $(seq 1 10); do
+            probe="cors_probe=$(date +%s)-$attempt"
+            curl --silent --show-error --fail -X OPTIONS \
+              -H 'Origin: teddybud-app://app' \
+              -H 'Access-Control-Request-Method: POST' \
+              -H 'Access-Control-Request-Headers: content-type' \
+              -D "$RUNNER_TEMP/desktop-cors-headers.txt" \
+              -o /dev/null "$WORKER_URL/auth/signup?$probe"
+            curl --silent --show-error --fail -X OPTIONS \
+              -H 'Origin: null' \
+              -H 'Access-Control-Request-Method: POST' \
+              -H 'Access-Control-Request-Headers: content-type' \
+              -D "$RUNNER_TEMP/opaque-cors-headers.txt" \
+              -o /dev/null "$WORKER_URL/auth/signup?$probe"
+            if grep -Fqi 'Access-Control-Allow-Origin: teddybud-app://app' "$RUNNER_TEMP/desktop-cors-headers.txt" &&
+              ! grep -Fqi 'Access-Control-Allow-Origin: null' "$RUNNER_TEMP/opaque-cors-headers.txt"; then
+              cors_ready=true
+              break
+            fi
+            echo "CORS policy has not propagated to the public edge yet (attempt $attempt/10); retrying."
+            sleep 6
+          done
+          if [ "$cors_ready" != true ]; then
+            echo "::error::Production CORS did not converge to the verified origin policy after 10 cache-busted probes."
+            echo "Approved-origin response:"
             cat "$RUNNER_TEMP/desktop-cors-headers.txt"
-            exit 1
-          }
-          curl --silent --show-error --fail -X OPTIONS \
-            -H 'Origin: null' \
-            -H 'Access-Control-Request-Method: POST' \
-            -H 'Access-Control-Request-Headers: content-type' \
-            -D "$RUNNER_TEMP/opaque-cors-headers.txt" \
-            -o /dev/null "$WORKER_URL/auth/signup"
-          if grep -Fqi 'Access-Control-Allow-Origin: null' "$RUNNER_TEMP/opaque-cors-headers.txt"; then
-            echo "::error::Opaque null origin must not receive CORS access to authentication routes."
+            echo "Opaque-origin response:"
             cat "$RUNNER_TEMP/opaque-cors-headers.txt"
             exit 1
           fi
