@@ -2625,7 +2625,6 @@ function WellbeingStudio({wide}:{wide:boolean}) {
   const [remaining, setRemaining] = useState(180);
   const [active, setActive] = useState(false);
   const [completed, setCompleted] = useState(false);
-  const startedAt = useRef<number | null>(null);
   const routines = {
     breathe: { title: 'A slower breath', intro: 'Settle into a comfortable rhythm. Nothing to get right.', total: 180, cues: ['Breathe in softly', 'Let the breath leave slowly', 'Rest for a moment'] },
     ground: { title: 'Come back to now', intro: 'A gentle sensory pause. Let your attention wander naturally.', total: 180, cues: ['Notice the colours around you', 'Feel where your body is supported', 'Listen to the nearest sound', 'Notice the air on your skin', 'Let your eyes rest'] },
@@ -2675,7 +2674,6 @@ function WellbeingStudio({wide}:{wide:boolean}) {
       setRemaining(totalSeconds);
       setCompleted(false);
     }
-    startedAt.current = Date.now();
     setActive(true);
   };
   const reset = () => {
@@ -2868,7 +2866,6 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
             <View pointerEvents="none" style={{position:'absolute',left:dot.x-4,top:dot.y-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D',borderWidth:1.5,borderColor:'#FFF9F4'}} />
           </React.Fragment>;
         })}
-        {data ? curvedRing(0.01, '#B87862', 0) : null}
         {data ? values.map((value,i) => {
           const a = point(i,value);
           const b = point((i+1)%axisCount,values[(i+1)%axisCount]!);
