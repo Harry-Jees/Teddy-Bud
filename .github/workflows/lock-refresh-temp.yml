@@ -7,15 +7,16 @@ on:
       - '.github/workflows/lock-refresh-temp.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh:
+    if: github.ref == 'refs/heads/security/audit-fixes'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
-          persist-credentials: false
+          persist-credentials: true
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -24,6 +25,20 @@ jobs:
       - name: Resolve current compatible Wrangler dependency tree
         working-directory: gateway-worker
         run: npm update wrangler --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit refreshed lockfile on the security branch
+        working-directory: gateway-worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- package-lock.json; then
+            echo "Lockfile already current."
+            exit 0
+          fi
+          git add package-lock.json
+          git commit -m "Update Wrangler security dependencies"
+          git push origin "HEAD:$GITHUB_REF_NAME"
       - name: Export compressed lockfile for secure review
         working-directory: gateway-worker
         shell: bash
