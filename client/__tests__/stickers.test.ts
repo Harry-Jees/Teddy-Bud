@@ -36,4 +36,17 @@ describe('Teddy sticker protocol', () => {
     ['Can you explain this? I am confused.', 'curious'],
     ['I am stressed and overwhelmed.', 'cozy'],
     ['Thank you so much, I appreciate you.', 'hug'],
-  ])('infers a restrained¶»§q«^
+  ])('infers a restrained contextual sticker for %s', (message, expected) => {
+    expect(inferTeddySticker(message)).toBe(expected);
+  });
+
+  test('does not add a sticker to neutral messages', () => {
+    expect(inferTeddySticker('What is the capital of France?')).toBeUndefined();
+  });
+
+  test('maps each sticker ID to a separate bundled image', () => {
+    expect(getTeddySticker('wave').label).toBe('Waving Teddy');
+    expect(getTeddySticker('celebrate').label).toBe('Celebrating Teddy');
+    expect(getTeddySticker('cozy').label).toBe('Cozy Teddy with a warm drink');
+  });
+});
