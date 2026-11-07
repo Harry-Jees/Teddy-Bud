@@ -1380,8 +1380,9 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
 }) {
   const reduceMotion = useReducedMotionPreference();
   const { width } = useWindowDimensions();
-  const translateX = useRef(new Animated.Value(0)).current;
-  const previousIndex = useRef(primaryTabIndex(transitionKey as Page));
+  const currentIndex = primaryTabIndex(transitionKey as Page);
+  const translateX = useRef(new Animated.Value(-currentIndex * width)).current;
+  const previousIndex = useRef(currentIndex);
   const onSwipeRef = useRef(onSwipe);
   const enabledRef = useRef(enabled);
   const reduceMotionRef = useRef(reduceMotion);
@@ -1389,21 +1390,21 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
   enabledRef.current = enabled;
   reduceMotionRef.current = reduceMotion;
 
+  const frames = React.Children.toArray(children);
+
   useEffect(() => {
     const nextIndex = primaryTabIndex(transitionKey as Page);
     const previousPageIndex = previousIndex.current;
     previousIndex.current = nextIndex;
     translateX.stopAnimation();
+    const targetOffset = -nextIndex * width;
     if (previousPageIndex === nextIndex || reduceMotion) {
-      translateX.setValue(0);
+      translateX.setValue(targetOffset);
       return;
     }
-    const direction = nextIndex > previousPageIndex ? 1 : -1;
-    // Treat each primary tab as a full-width page in a horizontal pager.
-    translateX.setValue(direction * width);
     Animated.spring(translateX, {
-      toValue: 0,
-      speed: 20,
+      toValue: targetOffset,
+      speed: 18,
       bounciness: 1,
       useNativeDriver: true,
     }).start();
@@ -1412,48 +1413,76 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: (_event, gesture) =>
-      enabledRef.current && !reduceMotionRef.current && Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+      enabledRef.current && !reduceMotionRef.current
+      && Math.abs(gesture.dx) > 12
+      && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
     onPanResponderMove: (_event, gesture) => {
-      const drag = Math.max(-width, Math.min(width, gesture.dx));
-      translateX.setValue(drag);
+      const baseOffset = -previousIndex.current * width;
+      translateX.setValue(baseOffset + Math.max(-width, Math.min(width, gesture.dx)));
     },
     onPanResponderTerminate: () => {
-      Animated.spring(translateX, { toValue: 0, speed: 22, bounciness: 2, useNativeDriver: true }).start();
+      Animated.spring(translateX, {
+        toValue: -previousIndex.current * width,
+        speed: 22,
+        bounciness: 2,
+        useNativeDriver: true,
+      }).start();
     },
     onPanResponderRelease: (_event, gesture) => {
+      const activeIndex = previousIndex.current;
+      const targetDirection: -1 | 1 = gesture.dx < 0 ? 1 : -1;
+      const targetIndex = Math.max(0, Math.min(frames.length - 1, activeIndex + targetDirection));
       const validSwipe = Math.abs(gesture.dx) >= Math.max(56, width * 0.16)
-        && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2;
+        && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.2
+        && targetIndex !== activeIndex;
+
       if (!validSwipe) {
-        Animated.spring(translateX, { toValue: 0, speed: 22, bounciness: 2, useNativeDriver: true }).start();
+        Animated.spring(translateX, {
+          toValue: -activeIndex * width,
+          speed: 22,
+          bounciness: 2,
+          useNativeDriver: true,
+        }).start();
         return;
       }
-      const direction = gesture.dx < 0 ? 1 : -1;
-      const currentIndex = primaryTabIndex(transitionKey as Page);
-      const nextIndex = Math.max(0, Math.min(mobileNavItems.length - 1, currentIndex + direction));
-      if (nextIndex === currentIndex) {
-        Animated.spring(translateX, { toValue: 0, speed: 22, bounciness: 2, useNativeDriver: true }).start();
-        return;
-      }
-      // Move the current frame completely off-screen, then let the next tab enter from its edge.
+
       Animated.timing(translateX, {
-        toValue: direction > 0 ? -width : width,
-        duration: 175,
+        toValue: -targetIndex * width,
+        duration: 230,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (!finished) return;
-        translateX.setValue(direction > 0 ? width : -width);
-        onSwipeRef.current(direction);
+        previousIndex.current = targetIndex;
+        onSwipeRef.current(targetDirection);
       });
     },
   })).current;
 
-  return <Animated.View
-    {...(enabled ? panResponder.panHandlers : {})}
-    style={{ flex: 1, transform: [{ translateX }] }}
+  if (!enabled) {
+    return <View style={{ flex: 1 }}>{frames[currentIndex] ?? frames[0]}</View>;
+  }
+
+  return <View
+    {...panResponder.panHandlers}
+    style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}
   >
-    {children}
-  </Animated.View>;
+    <Animated.View
+      style={{
+        flex: 1,
+        width: width * frames.length,
+        flexDirection: 'row',
+        transform: [{ translateX }],
+      }}
+    >
+      {frames.map((frame, index) => <View
+        key={`teddy-tab-frame-${index}`}
+        style={{ width, height: '100%', flexShrink: 0 }}
+      >
+        {frame}
+      </View>)}
+    </Animated.View>
+  </View>;
 }
 function ConversationHistoryList({ conversations, activeConversationId, busyConversationId, onSelect, onPin, onDelete, onRename }: {
   conversations: Conversation[];
@@ -2944,6 +2973,7 @@ const styles = StyleSheet.create({
   authToggleText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
   authScreen: { flex: 1, backgroundColor: C.canvas }, authLoadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: C.canvas }, authLoadingMark: { width: 76, height: 76, borderRadius: 25, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24, overflow: 'hidden' }, authLoadingLogo: { width: 76, height: 76, borderRadius: 25 }, authLoadingTitle: { color: C.ink, fontSize: 20, lineHeight: 27, fontWeight: '600', textAlign: 'center', letterSpacing: -0.4 }, authLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 }, authLoadingHourglass: { width: 42, height: 64, marginTop: 22, alignItems: 'center', justifyContent: 'center', position: 'relative' }, authLoadingGlassTop: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderTopWidth: 3, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidTop: { width: '100%', backgroundColor: '#D8AD83', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }, authLoadingGlassNeck: { width: 5, height: 5, backgroundColor: C.cocoa }, authLoadingGlassBottom: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderBottomWidth: 3, borderTopLeftRadius: 11, borderTopRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidBottom: { width: '100%', backgroundColor: '#D8AD83', borderTopLeftRadius: 8, borderTopRightRadius: 8 }, authLoadingShimmer: { position: 'absolute', width: 42, height: 1, backgroundColor: '#E8C6A7', opacity: 0.55 }, authScrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 24, justifyContent: 'flex-start' }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 22 }, authMark: { width: 56, height: 56, borderRadius: 20, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 20 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
   root: { flex: 1, flexDirection: 'row', backgroundColor: C.canvas }, main: { flex: 1, minWidth: 0 },
+  pagerFrame: { flex: 1, width: '100%', minWidth: 0, height: '100%' },
   newChatButton: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatButtonCollapsed: { paddingHorizontal: 0, justifyContent: 'center' }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
   headerPinnedButton: { backgroundColor: '#EEE5DB' }, headerPinnedButtonLabel: { color: C.cocoaDark },
   accountCard: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, borderRadius: 14 }, accountCardCollapsed: { justifyContent: 'center', paddingHorizontal: 0 }, accountAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#E4DDD4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, accountAvatarImage: { width: 34, height: 34 }, accountAvatarText: { color: C.cocoaDark, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 }, accountCopy: { flex: 1 }, accountTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, accountSubtitle: { color: C.muted, fontSize: 11, marginTop: 3 }, accountArrow: { color: '#938A80', fontSize: 22 },
