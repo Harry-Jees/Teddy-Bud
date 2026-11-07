@@ -3469,6 +3469,7 @@ const styles = StyleSheet.create({
   mobileHistoryListContent: { paddingBottom: 18 },
   profileTextButton: { width: 'auto', minWidth: 66, paddingHorizontal: 10 },
   settingsCardForm: { width: '100%', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, padding: 16, marginBottom: 20, gap: 10 },
+  settingDivider: { height: 1, backgroundColor: C.line, marginVertical: 4 },
   characterChoices: { gap: 8, marginVertical: 4 },
   characterChoice: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: C.line, backgroundColor: '#FDFCFA', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9 },
   characterChoiceSelected: { borderColor: '#B89668', backgroundColor: '#F8F0E5' },
