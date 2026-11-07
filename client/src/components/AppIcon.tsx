@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import type { ViewStyle } from 'react-native';
 
 export type AppIconName =
   | 'sparkle' | 'edit' | 'close' | 'chevron' | 'info' | 'book'
@@ -10,8 +11,8 @@ type Props = { name: AppIconName; color?: string; size?: number };
 
 export function AppIcon({ name, color = '#685443', size = 18 }: Props) {
   const common = { backgroundColor: color } as const;
-  const line = (style: object, key: string) => <View key={key} style={[styles.line, common, style]} />;
-  const ring = (style: object, key: string) => <View key={key} style={[styles.ring, { borderColor: color }, style]} />;
+  const line = (style: ViewStyle, key: string) => <View key={key} style={[styles.line, common, style]} />;
+  const ring = (style: ViewStyle, key: string) => <View key={key} style={[styles.ring, { borderColor: color }, style]} />;
   let parts: React.ReactNode;
   switch (name) {
     case 'sparkle':
