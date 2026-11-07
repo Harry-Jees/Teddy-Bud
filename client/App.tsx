@@ -168,7 +168,6 @@ function AccessGate() {
   const [error, setError] = useState<string | null>(null);
   const [initialMode, setInitialMode] = useState<'login' | 'create'>('create');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
-  const biometricResumeInFlight = useRef(false);
 
   useEffect(() => {
     let mounted = true;
