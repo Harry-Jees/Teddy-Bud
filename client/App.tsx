@@ -644,6 +644,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       assistantCharacterId,
       assistantCharacterNames,
       onboardingSurveyAnswers,
+      reduceMotion: reduceMotionPreference,
+      hapticsEnabled,
     }).then(() => {
       if (!pendingLocalAction) setLocalDataSaveError(null);
     }).catch(error => {
@@ -959,6 +961,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
       onboardingSurveyAnswers,
+      reduceMotion: reduceMotionPreference,
+      hapticsEnabled,
     });
     setEmotionCheckIns(nextEntries);
     setLocalDataSaveError(null);
@@ -971,6 +975,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
       onboardingSurveyAnswers,
+      reduceMotion: reduceMotionPreference,
+      hapticsEnabled,
     });
     setEmotionCheckIns(nextEntries);
     setLocalDataSaveError(null);
@@ -983,6 +989,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
       onboardingSurveyAnswers,
+      reduceMotion: reduceMotionPreference,
+      hapticsEnabled,
     });
     setJournalEntries(nextEntries);
     setLocalDataSaveError(null);
@@ -995,6 +1003,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
       onboardingSurveyAnswers,
+      reduceMotion: reduceMotionPreference,
+      hapticsEnabled,
     });
     setJournalEntries(nextEntries);
     setLocalDataSaveError(null);
