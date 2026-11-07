@@ -30,7 +30,7 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 function emptyData(): LocalAppData {
-  return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, shareOnboardingSurvey: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' } };
+  return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, shareOnboardingSurvey: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' } };
 }
 
 describe('LocalDataService', () => {
@@ -61,7 +61,7 @@ describe('LocalDataService', () => {
       assistantName: 'Teddy',
       assistantCharacterId: 'teddy-bud',
       emotionCheckIns: [], journalEntries: [],
-      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' },
+      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
     };
     await service.save('account-a', accountData);
 
@@ -73,6 +73,23 @@ describe('LocalDataService', () => {
 
     expect(await service.load('account-a')).toEqual(emptyData());
     expect(await service.load('account-b')).toEqual({ ...emptyData(), shareMemories: true });
+  });
+
+  test('persists an uploaded image with its chat message and rejects malformed image data', async () => {
+    const imageDataUrl = 'data:image/png;base64,aGVsbG8=';
+    await service.save('account-image', {
+      ...emptyData(),
+      conversations: [{ id: 'image-chat', title: 'Image chat', createdAt: '2026-01-01T09:00:00.000Z', updatedAt: '2026-01-01T09:00:00.000Z', messages: [{ id: 1, text: 'What is in this picture?', author: 'you', time: '9:00 AM', imageDataUrl }] }],
+      activeConversationId: 'image-chat',
+    });
+    expect((await service.load('account-image')).conversations[0].messages[0].imageDataUrl).toBe(imageDataUrl);
+
+    await service.save('account-invalid-image', {
+      ...emptyData(),
+      conversations: [{ id: 'invalid-chat', title: 'Invalid image', createdAt: '2026-01-01T09:00:00.000Z', updatedAt: '2026-01-01T09:00:00.000Z', messages: [{ id: 2, text: 'bad image', author: 'you', time: '9:00 AM', imageDataUrl: 'javascript:alert(1)' as unknown as string }] }],
+      activeConversationId: 'invalid-chat',
+    });
+    expect((await service.load('account-invalid-image')).conversations[0].messages).toHaveLength(0);
   });
 
   test('keeps setup-answer sharing off by default and preserves explicit opt-in', async () => {
@@ -141,7 +158,7 @@ describe('LocalDataService', () => {
   test('retains existing memories when suggestions are disabled and keeps sharing independent', async () => {
     await service.save('account-a', {
       ...emptyData(),
-      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' },
+      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
       memories: [{ id: 1, text: 'Private note', date: 'Today' }],
       rememberInSession: false,
       shareMemories: true,
@@ -150,7 +167,7 @@ describe('LocalDataService', () => {
 
     expect(await service.load('account-a')).toEqual({
       ...emptyData(),
-      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' },
+      assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
       memories: [{ id: 1, text: 'Private note', date: 'Today' }],
       rememberInSession: false,
       shareMemories: true,

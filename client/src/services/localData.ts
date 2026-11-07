@@ -8,6 +8,7 @@ export type LocalMessage = {
   text: string;
   author: 'you' | 'teddy';
   time: string;
+  imageDataUrl?: string;
 };
 
 export type LocalConversation = {
@@ -26,6 +27,7 @@ export type EmotionCheckIn = {
   energy: number;
   support: 'listen' | 'advice' | 'encouragement' | 'unsure';
   note?: string;
+  origin?: 'survey-ai' | 'self';
 };
 
 export const EMOTION_AXES = [
@@ -293,12 +295,16 @@ export function findRelevantChatHistory(
 }
 
 function isLocalMessage(message: unknown): message is LocalMessage {
-  return Boolean(message)
-    && typeof message === 'object'
-    && typeof (message as LocalMessage).id === 'number'
-    && typeof (message as LocalMessage).text === 'string'
-    && ((message as LocalMessage).author === 'you' || (message as LocalMessage).author === 'teddy')
-    && typeof (message as LocalMessage).time === 'string';
+  if (!message || typeof message !== 'object') return false;
+  const candidate = message as LocalMessage;
+  return typeof candidate.id === 'number'
+    && typeof candidate.text === 'string'
+    && (candidate.author === 'you' || candidate.author === 'teddy')
+    && typeof candidate.time === 'string'
+    && (candidate.imageDataUrl === undefined
+      || (typeof candidate.imageDataUrl === 'string'
+        && candidate.imageDataUrl.length <= 11_200_000
+        && /^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(candidate.imageDataUrl)));
 }
 
 export class LocalDataService {

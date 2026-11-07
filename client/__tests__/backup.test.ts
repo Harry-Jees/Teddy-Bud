@@ -43,7 +43,8 @@ const sampleData: LocalAppData = {
   aboutMe: 'Likes short answers',
   assistantName: 'Buddy',
   assistantCharacterId: 'teddy-bud',
-  assistantCharacterNames: { 'teddy-bud': 'Buddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow', sage: 'Sage', ember: 'Ember', orbit: 'Orbit', muse: 'Muse', harbor: 'Harbor', nova: 'Nova' },
+  assistantCharacterNames: { 'teddy-bud': 'Buddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
+  onboardingSurveyAnswers: undefined,
 };
 
 describe('encrypted Teddy Bud backups', () => {
@@ -56,6 +57,17 @@ describe('encrypted Teddy Bud backups', () => {
     expect(backup).not.toContain('Private message text');
     expect(backup).not.toContain('Likes short answers');
     await expect(readEncryptedBackup(backup, 'account-a', 'a long private passphrase')).resolves.toEqual(sampleData);
+  });
+
+  test('round-trips uploaded chat images inside the encrypted backup', async () => {
+    const imageDataUrl = 'data:image/png;base64,aGVsbG8=';
+    const dataWithImage: LocalAppData = {
+      ...sampleData,
+      conversations: [{ ...sampleData.conversations[0], messages: [{ id: 9, text: 'What is this?', author: 'you', time: '9:10 AM', imageDataUrl }] }],
+    };
+    const backup = await createEncryptedBackup(dataWithImage, 'account-a', 'a long private passphrase');
+    expect(backup).not.toContain(imageDataUrl);
+    await expect(readEncryptedBackup(backup, 'account-a', 'a long private passphrase')).resolves.toEqual(dataWithImage);
   });
 
   test('rejects a wrong passphrase and a backup owned by another account', async () => {
