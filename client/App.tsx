@@ -157,6 +157,9 @@ function AccessGate() {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [busy, setBusy] = useState(true);
   const loadingOpacity = useRef(new Animated.Value(1)).current;
+  const __teddyBudExtractedStyles0 = StyleSheet.create({
+    style0: ({ flex: 1, opacity: loadingOpacity }) as const,
+  });
   const [error, setError] = useState<string | null>(null);
   const [initialMode, setInitialMode] = useState<'login' | 'create'>('create');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
@@ -262,7 +265,7 @@ function AccessGate() {
     return () => subscription.remove();
   }, [session]);
 
-  if (busy) return <Animated.View style={{ flex: 1, opacity: loadingOpacity }}><AuthLoading /></Animated.View>;
+  if (busy) return <Animated.View style={__teddyBudExtractedStyles0.style0}><AuthLoading /></Animated.View>;
   if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
   return <TeddyBud sessionToken={session.accessToken} username={session.username ?? ''} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
@@ -1429,6 +1432,15 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
 
   const frames = React.Children.toArray(children);
 
+  const __teddyBudExtractedStyles2 = StyleSheet.create({
+    style0: ({ flex: 1, minWidth: 0, overflow: 'hidden' }) as const,
+    style1: ({
+        width: width * frames.length,
+        height: '100%',
+        flexDirection: 'row',
+        transform: [{ translateX }],
+      }) as const,
+  });
   useEffect(() => {
     const nextIndex = primaryTabIndex(transitionKey as Page);
     const previousPageIndex = previousIndex.current;
@@ -1497,27 +1509,30 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
   })).current;
 
   if (!enabled) {
-    return <View style={{ flex: 1 }}>{frames[currentIndex] ?? frames[0]}</View>;
+    const __teddyBudExtractedStyles1 = StyleSheet.create({
+      style0: ({ flex: 1 }) as const,
+    });
+    return <View style={__teddyBudExtractedStyles1.style0}>{frames[currentIndex] ?? frames[0]}</View>;
   }
 
   return <View
     {...panResponder.panHandlers}
-    style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}
+    style={__teddyBudExtractedStyles2.style0}
   >
     <Animated.View
-      style={{
-        width: width * frames.length,
-        height: '100%',
-        flexDirection: 'row',
-        transform: [{ translateX }],
-      }}
+      style={__teddyBudExtractedStyles2.style1}
     >
-      {frames.map((frame, index) => <View
+      {frames.map((frame, index) => {
+        const __teddyBudExtractedStyles3 = StyleSheet.create({
+          style0: ({ width, height: '100%', flexShrink: 0 }) as const,
+        });
+        return <View
         key={`teddy-tab-frame-${index}`}
-        style={{ width, height: '100%', flexShrink: 0 }}
+        style={__teddyBudExtractedStyles3.style0}
       >
         {frame}
-      </View>)}
+      </View>;
+      })}
     </Animated.View>
   </View>;
 }
@@ -1683,6 +1698,10 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
   const [labelsCollapsed, setLabelsCollapsed] = useState(collapsed);
   const labelOpacity = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
   const chevronRotation = chevronProgress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+  const __teddyBudExtractedStyles4 = StyleSheet.create({
+    style0: ({ opacity: labelOpacity }) as const,
+    style1: ({ transform: [{ rotate: chevronRotation }] }) as const,
+  });
   const reduceMotion = useRef(false);
 
   useEffect(() => {
@@ -1755,7 +1774,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
       <View style={[styles.sidebarBrand, labelsCollapsed && styles.sidebarBrandCollapsed]}>
         <View style={[styles.sidebarIdentity, labelsCollapsed && styles.sidebarIdentityCollapsed]}>
           <View style={styles.brandMark}><Image source={teddyBudLogo} style={styles.brandLogo} accessibilityLabel="Teddy Bud" /></View>
-          {!labelsCollapsed && <Animated.View style={{ opacity: labelOpacity }}><Text style={styles.brandName}>Teddy Bud</Text><Text style={styles.sidebarCaption}>A quiet place to be</Text></Animated.View>}
+          {!labelsCollapsed && <Animated.View style={__teddyBudExtractedStyles4.style0}><Text style={styles.brandName}>Teddy Bud</Text><Text style={styles.sidebarCaption}>A quiet place to be</Text></Animated.View>}
         </View>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Start a new chat" accessibilityHint={labelsCollapsed ? 'Start a new conversation' : undefined} onPress={onNewConversation} style={({ pressed }) => [styles.newChatButton, labelsCollapsed && styles.newChatButtonCollapsed, pressed && styles.pressed]}>
@@ -1777,7 +1796,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
       </ScrollView>
       <View style={styles.sidebarBottom}>
         <View style={styles.sidebarRule} />
-        <Pressable accessibilityRole="button" accessibilityLabel={visualCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} accessibilityHint={visualCollapsed ? 'Show chat names and navigation labels' : 'Hide labels and keep the icon rail visible'} onPress={onToggleCollapsed} style={({ pressed }) => [styles.sidebarCollapseButton, styles.sidebarCollapseButtonBottom, visualCollapsed && styles.sidebarCollapseButtonCollapsed, pressed && styles.pressed]}><Animated.View style={{ transform: [{ rotate: chevronRotation }] }}><AppIcon name="chevron" color={C.cocoa} size={18} /></Animated.View></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={visualCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} accessibilityHint={visualCollapsed ? 'Show chat names and navigation labels' : 'Hide labels and keep the icon rail visible'} onPress={onToggleCollapsed} style={({ pressed }) => [styles.sidebarCollapseButton, styles.sidebarCollapseButtonBottom, visualCollapsed && styles.sidebarCollapseButtonCollapsed, pressed && styles.pressed]}><Animated.View style={__teddyBudExtractedStyles4.style1}><AppIcon name="chevron" color={C.cocoa} size={18} /></Animated.View></Pressable>
       </View>
     </Animated.View>
   );
@@ -1937,6 +1956,14 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
 }
 
 export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, editingMessageId, onEditMessage, onCancelEdit, onStop, onRetry, onRegenerate, retryPending, isSending, chatError }: { wide: boolean; bottomInset?: number; conversationId?: string | null; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; editingMessageId?: number | null; onEditMessage?: (message: Message) => void; onCancelEdit?: () => void; onStop: () => void; onRetry: () => void; onRegenerate?: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
+  const __teddyBudExtractedStyles6 = StyleSheet.create({
+    style0: ({ flexDirection: "row", alignItems: "center", gap: 7 }) as const,
+    style1: ({ width: 42, height: 42, borderRadius: 9, marginRight: 8 }) as const,
+    style2: ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }) as const,
+    style3: ({ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }) as const,
+    style4: ({ padding: 6 }) as const,
+    style5: ({ color: C.cocoa, fontWeight: '700' }) as const,
+  });
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
   const reduceMotion = useReducedMotionPreference();
@@ -2176,13 +2203,22 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         </View>
       </View> : <View style={styles.conversationColumn}>
         <View style={styles.dayDivider}><View style={styles.dividerLine} /><Text style={styles.dayText}>TODAY</Text><View style={styles.dividerLine} /></View>
-        {messages.map(message => <View key={message.id}>
+        {messages.map(message => {
+          const __teddyBudExtractedStyles5 = StyleSheet.create({
+            style0: ({ alignSelf: 'flex-end', marginRight: 4, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }) as const,
+            style1: ({ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }) as const,
+            style2: ({ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }) as const,
+            style3: ({ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }) as const,
+            style4: ({ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4' }) as const,
+            style5: ({ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }) as const,
+          });
+          return <View key={message.id}>
           <View style={[styles.messageRow, message.author === 'you' && styles.messageRowYou]}>
             {message.author === 'teddy' && <View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View>}
             <View style={[styles.messageBubble, message.author === 'you' ? styles.userBubble : styles.teddyBubble]}>{message.imageDataUrl && <Image source={{ uri: message.imageDataUrl }} style={styles.chatMessageImage} resizeMode="cover" accessibilityLabel="Image you uploaded" />} {message.author === 'teddy' ? <MarkdownReply content={message.text} /> : Boolean(message.text.trim()) && <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>}<Text style={[styles.messageTime, message.author === 'you' && styles.userMessageTime]}>{message.time}</Text></View>
           </View>
-          {message.author === 'you' && messages.filter(item => item.author === 'you').slice(-1)[0]?.id === message.id && onEditMessage && <Pressable accessibilityRole="button" accessibilityLabel="Edit and resend your last message" disabled={isSending} onPress={() => onEditMessage(message)} style={{ alignSelf: 'flex-end', marginRight: 4, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Edit & resend</Text></Pressable>}
-          {message.author === 'teddy' && messages[messages.length - 1]?.id === message.id && onRegenerate && <Pressable accessibilityRole="button" accessibilityLabel="Generate another reply" disabled={isSending} onPress={onRegenerate} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Try another reply</Text></Pressable>}
+          {message.author === 'you' && messages.filter(item => item.author === 'you').slice(-1)[0]?.id === message.id && onEditMessage && <Pressable accessibilityRole="button" accessibilityLabel="Edit and resend your last message" disabled={isSending} onPress={() => onEditMessage(message)} style={__teddyBudExtractedStyles5.style0}><Text style={__teddyBudExtractedStyles5.style1}>Edit & resend</Text></Pressable>}
+          {message.author === 'teddy' && messages[messages.length - 1]?.id === message.id && onRegenerate && <Pressable accessibilityRole="button" accessibilityLabel="Generate another reply" disabled={isSending} onPress={onRegenerate} style={__teddyBudExtractedStyles5.style2}><Text style={__teddyBudExtractedStyles5.style3}>Try another reply</Text></Pressable>}
           {message.author === 'teddy' && <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === 'web' ? 'Copy Teddy Bud reply' : 'Share Teddy Bud reply'} onPress={() => {
             if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
               runInBackground(navigator.clipboard.writeText(message.text)
@@ -2191,9 +2227,10 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
               return;
             }
             runInBackground(Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.')));
-          }} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4' }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>{Platform.OS === 'web' ? 'Copy reply' : 'Share reply'}</Text></Pressable>}
+          }} style={__teddyBudExtractedStyles5.style4}><Text style={__teddyBudExtractedStyles5.style5}>{Platform.OS === 'web' ? 'Copy reply' : 'Share reply'}</Text></Pressable>}
           {message.author === 'teddy' && memorySuggestion?.messageId === message.id && <MemorySuggestionCard fact={memorySuggestion.fact} onSave={onSaveMemorySuggestion} onDismiss={onDismissMemorySuggestion} />}
-        </View>)}
+        </View>;
+        })}
         {isThinking && (streamingReply
           ? <View style={styles.messageRow}><View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View><View style={[styles.messageBubble, styles.teddyBubble]}><MarkdownReply content={streamingReply} /></View></View>
           : <View style={styles.sendingRow}><View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View><TypingIndicator /></View>)}
@@ -2214,7 +2251,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       onPress={jumpToLatest}
       style={({ pressed }) => [styles.jumpToLatestButton, pressed && styles.pressed]}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}><AppIcon name="arrow" color={C.cocoaDark} size={14} /><Text style={styles.jumpToLatestText}>Latest</Text></View>
+      <View style={__teddyBudExtractedStyles6.style0}><AppIcon name="arrow" color={C.cocoaDark} size={14} /><Text style={styles.jumpToLatestText}>Latest</Text></View>
     </Pressable>}
     </View>
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
@@ -2229,8 +2266,8 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
           <AppIcon name="sparkle" color={C.cocoa} size={15} /><Text style={styles.chatToolLabel}>Save an occasion</Text>
         </Pressable>}
       </View>
-      {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={{ width: 42, height: 42, borderRadius: 9, marginRight: 8 }} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
-      {editingMessageId !== null && editingMessageId !== undefined && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={{ padding: 6 }}><Text style={{ color: C.cocoa, fontWeight: '700' }}>Cancel</Text></Pressable></View>}
+      {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={__teddyBudExtractedStyles6.style1} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
+      {editingMessageId !== null && editingMessageId !== undefined && <View style={__teddyBudExtractedStyles6.style2}><Text style={__teddyBudExtractedStyles6.style3}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={__teddyBudExtractedStyles6.style4}><Text style={__teddyBudExtractedStyles6.style5}>Cancel</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         <Pressable accessibilityRole="button" accessibilityLabel={speechListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Speech is transcribed into your editable message. Nothing is sent until you press Send." onPress={speechListening ? stopSpeechInput : () => { runInBackground(startSpeechInput()); }} disabled={isSending} style={({ pressed }) => [styles.voiceButton, speechListening && styles.voiceButtonActive, isSending && styles.buttonDisabled, pressed && styles.pressed]}>
@@ -2692,6 +2729,29 @@ function WellbeingStudio({wide}:{wide:boolean}) {
   const clock = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
   const phase = mode === 'breathe' ? cueIndex === 0 ? 'Breathe in' : cueIndex === 1 ? 'Breathe out' : 'Rest' : 'Take your time';
   const orbScale = useRef(new Animated.Value(1)).current;
+  const __teddyBudExtractedStyles7 = StyleSheet.create({
+    style0: ({fontSize:28,fontWeight:'700',color:C.cocoaDark}) as const,
+    style1: ({color:C.muted,lineHeight:22,marginTop:8,maxWidth:600}) as const,
+    style2: ({flexDirection:'row',flexWrap:'wrap',gap:9,marginTop:20}) as const,
+    style3: ({backgroundColor:'#F3EAE3',borderRadius:30,borderWidth:1,borderColor:'#E8D8CB',padding:wide?28:20,marginTop:16,alignItems:'center'}) as const,
+    style4: ({fontSize:12,letterSpacing:1.5,fontWeight:'700',color:'#8A6D58'}) as const,
+    style5: ({fontSize:23,fontWeight:'700',color:C.cocoaDark,marginTop:10,textAlign:'center'}) as const,
+    style6: ({fontSize:14,lineHeight:21,color:C.muted,marginTop:7,textAlign:'center',maxWidth:420}) as const,
+    style7: ({width:156,height:156,borderRadius:78,backgroundColor:'#D9BBA7',borderWidth:10,borderColor:'#EAD8CA',alignItems:'center',justifyContent:'center',marginTop:24,marginBottom:18,transform:[{scale:orbScale}]}) as const,
+    style8: ({width:116,height:116,borderRadius:58,backgroundColor:'#C69A7D',alignItems:'center',justifyContent:'center'}) as const,
+    style9: ({fontSize:15,fontWeight:'700',color:'#FFF9F4'}) as const,
+    style10: ({fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',minHeight:28}) as const,
+    style11: ({fontSize:35,fontWeight:'300',fontVariant:['tabular-nums'],color:C.cocoaDark,marginTop:8}) as const,
+    style12: ({height:6,width:'100%',maxWidth:360,backgroundColor:'#E5D5C9',borderRadius:8,overflow:'hidden',marginTop:12}) as const,
+    style13: ({height:6,width:`${progress*100}%`,backgroundColor:'#96745E',borderRadius:8}) as const,
+    style14: ({flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10,flexWrap:'wrap',marginTop:22}) as const,
+    style15: ({color:'#FFF',fontWeight:'700'}) as const,
+    style16: ({paddingVertical:13,paddingHorizontal:17,borderRadius:17,backgroundColor:'#E9D9CE'}) as const,
+    style17: ({color:C.cocoaDark,fontWeight:'600'}) as const,
+    style18: ({flexDirection:'row',alignItems:'center',gap:8,marginTop:18}) as const,
+    style19: ({fontSize:12,color:C.muted}) as const,
+    style20: ({fontSize:12,lineHeight:18,color:'#846F5F',textAlign:'center',marginTop:18,maxWidth:420}) as const,
+  });
   useEffect(() => {
     if (!active || mode !== 'breathe') {
       Animated.spring(orbScale, { toValue: 1, useNativeDriver: true, speed: 1.2, bounciness: 2 }).start();
@@ -2702,48 +2762,93 @@ function WellbeingStudio({wide}:{wide:boolean}) {
     return undefined;
   }, [active, cueIndex, mode, orbScale]);
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
-    <Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A softer moment</Text>
-    <Text style={{color:C.muted,lineHeight:22,marginTop:8,maxWidth:600}}>Choose a feeling, settle in, and let the session guide itself. You do not need to keep tapping through steps.</Text>
-    <View style={{flexDirection:'row',flexWrap:'wrap',gap:9,marginTop:20}}>
+    <Text style={__teddyBudExtractedStyles7.style0}>A softer moment</Text>
+    <Text style={__teddyBudExtractedStyles7.style1}>Choose a feeling, settle in, and let the session guide itself. You do not need to keep tapping through steps.</Text>
+    <View style={__teddyBudExtractedStyles7.style2}>
       {([{id:'breathe',label:'Breathe',symbol:'◌'},{id:'ground',label:'Grounding',symbol:'⌂'},{id:'focus',label:'Focus',symbol:'✳'},{id:'rest',label:'Wind down',symbol:'☾'}] as const).map(item=>
-        <Pressable key={item.id} accessibilityRole="button" accessibilityState={{selected:mode===item.id}} onPress={()=>chooseMode(item.id)} style={({pressed})=>[{paddingVertical:12,paddingHorizontal:15,borderRadius:18,backgroundColor:mode===item.id?'#E9D7CA':C.paper,borderWidth:1,borderColor:mode===item.id?'#B9957E':C.line,opacity:pressed?0.82:1}]}>
-          <Text style={{color:C.cocoaDark,fontWeight:'600'}}>{item.symbol}  {item.label}</Text>
-        </Pressable>
+        {
+        const __teddyBudExtractedStyles8 = StyleSheet.create({
+          style0: ({color:C.cocoaDark,fontWeight:'600'}) as const,
+        });
+        return <Pressable key={item.id} accessibilityRole="button" accessibilityState={{selected:mode===item.id}} onPress={()=>chooseMode(item.id)} style={({pressed})=>[{paddingVertical:12,paddingHorizontal:15,borderRadius:18,backgroundColor:mode===item.id?'#E9D7CA':C.paper,borderWidth:1,borderColor:mode===item.id?'#B9957E':C.line,opacity:pressed?0.82:1}]}>
+          <Text style={__teddyBudExtractedStyles8.style0}>{item.symbol}  {item.label}</Text>
+        </Pressable>;
+      }
       )}
     </View>
-    <View style={{backgroundColor:'#F3EAE3',borderRadius:30,borderWidth:1,borderColor:'#E8D8CB',padding:wide?28:20,marginTop:16,alignItems:'center'}}>
-      <Text style={{fontSize:12,letterSpacing:1.5,fontWeight:'700',color:'#8A6D58'}}>A LITTLE SPACE FOR YOU</Text>
-      <Text style={{fontSize:23,fontWeight:'700',color:C.cocoaDark,marginTop:10,textAlign:'center'}}>{routine.title}</Text>
-      <Text style={{fontSize:14,lineHeight:21,color:C.muted,marginTop:7,textAlign:'center',maxWidth:420}}>{routine.intro}</Text>
-      <Animated.View style={{width:156,height:156,borderRadius:78,backgroundColor:'#D9BBA7',borderWidth:10,borderColor:'#EAD8CA',alignItems:'center',justifyContent:'center',marginTop:24,marginBottom:18,transform:[{scale:orbScale}]}}>
-        <View style={{width:116,height:116,borderRadius:58,backgroundColor:'#C69A7D',alignItems:'center',justifyContent:'center'}}>
-          <Text style={{fontSize:15,fontWeight:'700',color:'#FFF9F4'}}>{mode==='breathe'&&active?phase:active?'With you':'Take a pause'}</Text>
+    <View style={__teddyBudExtractedStyles7.style3}>
+      <Text style={__teddyBudExtractedStyles7.style4}>A LITTLE SPACE FOR YOU</Text>
+      <Text style={__teddyBudExtractedStyles7.style5}>{routine.title}</Text>
+      <Text style={__teddyBudExtractedStyles7.style6}>{routine.intro}</Text>
+      <Animated.View style={__teddyBudExtractedStyles7.style7}>
+        <View style={__teddyBudExtractedStyles7.style8}>
+          <Text style={__teddyBudExtractedStyles7.style9}>{mode==='breathe'&&active?phase:active?'With you':'Take a pause'}</Text>
         </View>
       </Animated.View>
-      <Text accessibilityLiveRegion="polite" style={{fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',minHeight:28}}>{completed?'You made a little room for yourself.':active?cue:'Whenever you are ready'}</Text>
-      <Text style={{fontSize:35,fontWeight:'300',fontVariant:['tabular-nums'],color:C.cocoaDark,marginTop:8}}>{clock(remaining)}</Text>
-      <View style={{height:6,width:'100%',maxWidth:360,backgroundColor:'#E5D5C9',borderRadius:8,overflow:'hidden',marginTop:12}}>
-        <View style={{height:6,width:`${progress*100}%`,backgroundColor:'#96745E',borderRadius:8}}/>
+      <Text accessibilityLiveRegion="polite" style={__teddyBudExtractedStyles7.style10}>{completed?'You made a little room for yourself.':active?cue:'Whenever you are ready'}</Text>
+      <Text style={__teddyBudExtractedStyles7.style11}>{clock(remaining)}</Text>
+      <View style={__teddyBudExtractedStyles7.style12}>
+        <View style={__teddyBudExtractedStyles7.style13}/>
       </View>
-      <View style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10,flexWrap:'wrap',marginTop:22}}>
+      <View style={__teddyBudExtractedStyles7.style14}>
         <Pressable accessibilityRole="button" onPress={startOrPause} style={({pressed})=>[{minWidth:148,paddingVertical:14,paddingHorizontal:22,borderRadius:18,backgroundColor:C.cocoaDark,alignItems:'center',opacity:pressed?0.86:1}]}>
-          <Text style={{color:'#FFF',fontWeight:'700'}}>{active?'Pause':completed?'Begin again':remaining<totalSeconds?'Resume':'Begin gently'}</Text>
+          <Text style={__teddyBudExtractedStyles7.style15}>{active?'Pause':completed?'Begin again':remaining<totalSeconds?'Resume':'Begin gently'}</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={reset} style={{paddingVertical:13,paddingHorizontal:17,borderRadius:17,backgroundColor:'#E9D9CE'}}>
-          <Text style={{color:C.cocoaDark,fontWeight:'600'}}>Reset</Text>
+        <Pressable accessibilityRole="button" onPress={reset} style={__teddyBudExtractedStyles7.style16}>
+          <Text style={__teddyBudExtractedStyles7.style17}>Reset</Text>
         </Pressable>
       </View>
-      {!active && !completed ? <View style={{flexDirection:'row',alignItems:'center',gap:8,marginTop:18}}>
-        <Text style={{fontSize:12,color:C.muted}}>Time</Text>
-        {[2,3,5,10].map(minutes=><Pressable key={minutes} accessibilityRole="button" accessibilityState={{selected:duration===minutes}} onPress={()=>chooseDuration(minutes)} style={{paddingVertical:7,paddingHorizontal:11,borderRadius:12,backgroundColor:duration===minutes?'#DCC3B1':'#F8F3EF'}}>
-          <Text style={{fontSize:12,fontWeight:'600',color:C.cocoaDark}}>{minutes} min</Text>
-        </Pressable>)}
+      {!active && !completed ? <View style={__teddyBudExtractedStyles7.style18}>
+        <Text style={__teddyBudExtractedStyles7.style19}>Time</Text>
+        {[2,3,5,10].map(minutes=>{
+          const __teddyBudExtractedStyles9 = StyleSheet.create({
+            style0: ({paddingVertical:7,paddingHorizontal:11,borderRadius:12,backgroundColor:duration===minutes?'#DCC3B1':'#F8F3EF'}) as const,
+            style1: ({fontSize:12,fontWeight:'600',color:C.cocoaDark}) as const,
+          });
+          return <Pressable key={minutes} accessibilityRole="button" accessibilityState={{selected:duration===minutes}} onPress={()=>chooseDuration(minutes)} style={__teddyBudExtractedStyles9.style0}>
+          <Text style={__teddyBudExtractedStyles9.style1}>{minutes} min</Text>
+        </Pressable>;
+        })}
       </View>:null}
-      <Text style={{fontSize:12,lineHeight:18,color:'#846F5F',textAlign:'center',marginTop:18,maxWidth:420}}>No streaks, scores, or pressure. You can pause, stop, or leave at any time. This is a gentle self-care tool, not medical treatment.</Text>
+      <Text style={__teddyBudExtractedStyles7.style20}>No streaks, scores, or pressure. You can pause, stop, or leave at any time. This is a gentle self-care tool, not medical treatment.</Text>
     </View>
   </ScrollView>;
 }
 export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entries: EmotionCheckIn[]; onSave: (entry: EmotionCheckIn) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
+  const __teddyBudExtractedStyles14 = StyleSheet.create({
+    style0: ({maxWidth:760,width:'100%',alignSelf:'center'}) as const,
+    style1: ({fontSize:wide?30:25,fontWeight:'700',color:C.cocoaDark}) as const,
+    style2: ({fontSize:14,lineHeight:21,color:C.muted,marginTop:8}) as const,
+    style3: ({backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:24,padding:16,marginTop:20}) as const,
+    style4: ({fontSize:17,fontWeight:'700',color:C.cocoaDark}) as const,
+    style5: ({textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}) as const,
+    style6: ({fontSize:11,lineHeight:16,color:C.muted,textAlign:'center',marginTop:5}) as const,
+    style7: ({fontSize:13,lineHeight:20,color:C.cocoaDark,marginTop:8}) as const,
+    style8: ({color:'#FFFFFF',fontWeight:'700'}) as const,
+    style9: ({backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:14}) as const,
+    style10: ({fontSize:19,fontWeight:'700',color:C.cocoaDark,marginBottom:6}) as const,
+    style11: ({fontSize:13,color:C.muted,marginBottom:12}) as const,
+    style12: ({color:C.cocoaDark,fontWeight:'600',marginTop:14}) as const,
+    style13: ({flexDirection:'row',gap:8,marginTop:8}) as const,
+    style14: ({color:C.cocoaDark,fontWeight:'600',marginTop:14,marginBottom:8}) as const,
+    style15: ({flexDirection:'row',flexWrap:'wrap',gap:8}) as const,
+    style16: ({fontSize:12,color:C.muted,marginTop:12}) as const,
+    style17: ({minHeight:76,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:7,textAlignVertical:'top'}) as const,
+    style18: ({color:'#FFFFFF',fontWeight:'700'}) as const,
+    style19: ({backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:18,padding:15,marginTop:18}) as const,
+    style20: ({fontSize:16,fontWeight:'700',color:C.cocoaDark}) as const,
+    style21: ({fontSize:13,color:C.muted,lineHeight:20,marginTop:6}) as const,
+    style22: ({fontSize:14,color:C.cocoaDark,marginTop:10}) as const,
+    style23: ({fontSize:14,color:C.cocoaDark,marginTop:6}) as const,
+    style24: ({fontSize:13,color:C.muted,marginTop:6}) as const,
+    style25: ({fontSize:13,color:C.muted,lineHeight:20,marginTop:6}) as const,
+    style26: ({backgroundColor:'#F4ECE6',borderRadius:18,padding:15,marginTop:18}) as const,
+    style27: ({fontSize:16,fontWeight:'700',color:C.cocoaDark}) as const,
+    style28: ({fontSize:13,color:C.muted,lineHeight:20,marginTop:6}) as const,
+    style29: ({fontSize:19,fontWeight:'700',color:C.cocoaDark,marginTop:24,marginBottom:10}) as const,
+    style30: ({color:C.muted,paddingVertical:14}) as const,
+    style31: ({fontSize:12,color:C.muted,lineHeight:18,marginTop:10}) as const,
+  });
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [energy, setEnergy] = useState(3);
   const [support, setSupport] = useState<EmotionCheckIn['support']>('listen');
@@ -2832,7 +2937,10 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
   };
   const line = (a: {x:number;y:number}, b: {x:number;y:number}, color: string, width = 1) => {
     const dx = b.x - a.x, dy = b.y - a.y;
-    return <View key={color + a.x + a.y + b.x + b.y} pointerEvents="none" style={{ position: 'absolute', left: (a.x+b.x)/2-Math.sqrt(dx*dx+dy*dy)/2, top: (a.y+b.y)/2-width/2, width: Math.sqrt(dx*dx+dy*dy), height: width, backgroundColor: color, transform: [{ rotate: Math.atan2(dy,dx)+'rad' }] }} />;
+    const __teddyBudExtractedStyles10 = StyleSheet.create({
+      style0: ({ position: 'absolute', left: (a.x+b.x)/2-Math.sqrt(dx*dx+dy*dy)/2, top: (a.y+b.y)/2-width/2, width: Math.sqrt(dx*dx+dy*dy), height: width, backgroundColor: color, transform: [{ rotate: Math.atan2(dy,dx)+'rad' }] }) as const,
+    });
+    return <View key={color + a.x + a.y + b.x + b.y} pointerEvents="none" style={__teddyBudExtractedStyles10.style0} />;
   };
   const webBounce = useRef(new Animated.Value(1)).current;
   const curvedRing = (level: number, color: string, strokeWidth: number) => {
@@ -2850,6 +2958,12 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
     });
   };
   const renderWeb = (data?: Record<string, number>) => {
+    const __teddyBudExtractedStyles11 = StyleSheet.create({
+      style0: ({ width: size, height: size, alignSelf: 'center' }) as const,
+      style1: ({ width: size, height: size, position: 'relative', transform: [{ scale: webBounce }] }) as const,
+      style2: ({ position: 'absolute', left: center-radius*0.86, top: center-radius*0.86, width: radius*1.72, height: radius*1.72, borderRadius: radius, backgroundColor: 'rgba(150, 108, 78, 0.10)', borderWidth: 1, borderColor: 'rgba(150, 108, 78, 0.10)' }) as const,
+      style3: ({position:'absolute',left:center-4,top:center-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D'}) as const,
+    });
     const values = EMOTION_AXES.map(axis => data?.[axis.id] ?? 0);
     return <Pressable
       accessibilityRole="button"
@@ -2860,18 +2974,22 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
         Animated.spring(webBounce, { toValue: 1.035, useNativeDriver: true, speed: 0.45, bounciness: 10 }),
         Animated.spring(webBounce, { toValue: 1, useNativeDriver: true, speed: 0.65, bounciness: 5 }),
       ]).start()}
-      style={{ width: size, height: size, alignSelf: 'center' }}
+      style={__teddyBudExtractedStyles11.style0}
     >
-      <Animated.View style={{ width: size, height: size, position: 'relative', transform: [{ scale: webBounce }] }}>
-        <View pointerEvents="none" style={{ position: 'absolute', left: center-radius*0.86, top: center-radius*0.86, width: radius*1.72, height: radius*1.72, borderRadius: radius, backgroundColor: 'rgba(150, 108, 78, 0.10)', borderWidth: 1, borderColor: 'rgba(150, 108, 78, 0.10)' }} />
+      <Animated.View style={__teddyBudExtractedStyles11.style1}>
+        <View pointerEvents="none" style={__teddyBudExtractedStyles11.style2} />
         {[1,2,3,4,5].map(level => <React.Fragment key={'ring-'+level}>{curvedRing(level, level===5?'#D5C1B2':'#E5D8CE', level===5?1.4:1)}</React.Fragment>)}
         {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D5C5B8', 1))}
         {EMOTION_AXES.map((axis,i) => {
           const label = point(i,5.75);
           const dot = point(i,5);
+          const __teddyBudExtractedStyles12 = StyleSheet.create({
+            style0: ({position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}) as const,
+            style1: ({position:'absolute',left:dot.x-4,top:dot.y-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D',borderWidth:1.5,borderColor:'#FFF9F4'}) as const,
+          });
           return <React.Fragment key={axis.id}>
-            <Text style={{position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}}>{axis.label}</Text>
-            <View pointerEvents="none" style={{position:'absolute',left:dot.x-4,top:dot.y-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D',borderWidth:1.5,borderColor:'#FFF9F4'}} />
+            <Text style={__teddyBudExtractedStyles12.style0}>{axis.label}</Text>
+            <View pointerEvents="none" style={__teddyBudExtractedStyles12.style1} />
           </React.Fragment>;
         })}
         {data ? values.map((value,i) => {
@@ -2882,63 +3000,109 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
           const samples = [0.2,0.4,0.6,0.8,1].map(t=>({x:(1-t)*(1-t)*a.x+2*(1-t)*t*control.x+t*t*b.x,y:(1-t)*(1-t)*a.y+2*(1-t)*t*control.y+t*t*b.y}));
           return <React.Fragment key={'data-'+i}>{[a,...samples].slice(0,-1).map((from,j)=>line(from,samples[j]!, '#A86F52', 2.6))}</React.Fragment>;
         }) : null}
-        {data ? values.map((value,i) => value>0 ? <View key={'value-'+i} pointerEvents="none" style={{position:'absolute',left:point(i,value).x-5,top:point(i,value).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#A86F52',borderWidth:2,borderColor:'#FFF9F4'}} /> : null) : null}
-        <View pointerEvents="none" style={{position:'absolute',left:center-4,top:center-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D'}} />
+        {data ? values.map((value,i) => {
+          const __teddyBudExtractedStyles13 = StyleSheet.create({
+            style0: ({position:'absolute',left:point(i,value).x-5,top:point(i,value).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#A86F52',borderWidth:2,borderColor:'#FFF9F4'}) as const,
+          });
+          return value>0 ? <View key={'value-'+i} pointerEvents="none" style={__teddyBudExtractedStyles13.style0} /> : null;
+        }) : null}
+        <View pointerEvents="none" style={__teddyBudExtractedStyles11.style3} />
       </Animated.View>
     </Pressable>;
   };
   return <ScrollView contentContainerStyle={[styles.emotionsPageScroll, wide && styles.emotionsPageScrollWide]}>
-    <View style={{maxWidth:760,width:'100%',alignSelf:'center'}}>
-      <Text style={{fontSize:wide?30:25,fontWeight:'700',color:C.cocoaDark}}>Your emotional landscape</Text>
-      <Text style={{fontSize:14,lineHeight:21,color:C.muted,marginTop:8}}>A private snapshot of how you feel. Rate only what feels relevant; there is no good or bad shape.</Text>
+    <View style={__teddyBudExtractedStyles14.style0}>
+      <Text style={__teddyBudExtractedStyles14.style1}>Your emotional landscape</Text>
+      <Text style={__teddyBudExtractedStyles14.style2}>A private snapshot of how you feel. Rate only what feels relevant; there is no good or bad shape.</Text>
       {(actionError || actionNotice) && <View accessibilityRole={actionError ? 'alert' : 'summary'} style={actionError ? styles.authError : styles.journalNotice}>
         <Text accessibilityLiveRegion="polite" style={actionError ? styles.authErrorText : styles.journalNoticeText}>{actionError || actionNotice}</Text>
         {actionError && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss check-in notice" onPress={() => setActionError(null)} style={styles.journalDismiss}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>}
       </View>}
-      <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:24,padding:16,marginTop:20}}>
-        <Text style={{fontSize:17,fontWeight:'700',color:C.cocoaDark}}>{latest?.origin === 'survey-ai' ? 'Your starting emotion web' : latest ? 'Latest check-in' : 'Your emotion web'}</Text>
+      <View style={__teddyBudExtractedStyles14.style3}>
+        <Text style={__teddyBudExtractedStyles14.style4}>{latest?.origin === 'survey-ai' ? 'Your starting emotion web' : latest ? 'Latest check-in' : 'Your emotion web'}</Text>
         {renderWeb(latest?.emotions)}
-        <Text accessibilityRole="text" style={{textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}}>{latest ? (latest.origin === 'survey-ai' ? 'AI-estimated from your onboarding answers · '+new Date(latest.createdAt).toLocaleString() : 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString()) : 'Your web appears after your first check-in.'}</Text>
-        {latest?.origin === 'survey-ai' ? <Text style={{fontSize:11,lineHeight:16,color:C.muted,textAlign:'center',marginTop:5}}>A gentle estimate from your answers, not a clinical assessment. You can replace it with your own check-in at any time.</Text> : null}
-        {latest ? <Text style={{fontSize:13,lineHeight:20,color:C.cocoaDark,marginTop:8}}>Highest ratings: {EMOTION_AXES.filter(a=>(latest.emotions[a.id]??0)>0).sort((a,b)=>(latest.emotions[b.id]??0)-(latest.emotions[a.id]??0)).slice(0,3).map(a=>a.label+' '+latest.emotions[a.id]+'/5').join(' · ') || 'No emotions rated'} · Energy {latest.energy}/5</Text> : null}
-        <Pressable accessibilityRole="button" accessibilityLabel={showForm ? 'Close check-in form' : 'Add a check-in'} onPress={toggleForm} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:16 }, pressed && styles.pressed]}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
+        <Text accessibilityRole="text" style={__teddyBudExtractedStyles14.style5}>{latest ? (latest.origin === 'survey-ai' ? 'AI-estimated from your onboarding answers · '+new Date(latest.createdAt).toLocaleString() : 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString()) : 'Your web appears after your first check-in.'}</Text>
+        {latest?.origin === 'survey-ai' ? <Text style={__teddyBudExtractedStyles14.style6}>A gentle estimate from your answers, not a clinical assessment. You can replace it with your own check-in at any time.</Text> : null}
+        {latest ? <Text style={__teddyBudExtractedStyles14.style7}>Highest ratings: {EMOTION_AXES.filter(a=>(latest.emotions[a.id]??0)>0).sort((a,b)=>(latest.emotions[b.id]??0)-(latest.emotions[a.id]??0)).slice(0,3).map(a=>a.label+' '+latest.emotions[a.id]+'/5').join(' · ') || 'No emotions rated'} · Energy {latest.energy}/5</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={showForm ? 'Close check-in form' : 'Add a check-in'} onPress={toggleForm} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:16 }, pressed && styles.pressed]}><Text style={__teddyBudExtractedStyles14.style8}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
       </View>
-      {showForm ? <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:14}}>
-        <Text style={{fontSize:19,fontWeight:'700',color:C.cocoaDark,marginBottom:6}}>How are you feeling?</Text>
-        <Text style={{fontSize:13,color:C.muted,marginBottom:12}}>Tap a number from 0 (not present) to 5 (very strong). You can leave any emotion unrated.</Text>
-        {EMOTION_AXES.map(axis=><View key={axis.id} style={{paddingVertical:9,borderBottomWidth:1,borderBottomColor:C.line}}>
-          <Text style={{color:C.cocoaDark,fontWeight:'600',marginBottom:8}}>{axis.label}</Text>
-          <View style={{flexDirection:'row',gap:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} accessibilityRole="button" accessibilityLabel={axis.label+' '+n+' out of 5'} accessibilityState={{ selected: ratings[axis.id] === n }} onPress={()=>{ setRatings(current=>({...current,[axis.id]:n})); setActionError(null); setActionNotice(null); }} style={{flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:ratings[axis.id]===n?'#B87862':'#F5ECE5',borderWidth:ratings[axis.id]===n?2:0,borderColor:C.cocoaDark}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{n}</Text></Pressable>)}</View>
-        </View>)}
-        <Text style={{color:C.cocoaDark,fontWeight:'600',marginTop:14}}>Energy: {energy}/5</Text>
-        <View style={{flexDirection:'row',gap:8,marginTop:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} accessibilityRole="button" accessibilityLabel={`Energy ${n} out of 5`} accessibilityState={{ selected: energy === n }} onPress={()=>{ setEnergy(n); setActionError(null); setActionNotice(null); }} style={{flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:energy===n?'#B87862':'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>{n}</Text></Pressable>)}</View>
-        <Text style={{color:C.cocoaDark,fontWeight:'600',marginTop:14,marginBottom:8}}>What would help right now?</Text>
-        <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{([{id:'listen',label:'Just listen'},{id:'advice',label:'Practical advice'},{id:'encouragement',label:'Encouragement'},{id:'unsure',label:'Not sure'}] as const).map(option=><Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: support === option.id }} onPress={()=>{ setSupport(option.id); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [{ minHeight:48, paddingVertical:9, paddingHorizontal:12, borderRadius:14, backgroundColor:support===option.id?'#E7D0C2':'#F5ECE5', borderWidth:support===option.id?1:0, borderColor:'#B87862' }, pressed && styles.pressed, pressed && styles.squeezePressed]}><Text style={{color:C.cocoaDark}}>{option.label}</Text></Pressable>)}</View>
-        <Text style={{fontSize:12,color:C.muted,marginTop:12}}>Optional note (saved only on this device)</Text>
-        <TextInput accessibilityLabel="Emotion check-in note (optional)" value={note} onChangeText={value => { setNote(value.slice(0, 2000)); setActionError(null); setActionNotice(null); }} multiline maxLength={2000} placeholder="Anything you want to remember about this moment…" placeholderTextColor={C.muted} style={{minHeight:76,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:7,textAlignVertical:'top'}} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Save emotion check-in" disabled={saving} onPress={saveCheckIn} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:14 }, saving && styles.buttonDisabled, pressed && styles.pressed]}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{saving ? 'Saving check-in…' : 'Save privately on this device'}</Text></Pressable>
+      {showForm ? <View style={__teddyBudExtractedStyles14.style9}>
+        <Text style={__teddyBudExtractedStyles14.style10}>How are you feeling?</Text>
+        <Text style={__teddyBudExtractedStyles14.style11}>Tap a number from 0 (not present) to 5 (very strong). You can leave any emotion unrated.</Text>
+        {EMOTION_AXES.map(axis=>{
+          const __teddyBudExtractedStyles15 = StyleSheet.create({
+            style0: ({paddingVertical:9,borderBottomWidth:1,borderBottomColor:C.line}) as const,
+            style1: ({color:C.cocoaDark,fontWeight:'600',marginBottom:8}) as const,
+            style2: ({flexDirection:'row',gap:8}) as const,
+          });
+          return <View key={axis.id} style={__teddyBudExtractedStyles15.style0}>
+          <Text style={__teddyBudExtractedStyles15.style1}>{axis.label}</Text>
+          <View style={__teddyBudExtractedStyles15.style2}>{[0,1,2,3,4,5].map(n=>{
+            const __teddyBudExtractedStyles16 = StyleSheet.create({
+              style0: ({flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:ratings[axis.id]===n?'#B87862':'#F5ECE5',borderWidth:ratings[axis.id]===n?2:0,borderColor:C.cocoaDark}) as const,
+              style1: ({color:C.cocoaDark,fontWeight:'600'}) as const,
+            });
+            return <Pressable key={n} accessibilityRole="button" accessibilityLabel={axis.label+' '+n+' out of 5'} accessibilityState={{ selected: ratings[axis.id] === n }} onPress={()=>{ setRatings(current=>({...current,[axis.id]:n})); setActionError(null); setActionNotice(null); }} style={__teddyBudExtractedStyles16.style0}><Text style={__teddyBudExtractedStyles16.style1}>{n}</Text></Pressable>;
+          })}</View>
+        </View>;
+        })}
+        <Text style={__teddyBudExtractedStyles14.style12}>Energy: {energy}/5</Text>
+        <View style={__teddyBudExtractedStyles14.style13}>{[0,1,2,3,4,5].map(n=>{
+          const __teddyBudExtractedStyles17 = StyleSheet.create({
+            style0: ({flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:energy===n?'#B87862':'#F5ECE5'}) as const,
+            style1: ({color:C.cocoaDark}) as const,
+          });
+          return <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Energy ${n} out of 5`} accessibilityState={{ selected: energy === n }} onPress={()=>{ setEnergy(n); setActionError(null); setActionNotice(null); }} style={__teddyBudExtractedStyles17.style0}><Text style={__teddyBudExtractedStyles17.style1}>{n}</Text></Pressable>;
+        })}</View>
+        <Text style={__teddyBudExtractedStyles14.style14}>What would help right now?</Text>
+        <View style={__teddyBudExtractedStyles14.style15}>{([{id:'listen',label:'Just listen'},{id:'advice',label:'Practical advice'},{id:'encouragement',label:'Encouragement'},{id:'unsure',label:'Not sure'}] as const).map(option=>{
+          const __teddyBudExtractedStyles18 = StyleSheet.create({
+            style0: ({color:C.cocoaDark}) as const,
+          });
+          return <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: support === option.id }} onPress={()=>{ setSupport(option.id); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [{ minHeight:48, paddingVertical:9, paddingHorizontal:12, borderRadius:14, backgroundColor:support===option.id?'#E7D0C2':'#F5ECE5', borderWidth:support===option.id?1:0, borderColor:'#B87862' }, pressed && styles.pressed, pressed && styles.squeezePressed]}><Text style={__teddyBudExtractedStyles18.style0}>{option.label}</Text></Pressable>;
+        })}</View>
+        <Text style={__teddyBudExtractedStyles14.style16}>Optional note (saved only on this device)</Text>
+        <TextInput accessibilityLabel="Emotion check-in note (optional)" value={note} onChangeText={value => { setNote(value.slice(0, 2000)); setActionError(null); setActionNotice(null); }} multiline maxLength={2000} placeholder="Anything you want to remember about this moment…" placeholderTextColor={C.muted} style={__teddyBudExtractedStyles14.style17} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Save emotion check-in" disabled={saving} onPress={saveCheckIn} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:14 }, saving && styles.buttonDisabled, pressed && styles.pressed]}><Text style={__teddyBudExtractedStyles14.style18}>{saving ? 'Saving check-in…' : 'Save privately on this device'}</Text></Pressable>
       </View> : null}
-      <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:18,padding:15,marginTop:18}}>
-        <Text style={{fontSize:16,fontWeight:'700',color:C.cocoaDark}}>Your week in reflection</Text>
+      <View style={__teddyBudExtractedStyles14.style19}>
+        <Text style={__teddyBudExtractedStyles14.style20}>Your week in reflection</Text>
         {weekEntries.length >= 2 ? <>
-          <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>A local summary of {weekEntries.length} check-ins from the last seven days. This uses only ratings you entered and is not a diagnosis or prediction.</Text>
-          <Text style={{fontSize:14,color:C.cocoaDark,marginTop:10}}>Average energy: {weekEnergy.toFixed(1)}/5</Text>
-          {weekEmotionAverages.length ? <Text style={{fontSize:14,color:C.cocoaDark,marginTop:6}}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={{fontSize:13,color:C.muted,marginTop:6}}>No emotion ratings were recorded in these check-ins.</Text>}
-        </> : <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>Add at least two check-ins within seven days to see a summary. It stays on this device and never labels or scores your mental health.</Text>}
+          <Text style={__teddyBudExtractedStyles14.style21}>A local summary of {weekEntries.length} check-ins from the last seven days. This uses only ratings you entered and is not a diagnosis or prediction.</Text>
+          <Text style={__teddyBudExtractedStyles14.style22}>Average energy: {weekEnergy.toFixed(1)}/5</Text>
+          {weekEmotionAverages.length ? <Text style={__teddyBudExtractedStyles14.style23}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={__teddyBudExtractedStyles14.style24}>No emotion ratings were recorded in these check-ins.</Text>}
+        </> : <Text style={__teddyBudExtractedStyles14.style25}>Add at least two check-ins within seven days to see a summary. It stays on this device and never labels or scores your mental health.</Text>}
       </View>
-      {entries.length >= 2 ? <View style={{backgroundColor:'#F4ECE6',borderRadius:18,padding:15,marginTop:18}}>
-        <Text style={{fontSize:16,fontWeight:'700',color:C.cocoaDark}}>Your recent pattern</Text>
-        <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
-        {EMOTION_AXES.map(axis=>{const sample=entries.slice(0,7).filter(entry=>typeof entry.emotions[axis.id]==='number');if(!sample.length)return null;const avg=sample.reduce((sum,entry)=>sum+(entry.emotions[axis.id]??0),0)/sample.length;return <View key={axis.id} style={{marginTop:9}}><View style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontSize:12,color:C.cocoaDark}}>{axis.label}</Text><Text style={{fontSize:12,color:C.cocoaDark}}>{avg.toFixed(1)}/5</Text></View><View style={{height:6,backgroundColor:'#E1D5CC',borderRadius:4,marginTop:4,overflow:'hidden'}}><View style={{height:6,width:`${(avg/5*100)}%` as `${number}%`,backgroundColor:'#B87862',borderRadius:4}} /></View></View>;})}
+      {entries.length >= 2 ? <View style={__teddyBudExtractedStyles14.style26}>
+        <Text style={__teddyBudExtractedStyles14.style27}>Your recent pattern</Text>
+        <Text style={__teddyBudExtractedStyles14.style28}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
+        {EMOTION_AXES.map(axis=>{const sample=entries.slice(0,7).filter(entry=>typeof entry.emotions[axis.id]==='number');if(!sample.length)return null;const avg=sample.reduce((sum,entry)=>sum+(entry.emotions[axis.id]??0),0)/sample.length;const __teddyBudExtractedStyles19 = StyleSheet.create({
+          style0: ({marginTop:9}) as const,
+          style1: ({flexDirection:'row',justifyContent:'space-between'}) as const,
+          style2: ({fontSize:12,color:C.cocoaDark}) as const,
+          style3: ({fontSize:12,color:C.cocoaDark}) as const,
+          style4: ({height:6,backgroundColor:'#E1D5CC',borderRadius:4,marginTop:4,overflow:'hidden'}) as const,
+          style5: ({height:6,width:`${(avg/5*100)}%` as `${number}%`,backgroundColor:'#B87862',borderRadius:4}) as const,
+        });
+        return <View key={axis.id} style={__teddyBudExtractedStyles19.style0}><View style={__teddyBudExtractedStyles19.style1}><Text style={__teddyBudExtractedStyles19.style2}>{axis.label}</Text><Text style={__teddyBudExtractedStyles19.style3}>{avg.toFixed(1)}/5</Text></View><View style={__teddyBudExtractedStyles19.style4}><View style={__teddyBudExtractedStyles19.style5} /></View></View>;})}
       </View> : null}
-      <Text style={{fontSize:19,fontWeight:'700',color:C.cocoaDark,marginTop:24,marginBottom:10}}>Past check-ins</Text>
-      {entries.length===0 ? <Text style={{color:C.muted,paddingVertical:14}}>Nothing recorded yet. Your check-ins are optional and stay in local app storage.</Text> : entries.map(entry=><View key={entry.id} style={{backgroundColor:C.paper,borderWidth:1,borderColor:C.line,borderRadius:16,padding:14,marginBottom:9}}>
-        <Text style={{color:C.cocoaDark,fontWeight:'700'}}>{new Date(entry.createdAt).toLocaleString()}</Text>
-        <Text style={{color:C.muted,fontSize:13,marginTop:5}}>{EMOTION_AXES.filter(a=>entry.emotions[a.id]!==undefined).sort((a,b)=>(entry.emotions[b.id]??0)-(entry.emotions[a.id]??0)).slice(0,4).map(a=>a.label+' '+entry.emotions[a.id]+'/5').join(' · ') || 'No emotion ratings'} · Energy {entry.energy}/5</Text>
-        {entry.note ? <Text style={{color:C.cocoaDark,marginTop:6}}>{entry.note}</Text> : null}
-        <Pressable accessibilityRole="button" accessibilityLabel={`Delete check-in from ${new Date(entry.createdAt).toLocaleString()}`} disabled={deletingId !== null} onPress={()=>deleteCheckIn(entry)} style={({ pressed }) => [{ minHeight:48, alignSelf:'flex-end', justifyContent:'center', paddingHorizontal:12 }, deletingId === entry.id && styles.buttonDisabled, pressed && styles.pressed]}><Text style={{color:'#98594B',fontWeight:'600'}}>{deletingId === entry.id ? 'Deleting…' : 'Delete'}</Text></Pressable>
-      </View>)}
-      <Text style={{fontSize:12,color:C.muted,lineHeight:18,marginTop:10}}>These ratings are self-reported reflections, not a clinical assessment. No emotions are inferred from your chats.</Text>
+      <Text style={__teddyBudExtractedStyles14.style29}>Past check-ins</Text>
+      {entries.length===0 ? <Text style={__teddyBudExtractedStyles14.style30}>Nothing recorded yet. Your check-ins are optional and stay in local app storage.</Text> : entries.map(entry=>{
+        const __teddyBudExtractedStyles20 = StyleSheet.create({
+          style0: ({backgroundColor:C.paper,borderWidth:1,borderColor:C.line,borderRadius:16,padding:14,marginBottom:9}) as const,
+          style1: ({color:C.cocoaDark,fontWeight:'700'}) as const,
+          style2: ({color:C.muted,fontSize:13,marginTop:5}) as const,
+          style3: ({color:C.cocoaDark,marginTop:6}) as const,
+          style4: ({color:'#98594B',fontWeight:'600'}) as const,
+        });
+        return <View key={entry.id} style={__teddyBudExtractedStyles20.style0}>
+        <Text style={__teddyBudExtractedStyles20.style1}>{new Date(entry.createdAt).toLocaleString()}</Text>
+        <Text style={__teddyBudExtractedStyles20.style2}>{EMOTION_AXES.filter(a=>entry.emotions[a.id]!==undefined).sort((a,b)=>(entry.emotions[b.id]??0)-(entry.emotions[a.id]??0)).slice(0,4).map(a=>a.label+' '+entry.emotions[a.id]+'/5').join(' · ') || 'No emotion ratings'} · Energy {entry.energy}/5</Text>
+        {entry.note ? <Text style={__teddyBudExtractedStyles20.style3}>{entry.note}</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={`Delete check-in from ${new Date(entry.createdAt).toLocaleString()}`} disabled={deletingId !== null} onPress={()=>deleteCheckIn(entry)} style={({ pressed }) => [{ minHeight:48, alignSelf:'flex-end', justifyContent:'center', paddingHorizontal:12 }, deletingId === entry.id && styles.buttonDisabled, pressed && styles.pressed]}><Text style={__teddyBudExtractedStyles20.style4}>{deletingId === entry.id ? 'Deleting…' : 'Delete'}</Text></Pressable>
+      </View>;
+      })}
+      <Text style={__teddyBudExtractedStyles14.style31}>These ratings are self-reported reflections, not a clinical assessment. No emotions are inferred from your chats.</Text>
     </View>
   </ScrollView>;
 }
@@ -3001,6 +3165,15 @@ function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe
   onImport: (fileContents: string, passphrase: string) => Promise<boolean>;
   onLogout: () => void;
 }) {
+  const __teddyBudExtractedStyles21 = StyleSheet.create({
+    style0: ({ color: C.cocoaDark, fontSize: 14, fontWeight: '700', marginTop: 5 }) as const,
+    style1: ({ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }) as const,
+    style2: ({ flex: 1 }) as const,
+    style3: ({ color: C.cocoaDark, fontSize: 22, fontWeight: '700' }) as const,
+    style4: ({ color: C.muted, fontSize: 12, fontWeight: '500' }) as const,
+    style5: ({ height: 7, borderRadius: 4, overflow: 'hidden', backgroundColor: C.paperAlt }) as const,
+    style6: ({ height: '100%', width: `${Math.min(100, Math.max(0, (creditBalance?.remaining ?? 0) / 40 * 100))}%`, backgroundColor: C.cocoa, borderRadius: 4 }) as const,
+  });
   const [backupPassphrase, setBackupPassphrase] = useState('');
   const [backupStatus, setBackupStatus] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
@@ -3044,18 +3217,18 @@ function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe
   };
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
-    <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text>{!!username && <Text style={{ color: C.cocoaDark, fontSize: 14, fontWeight: '700', marginTop: 5 }}>@{username}</Text>}<Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
+    <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text>{!!username && <Text style={__teddyBudExtractedStyles21.style0}>@{username}</Text>}<Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
     <Text style={styles.settingsSectionLabel}>DAILY USAGE</Text>
     <View style={styles.settingsCardForm}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
-        <View style={{ flex: 1 }}>
+      <View style={__teddyBudExtractedStyles21.style1}>
+        <View style={__teddyBudExtractedStyles21.style2}>
           <Text style={styles.settingTitle}>Daily AI credits</Text>
           <Text style={styles.settingDescription}>40 credits each day. Text and image messages each use 1 credit.</Text>
         </View>
-        <Text style={{ color: C.cocoaDark, fontSize: 22, fontWeight: '700' }}>{creditBalance ? creditBalance.remaining : '—'}<Text style={{ color: C.muted, fontSize: 12, fontWeight: '500' }}> / 40</Text></Text>
+        <Text style={__teddyBudExtractedStyles21.style3}>{creditBalance ? creditBalance.remaining : '—'}<Text style={__teddyBudExtractedStyles21.style4}> / 40</Text></Text>
       </View>
-      <View accessibilityRole="progressbar" accessibilityLabel="Daily AI credits remaining" accessibilityValue={{ min: 0, max: 40, now: creditBalance?.remaining ?? 0 }} style={{ height: 7, borderRadius: 4, overflow: 'hidden', backgroundColor: C.paperAlt }}>
-        <View style={{ height: '100%', width: `${Math.min(100, Math.max(0, (creditBalance?.remaining ?? 0) / 40 * 100))}%`, backgroundColor: C.cocoa, borderRadius: 4 }} />
+      <View accessibilityRole="progressbar" accessibilityLabel="Daily AI credits remaining" accessibilityValue={{ min: 0, max: 40, now: creditBalance?.remaining ?? 0 }} style={__teddyBudExtractedStyles21.style5}>
+        <View style={__teddyBudExtractedStyles21.style6} />
       </View>
       <Text style={styles.settingDescription}>Text: 1 credit · Image analysis: 1 credit · Resets daily at 00:00 UTC.</Text>
       <Pressable accessibilityRole="button" onPress={() => { runInBackground(onRefreshCredits()); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
