@@ -1351,6 +1351,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   );
 
   return (
+    <UISettingsContext.Provider value={{ reduceMotion: reduceMotionPreference, hapticsEnabled }}>
     <View style={[styles.root, rootInsetsStyle]}>
       {wide && <Sidebar
         collapsed={sidebarCollapsed}
@@ -1431,6 +1432,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         </View>
       </Modal>
     </View>
+    </UISettingsContext.Provider>
   );
 }
 
@@ -1861,6 +1863,13 @@ function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }:
     <Animated.Text numberOfLines={1} style={[styles.navLabel, selected && styles.navLabelSelected, collapsed && styles.navLabelCollapsed, { opacity: labelOpacity ?? (collapsed ? 0 : 1) }]}>{item.label}</Animated.Text>
     {selected && !collapsed && <View style={styles.navDot} />}
   </Pressable>;
+}
+
+function useHapticFeedback() {
+  const { hapticsEnabled } = useContext(UISettingsContext);
+  return useCallback(() => {
+    if (hapticsEnabled) Vibration.vibrate(8);
+  }, [hapticsEnabled]);
 }
 
 function useReducedMotionPreference() {
@@ -3341,6 +3350,7 @@ function SettingsPage({ wide, username, reduceMotion, hapticsEnabled, onReduceMo
 
 function SettingRow({ icon, title, description, value, onChange }: { icon: AppIconName; title: string; description: string; value: boolean; onChange: (value: boolean) => void }) {
   const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
+  const triggerHaptic = useHapticFeedback();
   const reduceMotion = useReducedMotionPreference();
   useEffect(() => {
     progress.stopAnimation();
@@ -3354,12 +3364,13 @@ function SettingRow({ icon, title, description, value, onChange }: { icon: AppIc
   }, [progress, value, reduceMotion]);
   const thumbPosition = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 17] });
   const trackColor = progress.interpolate({ inputRange: [0, 1], outputRange: ['#DED8D0', C.cocoa] });
-  return <View style={styles.settingRow}><View style={styles.settingIcon}><AppIcon name={icon} color={C.cocoa} size={17} /></View><View style={styles.settingText}><Text style={styles.settingTitle}>{title}</Text><Text style={styles.settingDescription}>{description}</Text></View><Pressable accessibilityRole="switch" accessibilityState={{ checked: value }} accessibilityLabel={title} accessibilityHint={description} onPress={() => onChange(!value)} style={({ pressed }) => [styles.switchHitArea, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Animated.View style={[styles.switchTrack, { backgroundColor: trackColor }]}><Animated.View style={[styles.switchThumb, { transform: [{ translateX: thumbPosition }] }]} /></Animated.View></Pressable></View>;
+  return <View style={styles.settingRow}><View style={styles.settingIcon}><AppIcon name={icon} color={C.cocoa} size={17} /></View><View style={styles.settingText}><Text style={styles.settingTitle}>{title}</Text><Text style={styles.settingDescription}>{description}</Text></View><Pressable accessibilityRole="switch" accessibilityState={{ checked: value }} accessibilityLabel={title} accessibilityHint={description} onPress={() => { triggerHaptic(); onChange(!value); }} style={({ pressed }) => [styles.switchHitArea, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Animated.View style={[styles.switchTrack, { backgroundColor: trackColor }]}><Animated.View style={[styles.switchThumb, { transform: [{ translateX: thumbPosition }] }]} /></Animated.View></Pressable></View>;
 }
 
 function Button({ label, onPress, tone = 'primary', disabled = false }: { label: string; onPress: () => void; tone?: 'primary' | 'quiet'; disabled?: boolean }) {
   const reduceMotion = useReducedMotionPreference();
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} style={({ pressed }) => [
+  const triggerHaptic = useHapticFeedback();
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => { triggerHaptic(); onPress(); }} disabled={disabled} style={({ pressed }) => [
     styles.button,
     tone === 'quiet' && styles.buttonQuiet,
     disabled && styles.buttonDisabled,
