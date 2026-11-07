@@ -77,13 +77,13 @@ const C = {
 
 type PrimaryNavPage = 'chat' | 'discover' | 'memories' | 'settings';
 
-const navItems: { id: PrimaryNavPage; icon: string; label: string }[] = [
-  { id: 'chat', icon: '◌', label: 'Chats' },
-  { id: 'discover', icon: '✧', label: 'Discover' },
-  { id: 'memories', icon: '✳', label: 'Memories' },
-  { id: 'settings', icon: '⚙', label: 'Settings' },
+const navItems: { id: PrimaryNavPage; label: string }[] = [
+  { id: 'chat', label: 'Chats' },
+  { id: 'discover', label: 'Discover' },
+  { id: 'memories', label: 'Memories' },
+  { id: 'settings', label: 'Settings' },
 ];
-const mobileNavItems: { id: PrimaryNavPage; icon: string; label: string }[] = [
+const mobileNavItems: { id: PrimaryNavPage; label: string }[] = [
   { id: 'chat', icon: '◌', label: 'Chats' },
   { id: 'discover', icon: '✧', label: 'Discover' },
   { id: 'memories', icon: '✳', label: 'Memories' },
@@ -1381,7 +1381,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
           <View style={styles.modalCard}>
             <View style={styles.modalTopline}>
               <View style={styles.modalIcon}><AppIcon name="edit" size={19} /></View>
-              <Pressable onPress={closeRenameDialog} disabled={renameSaving} accessibilityRole="button" accessibilityLabel="Close rename chat dialog" style={[styles.closeButton, renameSaving && styles.buttonDisabled]}><Text style={styles.closeText}>×</Text></Pressable>
+              <Pressable onPress={closeRenameDialog} disabled={renameSaving} accessibilityRole="button" accessibilityLabel="Close rename chat dialog" style={[styles.closeButton, renameSaving && styles.buttonDisabled]}><AppIcon name="close" color={C.muted} size={17} /></Pressable>
             </View>
             <Text style={styles.modalTitle}>Rename chat</Text>
             <Text style={styles.modalBody}>Choose a short name that helps you find this conversation.</Text>
@@ -1546,7 +1546,7 @@ function ConversationHistoryList({ conversations, activeConversationId, busyConv
         <Text numberOfLines={1} style={styles.historyItemPreview}>{latestMessage?.text ?? 'No messages yet'}</Text>
       </View>
     </Pressable>
-    {onPin && onDelete && <Pressable accessibilityRole="button" accessibilityLabel={`Chat options for ${conversation.title}`} accessibilityState={{ expanded: openMenuId === conversation.id }} onPress={() => setOpenMenuId(value => value === conversation.id ? null : conversation.id)} style={({ pressed }) => [styles.chatMenuTrigger, pressed && styles.pressed]}><Text style={styles.chatMenuDots}>•••</Text></Pressable>}
+    {onPin && onDelete && <Pressable accessibilityRole="button" accessibilityLabel={`Chat options for ${conversation.title}`} accessibilityState={{ expanded: openMenuId === conversation.id }} onPress={() => setOpenMenuId(value => value === conversation.id ? null : conversation.id)} style={({ pressed }) => [styles.chatMenuTrigger, pressed && styles.pressed]}><AppIcon name="menu" color={C.muted} size={18} /></Pressable>}
     </View>
     {openMenuId === conversation.id && onPin && onDelete && <View style={styles.chatActionMenu} accessibilityRole="menu">
       {onRename && <Pressable accessibilityRole="menuitem" accessibilityLabel={`Rename chat ${conversation.title}`} onPress={() => { setOpenMenuId(null); onRename(conversation); }} style={({ pressed }) => [styles.chatActionItem, pressed && styles.pressed]}><Text style={styles.chatActionText}>Rename chat</Text></Pressable>}
@@ -1859,7 +1859,7 @@ export function DiscoverPage({ wide, onNavigate }: { wide: boolean; onNavigate: 
             hitSlop={8}
             style={({ pressed }) => [styles.discoverInfoButton, pressed && styles.pressed]}
           >
-            <Text style={styles.discoverInfoGlyph}>i</Text>
+            <AppIcon name="info" color="#806D5C" size={17} />
           </Pressable>
         </View>)}
       </View>
@@ -1870,7 +1870,7 @@ export function DiscoverPage({ wide, onNavigate }: { wide: boolean; onNavigate: 
           <View style={styles.discoverInfoTop}>
             <View style={styles.discoverInfoBadge}><Text style={styles.discoverInfoGlyph}>i</Text></View>
             <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setInfoItem(null)} style={styles.discoverInfoClose}>
-              <Text style={styles.discoverInfoCloseText}>×</Text>
+              <AppIcon name="close" color={C.muted} size={17} />
             </Pressable>
           </View>
           <Text style={styles.discoverInfoTitle}>{infoItem?.label}</Text>
@@ -2180,7 +2180,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       onPress={jumpToLatest}
       style={({ pressed }) => [styles.jumpToLatestButton, pressed && styles.pressed]}
     >
-      <Text style={styles.jumpToLatestText}>↓ Latest</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}><AppIcon name="arrow" color={C.cocoaDark} size={14} /><Text style={styles.jumpToLatestText}>Latest</Text></View>
     </Pressable>}
     </View>
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
@@ -2431,7 +2431,7 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete, 
         <Pressable accessibilityRole="button" onPress={onDismissActionError} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>
       </View>
     </View>}
-    <View style={styles.memoryNotice}><View style={styles.noticeIcon}><Text style={styles.noticeGlyph}>⌑</Text></View><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{memoryEnabled ? 'Saved on this device' : 'Saved memories are off'}</Text><Text style={styles.noticeBody}>{memoryEnabled ? "Memories stay in this app's local database across restarts and are included with future chats sent to Teddy’s online reply service." : 'Turn on "Keep memories on this device" in Privacy settings to add memories.'}</Text></View></View>
+    <View style={styles.memoryNotice}><View style={styles.noticeIcon}><AppIcon name="shield" size={17} /></View><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{memoryEnabled ? 'Saved on this device' : 'Saved memories are off'}</Text><Text style={styles.noticeBody}>{memoryEnabled ? "Memories stay in this app's local database across restarts and are included with future chats sent to Teddy’s online reply service." : 'Turn on "Keep memories on this device" in Privacy settings to add memories.'}</Text></View></View>
     <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>SAVED MEMORIES <Text style={styles.countText}>{memories.length}</Text></Text><Pressable accessibilityRole="button" accessibilityLabel="Add a memory" disabled={!memoryEnabled} onPress={onAdd} style={styles.addLink}><Text style={[styles.addLinkText, !memoryEnabled && styles.disabledText]}>{memoryEnabled ? 'Add a memory' : 'Memory is off'}</Text></Pressable></View>
     {memories.length ? memories.map(memory => <View key={memory.id} style={styles.memoryCard}><View style={styles.memoryMark}><AppIcon name="sparkle" size={16} /></View><View style={styles.memoryCopy}><Text style={styles.memoryText}>{memory.text}</Text><Text style={styles.memoryDate}>{memory.date}</Text></View><View style={styles.memoryActions}><Pressable accessibilityRole="button" accessibilityLabel="Edit memory" onPress={() => onEdit(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Edit</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Forget memory" onPress={() => onDelete(memory)} style={styles.memoryActionTextButton}><Text style={styles.memoryActionText}>Forget</Text></Pressable></View></View>) : <View style={styles.emptyCard}><View style={styles.emptyMark}><AppIcon name="sparkle" size={21} /></View><Text style={styles.emptyTitle}>{memoryEnabled ? 'A fresh page' : 'Memories are off'}</Text><Text style={styles.emptyBody}>{memoryEnabled ? "Nothing saved right now. Add a small detail you'd like to hold onto." : 'Turn on "Keep memories on this device" in Privacy settings when you are ready.'}</Text>{memoryEnabled && <Button label="Add your first memory" onPress={onAdd} />}</View>}
     {!!memories.length && <Text style={styles.memoriesFootnote}>Your memories are yours. Edit them, remove them, or clear local data from this device at any time.</Text>}
@@ -2790,7 +2790,7 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
     </View>
     <Text style={styles.settingsSectionLabel}>DATA</Text>
     <View style={styles.settingsCard}>
-      <View style={styles.clearRow}><View style={styles.clearIcon}><Text style={styles.clearGlyph}>⌫</Text></View><View style={styles.settingText}><Text style={styles.settingTitle}>Clear local data</Text><Text style={styles.settingDescription}>Remove saved chat history and memories from this device.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Clear local data" accessibilityHint="Permanently removes saved chats, memories, emotion check-ins, and journal entries from this device after confirmation." onPress={onClear} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}><Text style={styles.clearButtonText}>Clear</Text></Pressable></View>
+      <View style={styles.clearRow}><View style={styles.clearIcon}><AppIcon name="trash" color={C.rose} size={16} /></View><View style={styles.settingText}><Text style={styles.settingTitle}>Clear local data</Text><Text style={styles.settingDescription}>Remove saved chat history and memories from this device.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Clear local data" accessibilityHint="Permanently removes saved chats, memories, emotion check-ins, and journal entries from this device after confirmation." onPress={onClear} style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}><Text style={styles.clearButtonText}>Clear</Text></Pressable></View>
     </View>
     <Text style={styles.settingsSectionLabel}>POLICIES</Text>
     <View style={styles.settingsCardForm}>
@@ -2912,7 +2912,7 @@ function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe
           return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}${character.tier === 'free' ? '' : ', coming soon'}`} accessibilityState={{ selected, disabled: character.tier !== 'free' }} disabled={character.tier !== 'free'} onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected, character.tier !== 'free' && { opacity: 0.62 }]}>
             <Text style={styles.characterChoiceIcon}>{character.symbol}</Text>
             <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text>{character.tier !== 'free' && <Text style={styles.characterChoiceTagline}>{character.tier === 'pro' ? 'PRO' : 'PREMIUM'} · COMING SOON</Text>}</View>
-            {selected && <Text style={styles.characterChoiceCheck}>✓</Text>}
+            {selected && <AppIcon name="check" color={C.cocoa} size={17} />}
           </Pressable>;
         })}
       </View>
