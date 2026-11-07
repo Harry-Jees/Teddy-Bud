@@ -9,12 +9,7 @@ on:
     branches: [main]
     paths-ignore:
       - 'dist/**'
-  workflow_dispatch:
-    inputs:
-      source_run_id:
-        description: 'Existing workflow run ID to collect artifacts from (leave blank to build all platforms)'
-        required: false
-        type: string
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -25,7 +20,6 @@ concurrency:
 
 jobs:
   client-checks:
-    if: ${{ inputs.source_run_id == '' }}
     name: Client tests and type checks
     runs-on: ubuntu-24.04
     defaults:
@@ -47,7 +41,6 @@ jobs:
       - run: npm run build:web
 
   worker-tests:
-    if: ${{ inputs.source_run_id == '' }}
     name: Gateway Worker tests
     runs-on: ubuntu-24.04
     defaults:
@@ -64,7 +57,7 @@ jobs:
       - run: npm test
 
   android-build:
-    if: ${{ inputs.source_run_id == '' }}
+    if: ${{ github.event_name != 'pull_request' }}
     name: Android release APK
     runs-on: ubuntu-24.04
     steps:
@@ -92,6 +85,19 @@ jobs:
           mkdir -p "$(dirname "$target")"
           cp "$source" "$target"
           test -s "$target"
+      - name: Verify APK signature, alignment, and application ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -x "$build_tools/apksigner"
+          test -x "$build_tools/zipalign"
+          test -x "$build_tools/aapt"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk"
+          "$build_tools/zipalign" -c -v 4 "$apk"
+          "$build_tools/aapt" dump badging "$apk" | grep -F "package: name='com.teddybud'"
+          sha256sum "$apk"
       - uses: actions/upload-artifact@v5
         with:
           name: teddy-bud-android
@@ -99,7 +105,7 @@ jobs:
           if-no-files-found: error
 
   desktop-packages:
-    if: ${{ inputs.source_run_id == '' }}
+    if: ${{ github.event_name != 'pull_request' }}
     name: Desktop package (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -189,7 +195,7 @@ jobs:
           if-no-files-found: error
 
   collect-dist:
-    if: ${{ always() && (inputs.source_run_id != '' || (needs.client-checks.result == 'success' && needs.worker-tests.result == 'success' && needs.android-build.result == 'success' && needs.desktop-packages.result == 'success')) }}
+    if: ${{ always() && github.event_name != 'pull_request' && needs.client-checks.result == 'success' && needs.worker-tests.result == 'success' && needs.android-build.result == 'success' && needs.desktop-packages.result == 'success' }}
     name: Collect and verify downloadable platform artifacts
     runs-on: ubuntu-24.04
     permissions:
@@ -211,7 +217,7 @@ jobs:
           pattern: teddy-bud-*
           path: source-artifacts
           merge-multiple: false
-          run-id: ${{ inputs.source_run_id || github.run_id }}
+          run-id: ${{ github.run_id }}
           github-token: ${{ github.token }}
       - name: Assemble fresh platform distributions
         run: |
