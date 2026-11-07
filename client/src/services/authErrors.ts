@@ -30,7 +30,7 @@ export class AuthServiceError extends Error {
   }
 }
 
-export type AuthField = 'username' | 'email' | 'password' | 'confirmPassword' | 'recoveryPassphrase' | 'recoveryPassphraseConfirmation';
+export type AuthField = 'username' | 'email' | 'password' | 'confirmPassword' | 'recoveryPassphrase';
 
 export class AuthValidationError extends Error {
   readonly name = 'AuthValidationError';
@@ -82,7 +82,7 @@ function messageForStatus(status: number, context: AuthErrorContext): AuthServic
   }
 
   if (status === 409 && context === 'create-account') {
-    return new AuthServiceError('We could not create an account with those details. Check them, or try signing in if you already have an account.', 'validation', status);
+    return new AuthServiceError('This username may already be set up. Sign in with the original password; if setup was interrupted, retry with the original recovery passphrase.', 'validation', status);
   }
 
   if (status === 429) {
