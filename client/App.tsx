@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ImageSourcePropType } from 'react-native';
 import {
   Animated,
+  BackHandler,
   AccessibilityInfo,
   AppState,
   Alert,
@@ -470,6 +471,24 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const [lastDiscoverPage, setLastDiscoverPage] = useState<Page>('discover');
   useEffect(() => {
     if (discoverPages.includes(page)) setLastDiscoverPage(page);
+  }, [page]);
+
+  // Android system back and the native edge-back gesture should unwind nested
+  // sections before allowing the operating system to leave the app.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (discoverPages.includes(page) && page !== 'discover') {
+        setPage('discover');
+        return true;
+      }
+      if (page === 'history') {
+        setPage('chat');
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
   }, [page]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -1323,7 +1342,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                   setPage('chat');
                 }
               }} />}
-              {tab === 'discover' && discoverFramePage === 'studio' && <WellbeingStudio wide={wide} />}
+              {tab === 'discover' && discoverFramePage === 'studio' && <DiscoverSectionTransition transitionKey={discoverFramePage}><WellbeingStudio wide={wide} /></DiscoverSectionTransition>}
               {tab === 'discover' && discoverFramePage === 'emotions' && <EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} />}
               {tab === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
               {tab === 'discover' && discoverFramePage === 'privacy' && <PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} />}
@@ -1551,6 +1570,30 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
     </Animated.View>
   </View>;
 }
+function DiscoverSectionTransition({ transitionKey, children }: { transitionKey: string; children: React.ReactNode }) {
+  const reduceMotion = useReducedMotionPreference();
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateX = useRef(new Animated.Value(18)).current;
+  useEffect(() => {
+    opacity.stopAnimation();
+    translateX.stopAnimation();
+    if (reduceMotion) {
+      opacity.setValue(1);
+      translateX.setValue(0);
+      return undefined;
+    }
+    opacity.setValue(0);
+    translateX.setValue(18);
+    const animation = Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 210, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.spring(translateX, { toValue: 0, speed: 20, bounciness: 1, useNativeDriver: true }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [transitionKey, reduceMotion, opacity, translateX]);
+  return <Animated.View style={{ flex: 1, opacity, transform: [{ translateX }] }}>{children}</Animated.View>;
+}
+
 function ConversationHistoryList({ conversations, activeConversationId, busyConversationId, onSelect, onPin, onDelete, onRename }: {
   conversations: Conversation[];
   activeConversationId: string | null;
