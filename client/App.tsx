@@ -42,6 +42,7 @@ import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncrypt
 import { pickBackupFile, saveBackupFile, savePlainTextFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
+import { extractTeddyStickerResponse, getTeddySticker, inferTeddySticker, stripTeddyStickerMarker } from './src/services/stickers';
 import { authErrorMessage, AuthServiceError, AuthValidationError } from './src/services/authErrors';
 import type { AuthField } from './src/services/authErrors';
 import { backupErrorMessage, chatErrorMessage, imagePickerErrorMessage, localDataErrorMessage } from './src/services/userFacingErrors';
@@ -104,6 +105,12 @@ function openExternalUrl(url: string): Promise<void> {
   return desktop ? desktop.openExternal(url) : Linking.openURL(url);
 }
 
+function runInBackground(task: Promise<unknown>): void {
+  task.then(undefined, error => {
+    console.error('A background Teddy Bud task failed.', error);
+  });
+}
+
 function mayContainDurableMemory(text: string): boolean {
   return /\b(?:my (?:long[- ]term )?(?:goal|dream|plan)|long[- ]term goal|i (?:plan|hope|want) to|i(?:'m| am) (?:a|an) [a-z-]+|i work as|i live in|i care for|i(?:'ve| have) been (?:working toward|studying))\b/i.test(text);
 }
@@ -151,6 +158,9 @@ function AccessGate() {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [busy, setBusy] = useState(true);
   const loadingOpacity = useRef(new Animated.Value(1)).current;
+  const __teddyBudExtractedStyles0 = StyleSheet.create({
+    style0: ({ flex: 1, opacity: loadingOpacity }) as const,
+  });
   const [error, setError] = useState<string | null>(null);
   const [initialMode, setInitialMode] = useState<'login' | 'create'>('create');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
@@ -236,7 +246,7 @@ function AccessGate() {
       if (nextState !== 'active' || !resumed || biometricResumeInFlight.current) return;
 
       biometricResumeInFlight.current = true;
-      void (async () => {
+      runInBackground((async () => {
         try {
           if (!await browserAuthService.hasBiometricSignIn()) return;
           setBusy(true);
@@ -251,19 +261,19 @@ function AccessGate() {
           setBusy(false);
           biometricResumeInFlight.current = false;
         }
-      })();
+      })());
     });
     return () => subscription.remove();
   }, [session]);
 
-  if (busy) return <Animated.View style={{ flex: 1, opacity: loadingOpacity }}><AuthLoading /></Animated.View>;
+  if (busy) return <Animated.View style={__teddyBudExtractedStyles0.style0}><AuthLoading /></Animated.View>;
   if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
   return <TeddyBud sessionToken={session.accessToken} username={session.username ?? ''} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
       const message = authErrorMessage(logoutError, 'sign-out');
       setError(message);
       if (logoutError instanceof AuthServiceError && logoutError.kind === 'storage') {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert(message);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') Alert.alert('Sign out could not finish', message);
         else Alert.alert('Sign out could not finish', message);
         return;
       }
@@ -279,10 +289,10 @@ function AuthLoading() {
   useEffect(() => {
     const entrance = Animated.spring(opening, { toValue: 1, speed: 13, bounciness: 5, useNativeDriver: true });
     const fillCycle = Animated.loop(Animated.sequence([
-      Animated.timing(fill, { toValue: 1, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
-      Animated.timing(fill, { toValue: 0, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }),
+      Animated.timing(fill, { toValue: 1, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false, isInteraction: false }),
+      Animated.timing(fill, { toValue: 0, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false, isInteraction: false }),
     ]));
-    const turn = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: true }));
+    const turn = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: true, isInteraction: false }));
     entrance.start();
     fillCycle.start();
     turn.start();
@@ -488,8 +498,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const [localDataReady, setLocalDataReady] = useState(false);
   const [localDataOwner, setLocalDataOwner] = useState<string | null>(null);
   const [localDataError, setLocalDataError] = useState<string | null>(null);
-  const [localDataSaveError, setLocalDataSaveError] = useState<string | null>(null);
-  const [pendingLocalAction, setPendingLocalAction] = useState<(() => Promise<void>) | null>(null);
+  const [localDataSaveError, setLocalDataSaveError] = useState<string | null>(null);  const [pendingLocalAction, setPendingLocalAction] = useState<(() => Promise<void>) | null>(null);
   const [localDataRetry, setLocalDataRetry] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -555,7 +564,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       setCreditBalance(null);
     }
   }, [sessionToken]);
-  useEffect(() => { void refreshCreditBalance(); }, [refreshCreditBalance]);
+  useEffect(() => { runInBackground(refreshCreditBalance()); }, [refreshCreditBalance]);
   const activeConversation = conversations.find(conversation => conversation.id === activeConversationId) ?? null;
   const messages = activeConversation?.messages ?? [];
   const deviceLocale = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -712,11 +721,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const removeMemory = (memory: Memory) => confirmAction(
     'Forget this memory?',
     'It will be removed from saved memories on this device.',
-    () => { void persistForgetMemory(memory); },
+    () => { runInBackground(persistForgetMemory(memory)); },
   );
 
   const retryMemoryDelete = () => {
-    if (memoryDeleteRetry) void persistForgetMemory(memoryDeleteRetry);
+    if (memoryDeleteRetry) runInBackground(persistForgetMemory(memoryDeleteRetry));
   };
 
   const setConversationPinned = useCallback((conversationId: string, pinned: boolean) => {
@@ -726,10 +735,10 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     const persistPin = async () => {
       await persistLocalSnapshot({ conversations: nextConversations });
     };
-    void persistPin().catch(() => {
+    runInBackground(persistPin().catch(() => {
       setPendingLocalAction(() => persistPin);
       setLocalDataSaveError('This chat change could not be saved. The saved version remains unchanged; retry to apply the change.');
-    });
+    }));
   }, [conversations, persistLocalSnapshot]);
 
   const beginRenameConversation = useCallback((conversation: Conversation) => {
@@ -791,10 +800,10 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
             setRetryMessage(null);
           }
         };
-        void persistDelete().catch(() => {
+        runInBackground(persistDelete().catch(() => {
           setPendingLocalAction(() => persistDelete);
           setLocalDataSaveError('This chat could not be deleted from saved data. The chat remains available; retry to confirm the removal.');
-        });
+        }));
       },
     );
   }, [activeConversationId, conversations, streamingConversationId, persistLocalSnapshot]); 
@@ -988,8 +997,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     if (Platform.OS === 'web') {
       // eslint-disable-next-line no-alert -- a local-only choice is required before changing private saved data.
       const choice = typeof window !== 'undefined' ? window.prompt(`${previewMessage}\n\nType MERGE or REPLACE. Cancel leaves your data unchanged.`, 'MERGE') : null;
-      if (choice?.trim().toLocaleLowerCase() === 'merge') mode = 'merge';
-      else if (choice?.trim().toLocaleLowerCase() === 'replace') mode = 'replace';
+      if (choice?.trim().toLocaleLowerCase() === 'merge') mode = 'merge';      else if (choice?.trim().toLocaleLowerCase() === 'replace') mode = 'replace';
     } else {
       mode = await new Promise<'merge' | 'replace' | null>(resolve => Alert.alert('Review backup before restoring', previewMessage, [
         { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
@@ -1095,29 +1103,37 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
             const buffered = streamBufferRef.current;
             streamBufferRef.current = '';
             streamUpdateTimerRef.current = null;
-            setStreamingReply(current => current + buffered);
+            setStreamingReply(current => stripTeddyStickerMarker(current + buffered));
           }, 16);
         },
       });
 
+      const parsedReply = extractTeddyStickerResponse(responseText);
+      const crisisContext = hasCrisisSignal(text)
+        || history.slice(-4).some(message => message.author === 'you' && hasCrisisSignal(message.text));
+      const recentSticker = messages.slice(-4).some(message => message.author === 'teddy' && message.stickerId);
+      const stickerId = !crisisContext && !recentSticker
+        ? parsedReply.stickerId ?? inferTeddySticker(text)
+        : undefined;
       const assistantMessage: Message = {
         id: nextMessageId.current = Math.max(Date.now(), nextMessageId.current + 1),
-        text: responseText,
+        text: parsedReply.text,
         author: 'teddy',
         time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        ...(stickerId ? { stickerId } : {}),
       };
 
       appendConversationMessage(conversationId, assistantMessage);
-      void refreshCreditBalance();
+      runInBackground(refreshCreditBalance());
       if (shouldGenerateTitle) {
-        gatewayService.generateChatTitle(text, responseText, sessionToken).then(generatedTitle => {
+        gatewayService.generateChatTitle(text, parsedReply.text, sessionToken).then(generatedTitle => {
           if (!generatedTitle) return;
           setConversations(current => current.map(conversation => conversation.id === conversationId && conversation.title === fallbackTitle
             ? { ...conversation, title: generatedTitle, updatedAt: new Date().toISOString() }
             : conversation));
         }).catch(() => {
           // Title generation is optional; keep the first-message fallback if it fails.
-        }).finally(() => { void refreshCreditBalance(); });
+        }).finally(() => { runInBackground(refreshCreditBalance()); });
       }
       streamBufferRef.current = '';
       if (streamUpdateTimerRef.current) clearTimeout(streamUpdateTimerRef.current);
@@ -1135,18 +1151,19 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
           if (!duplicate) setMemorySuggestion({ conversationId, messageId: assistantMessage.id, fact: suggestion });
         }).catch(() => {
           // Memory suggestions are optional background work; provider errors must not interrupt chat.
-        }).finally(() => { void refreshCreditBalance(); });
+        }).finally(() => { runInBackground(refreshCreditBalance()); });
       }
     } catch (error) {
-      void refreshCreditBalance();
+      runInBackground(refreshCreditBalance());
       if (abortController.signal.aborted) {
-        const partialReply = receivedReplyRef.current.trim();
-        if (partialReply) {
+        const partialReply = extractTeddyStickerResponse(receivedReplyRef.current.trim());
+        if (partialReply.text || partialReply.stickerId) {
           appendConversationMessage(conversationId, {
             id: nextMessageId.current = Math.max(Date.now(), nextMessageId.current + 1),
-            text: partialReply,
+            text: partialReply.text,
             author: 'teddy',
             time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+            ...(partialReply.stickerId && !hasCrisisSignal(text) && !messages.slice(-4).some(message => message.author === 'you' && hasCrisisSignal(message.text)) ? { stickerId: partialReply.stickerId } : {}),
           });
         }
         setRetryMessage(null);
@@ -1274,7 +1291,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                     : [{ id: Date.now(), text: fact, date: 'Added just now' }, ...current]);
                 }
                 setMemorySuggestion(null);
-              }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => editingMessageId !== null ? sendMessage(undefined, imageDataUrl, false, editingMessageId) : sendMessage(undefined, imageDataUrl)} editingMessageId={editingMessageId} onEditMessage={message => { setEditingMessageId(message.id); setDraft(message.text); }} onCancelEdit={() => { setEditingMessageId(null); setDraft(''); }} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage, retryImageDataUrl ?? undefined)} onRegenerate={() => { const currentMessages = activeConversation?.messages ?? []; const lastMessage = currentMessages[currentMessages.length - 1]; const lastUser = [...currentMessages].reverse().find(message => message.author === 'you'); if (!lastMessage || lastMessage.author !== 'teddy' || !lastUser || isSending) return; setConversations(current => current.map(conversation => conversation.id === activeConversationId ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.filter(message => message.id !== lastMessage.id) } : conversation)); void sendMessage(lastUser.text, undefined, true); }} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
+              }} onDismissMemorySuggestion={() => setMemorySuggestion(null)} draft={draft} setDraft={setDraft} onSend={imageDataUrl => editingMessageId !== null ? sendMessage(undefined, imageDataUrl, false, editingMessageId) : sendMessage(undefined, imageDataUrl)} editingMessageId={editingMessageId} onEditMessage={message => { setEditingMessageId(message.id); setDraft(message.text); }} onCancelEdit={() => { setEditingMessageId(null); setDraft(''); }} onStop={stopResponse} onRetry={() => retryMessage && sendMessage(retryMessage, retryImageDataUrl ?? undefined)} onRegenerate={() => { const currentMessages = activeConversation?.messages ?? []; const lastMessage = currentMessages[currentMessages.length - 1]; const lastUser = [...currentMessages].reverse().find(message => message.author === 'you'); if (!lastMessage || lastMessage.author !== 'teddy' || !lastUser || isSending) return; setConversations(current => current.map(conversation => conversation.id === activeConversationId ? { ...conversation, updatedAt: new Date().toISOString(), messages: conversation.messages.filter(message => message.id !== lastMessage.id) } : conversation)); runInBackground(sendMessage(lastUser.text, undefined, true)); }} retryPending={retryConversationId === activeConversationId && Boolean(retryMessage)} isSending={isSending} chatError={chatErrorConversationId === activeConversationId ? chatError : null} />}
               {tab === 'chat' && page === 'history' && <ChatHistoryPage
                 conversations={conversations}
                 activeConversationId={activeConversationId}
@@ -1423,6 +1440,15 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
 
   const frames = React.Children.toArray(children);
 
+  const __teddyBudExtractedStyles2 = StyleSheet.create({
+    style0: ({ flex: 1, minWidth: 0, overflow: 'hidden' }) as const,
+    style1: ({
+        width: width * frames.length,
+        height: '100%',
+        flexDirection: 'row',
+        transform: [{ translateX }],
+      }) as const,
+  });
   useEffect(() => {
     const nextIndex = primaryTabIndex(transitionKey as Page);
     const previousPageIndex = previousIndex.current;
@@ -1479,8 +1505,7 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
 
       Animated.timing(translateX, {
         toValue: -targetIndex * width,
-        duration: 230,
-        easing: Easing.out(Easing.cubic),
+        duration: 230,        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (!finished) return;
@@ -1491,27 +1516,30 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
   })).current;
 
   if (!enabled) {
-    return <View style={{ flex: 1 }}>{frames[currentIndex] ?? frames[0]}</View>;
+    const __teddyBudExtractedStyles1 = StyleSheet.create({
+      style0: ({ flex: 1 }) as const,
+    });
+    return <View style={__teddyBudExtractedStyles1.style0}>{frames[currentIndex] ?? frames[0]}</View>;
   }
 
   return <View
     {...panResponder.panHandlers}
-    style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}
+    style={__teddyBudExtractedStyles2.style0}
   >
     <Animated.View
-      style={{
-        width: width * frames.length,
-        height: '100%',
-        flexDirection: 'row',
-        transform: [{ translateX }],
-      }}
+      style={__teddyBudExtractedStyles2.style1}
     >
-      {frames.map((frame, index) => <View
+      {frames.map((frame, index) => {
+        const __teddyBudExtractedStyles3 = StyleSheet.create({
+          style0: ({ width, height: '100%', flexShrink: 0 }) as const,
+        });
+        return <View
         key={`teddy-tab-frame-${index}`}
-        style={{ width, height: '100%', flexShrink: 0 }}
+        style={__teddyBudExtractedStyles3.style0}
       >
         {frame}
-      </View>)}
+      </View>;
+      })}
     </Animated.View>
   </View>;
 }
@@ -1677,6 +1705,10 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
   const [labelsCollapsed, setLabelsCollapsed] = useState(collapsed);
   const labelOpacity = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
   const chevronRotation = chevronProgress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+  const __teddyBudExtractedStyles4 = StyleSheet.create({
+    style0: ({ opacity: labelOpacity }) as const,
+    style1: ({ transform: [{ rotate: chevronRotation }] }) as const,
+  });
   const reduceMotion = useRef(false);
 
   useEffect(() => {
@@ -1749,7 +1781,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
       <View style={[styles.sidebarBrand, labelsCollapsed && styles.sidebarBrandCollapsed]}>
         <View style={[styles.sidebarIdentity, labelsCollapsed && styles.sidebarIdentityCollapsed]}>
           <View style={styles.brandMark}><Image source={teddyBudLogo} style={styles.brandLogo} accessibilityLabel="Teddy Bud" /></View>
-          {!labelsCollapsed && <Animated.View style={{ opacity: labelOpacity }}><Text style={styles.brandName}>Teddy Bud</Text><Text style={styles.sidebarCaption}>A quiet place to be</Text></Animated.View>}
+          {!labelsCollapsed && <Animated.View style={__teddyBudExtractedStyles4.style0}><Text style={styles.brandName}>Teddy Bud</Text><Text style={styles.sidebarCaption}>A quiet place to be</Text></Animated.View>}
         </View>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Start a new chat" accessibilityHint={labelsCollapsed ? 'Start a new conversation' : undefined} onPress={onNewConversation} style={({ pressed }) => [styles.newChatButton, labelsCollapsed && styles.newChatButtonCollapsed, pressed && styles.pressed]}>
@@ -1771,7 +1803,7 @@ const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, 
       </ScrollView>
       <View style={styles.sidebarBottom}>
         <View style={styles.sidebarRule} />
-        <Pressable accessibilityRole="button" accessibilityLabel={visualCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} accessibilityHint={visualCollapsed ? 'Show chat names and navigation labels' : 'Hide labels and keep the icon rail visible'} onPress={onToggleCollapsed} style={({ pressed }) => [styles.sidebarCollapseButton, styles.sidebarCollapseButtonBottom, visualCollapsed && styles.sidebarCollapseButtonCollapsed, pressed && styles.pressed]}><Animated.View style={{ transform: [{ rotate: chevronRotation }] }}><AppIcon name="chevron" color={C.cocoa} size={18} /></Animated.View></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={visualCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} accessibilityHint={visualCollapsed ? 'Show chat names and navigation labels' : 'Hide labels and keep the icon rail visible'} onPress={onToggleCollapsed} style={({ pressed }) => [styles.sidebarCollapseButton, styles.sidebarCollapseButtonBottom, visualCollapsed && styles.sidebarCollapseButtonCollapsed, pressed && styles.pressed]}><Animated.View style={__teddyBudExtractedStyles4.style1}><AppIcon name="chevron" color={C.cocoa} size={18} /></Animated.View></Pressable>
       </View>
     </Animated.View>
   );
@@ -1931,6 +1963,14 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
 }
 
 export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName = 'Teddy', messages, streamingReply = '', isThinking = false, conversationTitle, onOpenHistory, onRenameChat, isPinned, onTogglePin, canManageChat = true, onOpenCrisisResources, emergencyCallOption, crisisHelplineOption, onCallEmergency, onCallHelpline, onTextHelpline, onOpenHelplineWebsite, onSaveOccasion, memorySuggestion, onSaveMemorySuggestion, onDismissMemorySuggestion, draft, setDraft, onSend, editingMessageId, onEditMessage, onCancelEdit, onStop, onRetry, onRegenerate, retryPending, isSending, chatError }: { wide: boolean; bottomInset?: number; conversationId?: string | null; assistantName?: string; messages: Message[]; streamingReply?: string; isThinking?: boolean; conversationTitle: string; onOpenHistory: () => void; onRenameChat: () => void; isPinned: boolean; onTogglePin: () => void; canManageChat?: boolean; onOpenCrisisResources: () => void; emergencyCallOption: EmergencyCallOption | null; crisisHelplineOption: CrisisHelplineOption | null; onCallEmergency: (number: string) => void; onCallHelpline: (number: string) => void; onTextHelpline: (number: string) => void; onOpenHelplineWebsite: (url: string) => void; onSaveOccasion?: (fact: string) => void; memorySuggestion: MemorySuggestion | null; onSaveMemorySuggestion: () => void; onDismissMemorySuggestion: () => void; draft: string; setDraft: (value: string) => void; onSend: (imageDataUrl?: string) => void; editingMessageId?: number | null; onEditMessage?: (message: Message) => void; onCancelEdit?: () => void; onStop: () => void; onRetry: () => void; onRegenerate?: () => void; retryPending: boolean; isSending: boolean; chatError: string | null }) {
+  const __teddyBudExtractedStyles6 = StyleSheet.create({
+    style0: ({ flexDirection: "row", alignItems: "center", gap: 7 }) as const,
+    style1: ({ width: 42, height: 42, borderRadius: 9, marginRight: 8 }) as const,
+    style2: ({ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }) as const,
+    style3: ({ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }) as const,
+    style4: ({ padding: 6 }) as const,
+    style5: ({ color: C.cocoa, fontWeight: '700' }) as const,
+  });
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
   const reduceMotion = useReducedMotionPreference();
@@ -1947,12 +1987,14 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         duration: 2200,
         easing: Easing.inOut(Easing.sin),
         useNativeDriver: true,
+        isInteraction: false,
       }),
       Animated.timing(mascotBreath, {
         toValue: 0,
         duration: 2200,
         easing: Easing.inOut(Easing.sin),
         useNativeDriver: true,
+        isInteraction: false,
       }),
     ]));
     breathing.start();
@@ -1962,8 +2004,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
   const canSend = (!!draft.trim() || !!selectedImage) && !isSending;
   const [composerFocused, setComposerFocused] = useState(false);
   const [manualCrisisSupport, setManualCrisisSupport] = useState(false);
-  const [occasionOpen, setOccasionOpen] = useState(false);
-  const [occasionDraft, setOccasionDraft] = useState('');
+  const [occasionOpen, setOccasionOpen] = useState(false);  const [occasionDraft, setOccasionDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const shouldAutoScrollRef = useRef(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
@@ -2168,24 +2209,34 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         </View>
       </View> : <View style={styles.conversationColumn}>
         <View style={styles.dayDivider}><View style={styles.dividerLine} /><Text style={styles.dayText}>TODAY</Text><View style={styles.dividerLine} /></View>
-        {messages.map(message => <View key={message.id}>
+        {messages.map(message => {
+          const __teddyBudExtractedStyles5 = StyleSheet.create({
+            style0: ({ alignSelf: 'flex-end', marginRight: 4, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }) as const,
+            style1: ({ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }) as const,
+            style2: ({ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }) as const,
+            style3: ({ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }) as const,
+            style4: ({ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4' }) as const,
+            style5: ({ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }) as const,
+          });
+          return <View key={message.id}>
           <View style={[styles.messageRow, message.author === 'you' && styles.messageRowYou]}>
             {message.author === 'teddy' && <View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View>}
-            <View style={[styles.messageBubble, message.author === 'you' ? styles.userBubble : styles.teddyBubble]}>{message.imageDataUrl && <Image source={{ uri: message.imageDataUrl }} style={styles.chatMessageImage} resizeMode="cover" accessibilityLabel="Image you uploaded" />} {message.author === 'teddy' ? <MarkdownReply content={message.text} /> : Boolean(message.text.trim()) && <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>}<Text style={[styles.messageTime, message.author === 'you' && styles.userMessageTime]}>{message.time}</Text></View>
+            <View style={[styles.messageBubble, message.author === 'you' ? styles.userBubble : styles.teddyBubble]}>{message.imageDataUrl && <Image source={{ uri: message.imageDataUrl }} style={styles.chatMessageImage} resizeMode="cover" accessibilityLabel="Image you uploaded" />} {message.author === 'teddy' ? <MarkdownReply content={message.text} /> : Boolean(message.text.trim()) && <Text style={[styles.messageText, styles.userMessageText]}>{message.text}</Text>}{message.author === 'teddy' && message.stickerId && <Image source={getTeddySticker(message.stickerId).source} style={styles.chatSticker} resizeMode="contain" accessibilityLabel={getTeddySticker(message.stickerId).label} />}<Text style={[styles.messageTime, message.author === 'you' && styles.userMessageTime]}>{message.time}</Text></View>
           </View>
-          {message.author === 'you' && messages.filter(item => item.author === 'you').slice(-1)[0]?.id === message.id && onEditMessage && <Pressable accessibilityRole="button" accessibilityLabel="Edit and resend your last message" disabled={isSending} onPress={() => onEditMessage(message)} style={{ alignSelf: 'flex-end', marginRight: 4, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Edit & resend</Text></Pressable>}
-          {message.author === 'teddy' && messages[messages.length - 1]?.id === message.id && onRegenerate && <Pressable accessibilityRole="button" accessibilityLabel="Generate another reply" disabled={isSending} onPress={onRegenerate} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 4, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4', opacity: isSending ? 0.5 : 1 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Try another reply</Text></Pressable>}
+          {message.author === 'you' && messages.filter(item => item.author === 'you').slice(-1)[0]?.id === message.id && onEditMessage && <Pressable accessibilityRole="button" accessibilityLabel="Edit and resend your last message" disabled={isSending} onPress={() => onEditMessage(message)} style={__teddyBudExtractedStyles5.style0}><Text style={__teddyBudExtractedStyles5.style1}>Edit & resend</Text></Pressable>}
+          {message.author === 'teddy' && messages[messages.length - 1]?.id === message.id && onRegenerate && <Pressable accessibilityRole="button" accessibilityLabel="Generate another reply" disabled={isSending} onPress={onRegenerate} style={__teddyBudExtractedStyles5.style2}><Text style={__teddyBudExtractedStyles5.style3}>Try another reply</Text></Pressable>}
           {message.author === 'teddy' && <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === 'web' ? 'Copy Teddy Bud reply' : 'Share Teddy Bud reply'} onPress={() => {
             if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-              void navigator.clipboard.writeText(message.text)
+              runInBackground(navigator.clipboard.writeText(message.text)
                 .then(() => Alert.alert('Reply copied', 'Teddy Bud’s reply was copied to your clipboard.'))
-                .catch(() => Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.')));
+                .catch(() => Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.'))));
               return;
             }
-            void Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.'));
-          }} style={{ alignSelf: 'flex-start', marginLeft: 48, marginTop: 4, marginBottom: 8, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10, backgroundColor: '#F2ECE4' }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>{Platform.OS === 'web' ? 'Copy reply' : 'Share reply'}</Text></Pressable>}
+            runInBackground(Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.')));
+          }} style={__teddyBudExtractedStyles5.style4}><Text style={__teddyBudExtractedStyles5.style5}>{Platform.OS === 'web' ? 'Copy reply' : 'Share reply'}</Text></Pressable>}
           {message.author === 'teddy' && memorySuggestion?.messageId === message.id && <MemorySuggestionCard fact={memorySuggestion.fact} onSave={onSaveMemorySuggestion} onDismiss={onDismissMemorySuggestion} />}
-        </View>)}
+        </View>;
+        })}
         {isThinking && (streamingReply
           ? <View style={styles.messageRow}><View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View><View style={[styles.messageBubble, styles.teddyBubble]}><MarkdownReply content={streamingReply} /></View></View>
           : <View style={styles.sendingRow}><View style={styles.teddyAvatarTile}><Image source={assistantIcon} style={styles.teddyAvatarMessageLogo} accessibilityLabel={assistantName} /></View><TypingIndicator /></View>)}
@@ -2206,7 +2257,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       onPress={jumpToLatest}
       style={({ pressed }) => [styles.jumpToLatestButton, pressed && styles.pressed]}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}><AppIcon name="arrow" color={C.cocoaDark} size={14} /><Text style={styles.jumpToLatestText}>Latest</Text></View>
+      <View style={__teddyBudExtractedStyles6.style0}><AppIcon name="arrow" color={C.cocoaDark} size={14} /><Text style={styles.jumpToLatestText}>Latest</Text></View>
     </Pressable>}
     </View>
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
@@ -2221,11 +2272,11 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
           <AppIcon name="sparkle" color={C.cocoa} size={15} /><Text style={styles.chatToolLabel}>Save an occasion</Text>
         </Pressable>}
       </View>
-      {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={{ width: 42, height: 42, borderRadius: 9, marginRight: 8 }} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
-      {editingMessageId !== null && editingMessageId !== undefined && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}><Text style={{ color: C.cocoaDark, fontSize: 12, fontWeight: '600' }}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={{ padding: 6 }}><Text style={{ color: C.cocoa, fontWeight: '700' }}>Cancel</Text></Pressable></View>}
+      {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={__teddyBudExtractedStyles6.style1} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
+      {editingMessageId !== null && editingMessageId !== undefined && <View style={__teddyBudExtractedStyles6.style2}><Text style={__teddyBudExtractedStyles6.style3}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={__teddyBudExtractedStyles6.style4}><Text style={__teddyBudExtractedStyles6.style5}>Cancel</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
-        <Pressable accessibilityRole="button" accessibilityLabel={speechListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Speech is transcribed into your editable message. Nothing is sent until you press Send." onPress={speechListening ? stopSpeechInput : () => { void startSpeechInput(); }} disabled={isSending} style={({ pressed }) => [styles.voiceButton, speechListening && styles.voiceButtonActive, isSending && styles.buttonDisabled, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={speechListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Speech is transcribed into your editable message. Nothing is sent until you press Send." onPress={speechListening ? stopSpeechInput : () => { runInBackground(startSpeechInput()); }} disabled={isSending} style={({ pressed }) => [styles.voiceButton, speechListening && styles.voiceButtonActive, isSending && styles.buttonDisabled, pressed && styles.pressed]}>
           {speechListening ? <View style={styles.voiceStopIndicator} /> : <View style={styles.voiceMicIcon}><View style={styles.voiceMicHead} /><View style={styles.voiceMicArc} /><View style={styles.voiceMicStem} /><View style={styles.voiceMicBase} /></View>}
         </Pressable>
         {isSending
@@ -2341,7 +2392,7 @@ function renderInlineMarkdown(value: string): React.ReactNode[] {
     if (current[1] && current[2]) {
       const url = current[2];
       result.push(<Text key={`link-${current.index}`} accessibilityRole="link" style={styles.markdownLink} onPress={() => openExternalUrl(url).catch(() => {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') window.alert('Could not open this link. Copy it and try again in your browser.');
+        if (Platform.OS === 'web' && typeof window !== 'undefined') Alert.alert('Could not open this link', 'Copy it and try again in your browser.');
         else Alert.alert('Could not open link', 'Copy the link and try again in your browser.');
       })}>{current[1]}</Text>);
     } else if (current[4] !== undefined) result.push(<Text key={`strong-${current.index}`} style={styles.markdownStrong}>{current[4]}</Text>);
@@ -2421,8 +2472,8 @@ function TypingIndicator() {
     if (Platform.OS === 'web' || reduceMotion) return;
     const animations = dots.map((dot, index) => Animated.loop(Animated.sequence([
       Animated.delay(index * 150),
-      Animated.timing(dot, { toValue: 1, duration: 240, useNativeDriver: false }),
-      Animated.timing(dot, { toValue: 0, duration: 240, useNativeDriver: false }),
+      Animated.timing(dot, { toValue: 1, duration: 240, useNativeDriver: false, isInteraction: false }),
+      Animated.timing(dot, { toValue: 0, duration: 240, useNativeDriver: false, isInteraction: false }),
       Animated.delay((dots.length - index - 1) * 150),
     ])));
     animations.forEach(animation => animation.start());
@@ -2452,8 +2503,7 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete, 
     <View style={styles.pageIntro}><Text style={styles.eyebrow}>THE THINGS THAT MATTER</Text><Text style={styles.pageTitle}>Your memories</Text><Text style={styles.pageDescription}>Little details you choose to keep close. You can change or forget any of them, whenever you like.</Text></View>
     {actionError && <View accessibilityRole="alert" style={styles.authError}>
       <Text accessibilityLiveRegion="polite" style={styles.authErrorText}>{actionError}</Text>
-      <View style={styles.memoryErrorActions}>
-        {canRetryDelete && <Pressable accessibilityRole="button" onPress={onRetryDelete} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Retry removal</Text></Pressable>}
+      <View style={styles.memoryErrorActions}>        {canRetryDelete && <Pressable accessibilityRole="button" onPress={onRetryDelete} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Retry removal</Text></Pressable>}
         <Pressable accessibilityRole="button" onPress={onDismissActionError} style={({ pressed }) => [styles.journalDismiss, pressed && styles.pressed]}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>
       </View>
     </View>}
@@ -2620,11 +2670,190 @@ export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
   </ScrollView>;
 }
 function WellbeingStudio({wide}:{wide:boolean}) {
- const [mode,setMode]=useState<'breathe'|'ground'|'focus'|'rest'>('breathe'); const [step,setStep]=useState(0);
- const content={breathe:{title:'Gentle breathing',description:'Try a comfortable pace. Stop whenever you want.',steps:['Breathe in gently','Breathe out slowly','Relax your shoulders']},ground:{title:'Grounding pause',description:'Notice what is around you, without needing to change anything.',steps:['Name 5 things you can see','Notice 4 things you can feel','Listen for 3 sounds','Notice 2 scents','Name 1 kind thing you can tell yourself']},focus:{title:'Small focus break',description:'A short reset, not another task to complete.',steps:['Put both feet somewhere comfortable','Choose one small next step','Give yourself permission to pause']},rest:{title:'Bedtime wind-down',description:'A quiet offline routine. No streaks, pressure, or score.',steps:['Lower the brightness if comfortable','Let your jaw and shoulders soften','Put tomorrow’s first thought on paper']}} as const;
- return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}><Text style={{fontSize:28,fontWeight:'700',color:C.cocoaDark}}>A softer moment</Text><Text style={{color:C.muted,lineHeight:21,marginTop:8}}>These gentle exercises work offline. They are optional wellbeing tools, not medical treatment.</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:18}}>{([{id:'breathe',label:'Breathe'},{id:'ground',label:'Grounding'},{id:'focus',label:'Focus break'},{id:'rest',label:'Wind down'}] as const).map(item=><Pressable key={item.id} onPress={()=>{setMode(item.id);setStep(0)}} style={{padding:12,borderRadius:14,backgroundColor:mode===item.id?'#E7D0C2':C.paper,borderWidth:1,borderColor:C.line}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{item.label}</Text></Pressable>)}</View><View style={{backgroundColor:C.paper,borderRadius:24,borderWidth:1,borderColor:C.line,padding:22,marginTop:14,alignItems:'center'}}><View style={{width:120,height:120,borderRadius:60,backgroundColor:'#E7D0C2',alignItems:'center',justifyContent:'center',marginBottom:18}}><Text style={{fontSize:34,color:C.cocoaDark}}>{mode==='breathe'?'◌':mode==='ground'?'⌂':mode==='focus'?'✳':'☾'}</Text></View><Text style={{fontSize:21,fontWeight:'700',color:C.cocoaDark}}>{content[mode].title}</Text><Text style={{textAlign:'center',color:C.muted,lineHeight:21,marginTop:8}}>{content[mode].description}</Text><Text style={{fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',marginTop:24,minHeight:54}}>{content[mode].steps[step]}</Text><View style={{flexDirection:'row',gap:10,marginTop:18}}><Pressable onPress={()=>setStep(s=>Math.max(0,s-1))} style={{padding:13,borderRadius:13,backgroundColor:'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>Previous</Text></Pressable><Pressable onPress={()=>setStep(s=>(s+1)%content[mode].steps.length)} style={{padding:13,borderRadius:13,backgroundColor:C.cocoaDark}}><Text style={{color:'#FFF',fontWeight:'700'}}>{step===content[mode].steps.length-1?'Start again':'Next step'}</Text></Pressable></View></View></ScrollView>;
+  const [mode, setMode] = useState<'breathe'|'ground'|'focus'|'rest'>('breathe');
+  const [duration, setDuration] = useState(3);
+  const [remaining, setRemaining] = useState(180);
+  const [active, setActive] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const routines = {
+    breathe: { title: 'A slower breath', intro: 'Settle into a comfortable rhythm. Nothing to get right.', total: 180, cues: ['Breathe in softly', 'Let the breath leave slowly', 'Rest for a moment'] },
+    ground: { title: 'Come back to now', intro: 'A gentle sensory pause. Let your attention wander naturally.', total: 180, cues: ['Notice the colours around you', 'Feel where your body is supported', 'Listen to the nearest sound', 'Notice the air on your skin', 'Let your eyes rest'] },
+    focus: { title: 'A little breathing room', intro: 'A quiet pocket of time for one thing, or for doing nothing at all.', total: 300, cues: ['Choose one small thing, if you want', 'Stay with it at your own pace', 'Let the rest wait for now'] },
+    rest: { title: 'Ease into rest', intro: 'A soft landing. You can keep your eyes open or closed.', total: 240, cues: ['Unclench your jaw and soften your shoulders', 'Let your hands rest', 'Allow the day to become a little quieter', 'There is nothing else to finish here'] },
+  } as const;
+  const routine = routines[mode];
+  const totalSeconds = duration * 60;
+  const elapsed = Math.max(0, totalSeconds - remaining);
+  const cueIndex = mode === 'breathe'
+    ? (Math.floor(elapsed / 5) % 3)
+    : Math.min(routine.cues.length - 1, Math.floor(elapsed / Math.max(1, totalSeconds / routine.cues.length)));
+  const cue = routine.cues[cueIndex] ?? routine.cues[0];
+  const progress = Math.min(1, elapsed / totalSeconds);
+  useEffect(() => {
+    if (!active) return undefined;
+    const timer = setInterval(() => {
+      setRemaining(current => {
+        if (current <= 1) {
+          setActive(false);
+          setCompleted(true);
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+  const chooseMode = (next: typeof mode) => {
+    setMode(next);
+    setActive(false);
+    setCompleted(false);
+    setDuration(next === 'focus' ? 5 : next === 'rest' ? 4 : 3);
+    setRemaining((next === 'focus' ? 5 : next === 'rest' ? 4 : 3) * 60);
+  };
+  const chooseDuration = (minutes: number) => {
+    setDuration(minutes);
+    setRemaining(minutes * 60);
+    setCompleted(false);
+  };
+  const startOrPause = () => {
+    if (active) {
+      setActive(false);
+      return;
+    }
+    if (remaining <= 0 || completed) {
+      setRemaining(totalSeconds);
+      setCompleted(false);
+    }
+    setActive(true);
+  };
+  const reset = () => {
+    setActive(false);
+    setRemaining(totalSeconds);
+    setCompleted(false);
+  };
+  const clock = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
+  const phase = mode === 'breathe' ? cueIndex === 0 ? 'Breathe in' : cueIndex === 1 ? 'Breathe out' : 'Rest' : 'Take your time';
+  const orbScale = useRef(new Animated.Value(1)).current;
+  const __teddyBudExtractedStyles7 = StyleSheet.create({
+    style0: ({fontSize:28,fontWeight:'700',color:C.cocoaDark}) as const,
+    style1: ({color:C.muted,lineHeight:22,marginTop:8,maxWidth:600}) as const,
+    style2: ({flexDirection:'row',flexWrap:'wrap',gap:9,marginTop:20}) as const,
+    style3: ({backgroundColor:'#F3EAE3',borderRadius:30,borderWidth:1,borderColor:'#E8D8CB',padding:wide?28:20,marginTop:16,alignItems:'center'}) as const,
+    style4: ({fontSize:12,letterSpacing:1.5,fontWeight:'700',color:'#8A6D58'}) as const,
+    style5: ({fontSize:23,fontWeight:'700',color:C.cocoaDark,marginTop:10,textAlign:'center'}) as const,
+    style6: ({fontSize:14,lineHeight:21,color:C.muted,marginTop:7,textAlign:'center',maxWidth:420}) as const,
+    style7: ({width:156,height:156,borderRadius:78,backgroundColor:'#D9BBA7',borderWidth:10,borderColor:'#EAD8CA',alignItems:'center',justifyContent:'center',marginTop:24,marginBottom:18,transform:[{scale:orbScale}]}) as const,
+    style8: ({width:116,height:116,borderRadius:58,backgroundColor:'#C69A7D',alignItems:'center',justifyContent:'center'}) as const,
+    style9: ({fontSize:15,fontWeight:'700',color:'#FFF9F4'}) as const,
+    style10: ({fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',minHeight:28}) as const,
+    style11: ({fontSize:35,fontWeight:'300',fontVariant:['tabular-nums'],color:C.cocoaDark,marginTop:8}) as const,
+    style12: ({height:6,width:'100%',maxWidth:360,backgroundColor:'#E5D5C9',borderRadius:8,overflow:'hidden',marginTop:12}) as const,
+    style13: ({height:6,width:`${progress*100}%`,backgroundColor:'#96745E',borderRadius:8}) as const,
+    style14: ({flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10,flexWrap:'wrap',marginTop:22}) as const,
+    style15: ({color:'#FFF',fontWeight:'700'}) as const,
+    style16: ({paddingVertical:13,paddingHorizontal:17,borderRadius:17,backgroundColor:'#E9D9CE'}) as const,
+    style17: ({color:C.cocoaDark,fontWeight:'600'}) as const,
+    style18: ({flexDirection:'row',alignItems:'center',gap:8,marginTop:18}) as const,
+    style19: ({fontSize:12,color:C.muted}) as const,
+    style20: ({fontSize:12,lineHeight:18,color:'#846F5F',textAlign:'center',marginTop:18,maxWidth:420}) as const,
+  });
+  useEffect(() => {
+    if (!active || mode !== 'breathe') {
+      Animated.spring(orbScale, { toValue: 1, useNativeDriver: true, speed: 1.2, bounciness: 2 }).start();
+      return undefined;
+    }
+    const target = cueIndex === 0 ? 1.13 : cueIndex === 1 ? 0.92 : 1;
+    Animated.spring(orbScale, { toValue: target, useNativeDriver: true, speed: 0.45, bounciness: 1 }).start();
+    return undefined;
+  }, [active, cueIndex, mode, orbScale]);
+  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
+    <Text style={__teddyBudExtractedStyles7.style0}>A softer moment</Text>
+    <Text style={__teddyBudExtractedStyles7.style1}>Choose a feeling, settle in, and let the session guide itself. You do not need to keep tapping through steps.</Text>
+    <View style={__teddyBudExtractedStyles7.style2}>
+      {([{id:'breathe',label:'Breathe',symbol:'◌'},{id:'ground',label:'Grounding',symbol:'⌂'},{id:'focus',label:'Focus',symbol:'✳'},{id:'rest',label:'Wind down',symbol:'☾'}] as const).map(item=>
+        {
+        const __teddyBudExtractedStyles8 = StyleSheet.create({
+          style0: ({color:C.cocoaDark,fontWeight:'600'}) as const,
+        });
+        return <Pressable key={item.id} accessibilityRole="button" accessibilityState={{selected:mode===item.id}} onPress={()=>chooseMode(item.id)} style={({pressed})=>[{paddingVertical:12,paddingHorizontal:15,borderRadius:18,backgroundColor:mode===item.id?'#E9D7CA':C.paper,borderWidth:1,borderColor:mode===item.id?'#B9957E':C.line,opacity:pressed?0.82:1}]}>
+          <Text style={__teddyBudExtractedStyles8.style0}>{item.symbol}  {item.label}</Text>
+        </Pressable>;
+      }
+      )}
+    </View>
+    <View style={__teddyBudExtractedStyles7.style3}>
+      <Text style={__teddyBudExtractedStyles7.style4}>A LITTLE SPACE FOR YOU</Text>
+      <Text style={__teddyBudExtractedStyles7.style5}>{routine.title}</Text>
+      <Text style={__teddyBudExtractedStyles7.style6}>{routine.intro}</Text>
+      <Animated.View style={__teddyBudExtractedStyles7.style7}>
+        <View style={__teddyBudExtractedStyles7.style8}>
+          <Text style={__teddyBudExtractedStyles7.style9}>{mode==='breathe'&&active?phase:active?'With you':'Take a pause'}</Text>
+        </View>
+      </Animated.View>
+      <Text accessibilityLiveRegion="polite" style={__teddyBudExtractedStyles7.style10}>{completed?'You made a little room for yourself.':active?cue:'Whenever you are ready'}</Text>
+      <Text style={__teddyBudExtractedStyles7.style11}>{clock(remaining)}</Text>
+      <View style={__teddyBudExtractedStyles7.style12}>
+        <View style={__teddyBudExtractedStyles7.style13}/>
+      </View>
+      <View style={__teddyBudExtractedStyles7.style14}>
+        <Pressable accessibilityRole="button" onPress={startOrPause} style={({pressed})=>[{minWidth:148,paddingVertical:14,paddingHorizontal:22,borderRadius:18,backgroundColor:C.cocoaDark,alignItems:'center',opacity:pressed?0.86:1}]}>
+          <Text style={__teddyBudExtractedStyles7.style15}>{active?'Pause':completed?'Begin again':remaining<totalSeconds?'Resume':'Begin gently'}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={reset} style={__teddyBudExtractedStyles7.style16}>
+          <Text style={__teddyBudExtractedStyles7.style17}>Reset</Text>
+        </Pressable>
+      </View>
+      {!active && !completed ? <View style={__teddyBudExtractedStyles7.style18}>
+        <Text style={__teddyBudExtractedStyles7.style19}>Time</Text>
+        {[2,3,5,10].map(minutes=>{
+          const __teddyBudExtractedStyles9 = StyleSheet.create({
+            style0: ({paddingVertical:7,paddingHorizontal:11,borderRadius:12,backgroundColor:duration===minutes?'#DCC3B1':'#F8F3EF'}) as const,
+            style1: ({fontSize:12,fontWeight:'600',color:C.cocoaDark}) as const,
+          });
+          return <Pressable key={minutes} accessibilityRole="button" accessibilityState={{selected:duration===minutes}} onPress={()=>chooseDuration(minutes)} style={__teddyBudExtractedStyles9.style0}>
+          <Text style={__teddyBudExtractedStyles9.style1}>{minutes} min</Text>
+        </Pressable>;
+        })}
+      </View>:null}
+      <Text style={__teddyBudExtractedStyles7.style20}>No streaks, scores, or pressure. You can pause, stop, or leave at any time. This is a gentle self-care tool, not medical treatment.</Text>
+    </View>
+  </ScrollView>;
 }
 export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entries: EmotionCheckIn[]; onSave: (entry: EmotionCheckIn) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
+  const __teddyBudExtractedStyles14 = StyleSheet.create({
+    style0: ({maxWidth:760,width:'100%',alignSelf:'center'}) as const,
+    style1: ({fontSize:wide?30:25,fontWeight:'700',color:C.cocoaDark}) as const,
+    style2: ({fontSize:14,lineHeight:21,color:C.muted,marginTop:8}) as const,
+    style3: ({backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:24,padding:16,marginTop:20}) as const,
+    style4: ({fontSize:17,fontWeight:'700',color:C.cocoaDark}) as const,
+    style5: ({textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}) as const,
+    style6: ({fontSize:11,lineHeight:16,color:C.muted,textAlign:'center',marginTop:5}) as const,
+    style7: ({fontSize:13,lineHeight:20,color:C.cocoaDark,marginTop:8}) as const,
+    style8: ({color:'#FFFFFF',fontWeight:'700'}) as const,
+    style9: ({backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:14}) as const,
+    style10: ({fontSize:19,fontWeight:'700',color:C.cocoaDark,marginBottom:6}) as const,
+    style11: ({fontSize:13,color:C.muted,marginBottom:12}) as const,
+    style12: ({color:C.cocoaDark,fontWeight:'600',marginTop:14}) as const,
+    style13: ({flexDirection:'row',gap:8,marginTop:8}) as const,
+    style14: ({color:C.cocoaDark,fontWeight:'600',marginTop:14,marginBottom:8}) as const,
+    style15: ({flexDirection:'row',flexWrap:'wrap',gap:8}) as const,
+    style16: ({fontSize:12,color:C.muted,marginTop:12}) as const,
+    style17: ({minHeight:76,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:7,textAlignVertical:'top'}) as const,
+    style18: ({color:'#FFFFFF',fontWeight:'700'}) as const,
+    style19: ({backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:18,padding:15,marginTop:18}) as const,
+    style20: ({fontSize:16,fontWeight:'700',color:C.cocoaDark}) as const,
+    style21: ({fontSize:13,color:C.muted,lineHeight:20,marginTop:6}) as const,
+    style22: ({fontSize:14,color:C.cocoaDark,marginTop:10}) as const,
+    style23: ({fontSize:14,color:C.cocoaDark,marginTop:6}) as const,
+    style24: ({fontSize:13,color:C.muted,marginTop:6}) as const,
+    style25: ({fontSize:13,color:C.muted,lineHeight:20,marginTop:6}) as const,
+    style26: ({backgroundColor:'#F4ECE6',borderRadius:18,padding:15,marginTop:18}) as const,
+    style27: ({fontSize:16,fontWeight:'700',color:C.cocoaDark}) as const,
+    style28: ({fontSize:13,color:C.muted,lineHeight:20,marginTop:6}) as const,
+    style29: ({fontSize:19,fontWeight:'700',color:C.cocoaDark,marginTop:24,marginBottom:10}) as const,
+    style30: ({color:C.muted,paddingVertical:14}) as const,
+    style31: ({fontSize:12,color:C.muted,lineHeight:18,marginTop:10}) as const,
+  });
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [energy, setEnergy] = useState(3);
   const [support, setSupport] = useState<EmotionCheckIn['support']>('listen');
@@ -2713,76 +2942,171 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
   };
   const line = (a: {x:number;y:number}, b: {x:number;y:number}, color: string, width = 1) => {
     const dx = b.x - a.x, dy = b.y - a.y;
-    return <View key={color + a.x + a.y + b.x + b.y} pointerEvents="none" style={{ position: 'absolute', left: (a.x+b.x)/2-Math.sqrt(dx*dx+dy*dy)/2, top: (a.y+b.y)/2-width/2, width: Math.sqrt(dx*dx+dy*dy), height: width, backgroundColor: color, transform: [{ rotate: Math.atan2(dy,dx)+'rad' }] }} />;
+    const __teddyBudExtractedStyles10 = StyleSheet.create({
+      style0: ({ position: 'absolute', left: (a.x+b.x)/2-Math.sqrt(dx*dx+dy*dy)/2, top: (a.y+b.y)/2-width/2, width: Math.sqrt(dx*dx+dy*dy), height: width, backgroundColor: color, transform: [{ rotate: Math.atan2(dy,dx)+'rad' }] }) as const,
+    });
+    return <View key={color + a.x + a.y + b.x + b.y} pointerEvents="none" style={__teddyBudExtractedStyles10.style0} />;
+  };
+  const webBounce = useRef(new Animated.Value(1)).current;
+  const curvedRing = (level: number, color: string, strokeWidth: number) => {
+    const ringPoints = EMOTION_AXES.map((_, i) => point(i, level));
+    return ringPoints.map((a, i) => {
+      const b = ringPoints[(i + 1) % axisCount]!;
+      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const control = { x: midpoint.x + (center - midpoint.x) * 0.34, y: midpoint.y + (center - midpoint.y) * 0.34 };
+      const samples = [0.25, 0.5, 0.75, 1].map(t => ({
+        x: (1-t)*(1-t)*a.x + 2*(1-t)*t*control.x + t*t*b.x,
+        y: (1-t)*(1-t)*a.y + 2*(1-t)*t*control.y + t*t*b.y,
+      }));
+      const chain = [a, ...samples];
+      return chain.slice(0, -1).map((from, segment) => line(from, chain[segment + 1]!, color, strokeWidth));
+    });
   };
   const renderWeb = (data?: Record<string, number>) => {
+    const __teddyBudExtractedStyles11 = StyleSheet.create({
+      style0: ({ width: size, height: size, alignSelf: 'center' }) as const,
+      style1: ({ width: size, height: size, position: 'relative', transform: [{ scale: webBounce }] }) as const,
+      style2: ({ position: 'absolute', left: center-radius*0.86, top: center-radius*0.86, width: radius*1.72, height: radius*1.72, borderRadius: radius, backgroundColor: 'rgba(150, 108, 78, 0.10)', borderWidth: 1, borderColor: 'rgba(150, 108, 78, 0.10)' }) as const,
+      style3: ({position:'absolute',left:center-4,top:center-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D'}) as const,
+    });
     const values = EMOTION_AXES.map(axis => data?.[axis.id] ?? 0);
-    return <View accessibilityLabel="Spider web chart showing self-rated emotions from zero to five" style={{ width: size, height: size, alignSelf: 'center', position: 'relative' }}>
-      {[1,2,3,4,5].map(level => EMOTION_AXES.map((_, i) => line(point(i, level), point((i+1)%axisCount, level), '#E8DDD5', 1)))}
-      {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D8CBC2', 1))}
-      {EMOTION_AXES.map((axis,i) => {
-        const label = point(i,5.75);
-        return <React.Fragment key={axis.id}>
-          <Text style={{position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}}>{axis.label}</Text>
-          {data && values[i] > 0 ? <View style={{position:'absolute',left:point(i,values[i]).x-5,top:point(i,values[i]).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#B87862',borderWidth:2,borderColor:'#FFF9F4'}} /> : null}
-        </React.Fragment>;
-      })}
-      {data ? values.map((value,i) => line(point(i,value), point((i+1)%axisCount,values[(i+1)%axisCount]), '#B87862', 2.5)) : null}
-      <View style={{position:'absolute',left:center-4,top:center-4,width:8,height:8,borderRadius:4,backgroundColor:'#B87862'}} />
-    </View>;
+    return <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Emotion web. Touch to feel the web gently bounce."
+      accessibilityHint="The connected emotion web responds with a soft elastic movement."
+      onPressIn={() => Animated.spring(webBounce, { toValue: 0.965, useNativeDriver: true, speed: 1.1, bounciness: 8 }).start()}
+      onPressOut={() => Animated.sequence([
+        Animated.spring(webBounce, { toValue: 1.035, useNativeDriver: true, speed: 0.45, bounciness: 10 }),
+        Animated.spring(webBounce, { toValue: 1, useNativeDriver: true, speed: 0.65, bounciness: 5 }),
+      ]).start()}
+      style={__teddyBudExtractedStyles11.style0}
+    >
+      <Animated.View style={__teddyBudExtractedStyles11.style1}>
+        <View pointerEvents="none" style={__teddyBudExtractedStyles11.style2} />
+        {[1,2,3,4,5].map(level => <React.Fragment key={'ring-'+level}>{curvedRing(level, level===5?'#D5C1B2':'#E5D8CE', level===5?1.4:1)}</React.Fragment>)}
+        {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D5C5B8', 1))}
+        {EMOTION_AXES.map((axis,i) => {
+          const label = point(i,5.75);
+          const dot = point(i,5);
+          const __teddyBudExtractedStyles12 = StyleSheet.create({
+            style0: ({position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}) as const,
+            style1: ({position:'absolute',left:dot.x-4,top:dot.y-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D',borderWidth:1.5,borderColor:'#FFF9F4'}) as const,
+          });
+          return <React.Fragment key={axis.id}>
+            <Text style={__teddyBudExtractedStyles12.style0}>{axis.label}</Text>
+            <View pointerEvents="none" style={__teddyBudExtractedStyles12.style1} />
+          </React.Fragment>;
+        })}
+        {data ? values.map((value,i) => {
+          const a = point(i,value);
+          const b = point((i+1)%axisCount,values[(i+1)%axisCount]!);
+          const midpoint = {x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+          const control = {x:midpoint.x+(center-midpoint.x)*0.28,y:midpoint.y+(center-midpoint.y)*0.28};
+          const samples = [0.2,0.4,0.6,0.8,1].map(t=>({x:(1-t)*(1-t)*a.x+2*(1-t)*t*control.x+t*t*b.x,y:(1-t)*(1-t)*a.y+2*(1-t)*t*control.y+t*t*b.y}));          return <React.Fragment key={'data-'+i}>{[a,...samples].slice(0,-1).map((from,j)=>line(from,samples[j]!, '#A86F52', 2.6))}</React.Fragment>;
+        }) : null}
+        {data ? values.map((value,i) => {
+          const __teddyBudExtractedStyles13 = StyleSheet.create({
+            style0: ({position:'absolute',left:point(i,value).x-5,top:point(i,value).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#A86F52',borderWidth:2,borderColor:'#FFF9F4'}) as const,
+          });
+          return value>0 ? <View key={'value-'+i} pointerEvents="none" style={__teddyBudExtractedStyles13.style0} /> : null;
+        }) : null}
+        <View pointerEvents="none" style={__teddyBudExtractedStyles11.style3} />
+      </Animated.View>
+    </Pressable>;
   };
-  return <ScrollView contentContainerStyle={{padding:wide?28:18,paddingBottom:36,alignItems:'stretch'}}>
-    <View style={{maxWidth:760,width:'100%',alignSelf:'center'}}>
-      <Text style={{fontSize:wide?30:25,fontWeight:'700',color:C.cocoaDark}}>Your emotional landscape</Text>
-      <Text style={{fontSize:14,lineHeight:21,color:C.muted,marginTop:8}}>A private snapshot of how you feel. Rate only what feels relevant; there is no good or bad shape.</Text>
+  return <ScrollView contentContainerStyle={[styles.emotionsPageScroll, wide && styles.emotionsPageScrollWide]}>
+    <View style={__teddyBudExtractedStyles14.style0}>
+      <Text style={__teddyBudExtractedStyles14.style1}>Your emotional landscape</Text>
+      <Text style={__teddyBudExtractedStyles14.style2}>A private snapshot of how you feel. Rate only what feels relevant; there is no good or bad shape.</Text>
       {(actionError || actionNotice) && <View accessibilityRole={actionError ? 'alert' : 'summary'} style={actionError ? styles.authError : styles.journalNotice}>
         <Text accessibilityLiveRegion="polite" style={actionError ? styles.authErrorText : styles.journalNoticeText}>{actionError || actionNotice}</Text>
         {actionError && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss check-in notice" onPress={() => setActionError(null)} style={styles.journalDismiss}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>}
       </View>}
-      <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:24,padding:16,marginTop:20}}>
-        <Text style={{fontSize:17,fontWeight:'700',color:C.cocoaDark}}>{latest?.origin === 'survey-ai' ? 'Your starting emotion web' : latest ? 'Latest check-in' : 'Your emotion web'}</Text>
+      <View style={__teddyBudExtractedStyles14.style3}>
+        <Text style={__teddyBudExtractedStyles14.style4}>{latest?.origin === 'survey-ai' ? 'Your starting emotion web' : latest ? 'Latest check-in' : 'Your emotion web'}</Text>
         {renderWeb(latest?.emotions)}
-        <Text accessibilityRole="text" style={{textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}}>{latest ? (latest.origin === 'survey-ai' ? 'AI-estimated from your onboarding answers · '+new Date(latest.createdAt).toLocaleString() : 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString()) : 'Your web appears after your first check-in.'}</Text>
-        {latest?.origin === 'survey-ai' ? <Text style={{fontSize:11,lineHeight:16,color:C.muted,textAlign:'center',marginTop:5}}>A gentle estimate from your answers, not a clinical assessment. You can replace it with your own check-in at any time.</Text> : null}
-        {latest ? <Text style={{fontSize:13,lineHeight:20,color:C.cocoaDark,marginTop:8}}>Highest ratings: {EMOTION_AXES.filter(a=>(latest.emotions[a.id]??0)>0).sort((a,b)=>(latest.emotions[b.id]??0)-(latest.emotions[a.id]??0)).slice(0,3).map(a=>a.label+' '+latest.emotions[a.id]+'/5').join(' · ') || 'No emotions rated'} · Energy {latest.energy}/5</Text> : null}
-        <Pressable accessibilityRole="button" accessibilityLabel={showForm ? 'Close check-in form' : 'Add a check-in'} onPress={toggleForm} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:16 }, pressed && styles.pressed]}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
+        <Text accessibilityRole="text" style={__teddyBudExtractedStyles14.style5}>{latest ? (latest.origin === 'survey-ai' ? 'AI-estimated from your onboarding answers · '+new Date(latest.createdAt).toLocaleString() : 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString()) : 'Your web appears after your first check-in.'}</Text>
+        {latest?.origin === 'survey-ai' ? <Text style={__teddyBudExtractedStyles14.style6}>A gentle estimate from your answers, not a clinical assessment. You can replace it with your own check-in at any time.</Text> : null}
+        {latest ? <Text style={__teddyBudExtractedStyles14.style7}>Highest ratings: {EMOTION_AXES.filter(a=>(latest.emotions[a.id]??0)>0).sort((a,b)=>(latest.emotions[b.id]??0)-(latest.emotions[a.id]??0)).slice(0,3).map(a=>a.label+' '+latest.emotions[a.id]+'/5').join(' · ') || 'No emotions rated'} · Energy {latest.energy}/5</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={showForm ? 'Close check-in form' : 'Add a check-in'} onPress={toggleForm} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:16 }, pressed && styles.pressed]}><Text style={__teddyBudExtractedStyles14.style8}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
       </View>
-      {showForm ? <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:14}}>
-        <Text style={{fontSize:19,fontWeight:'700',color:C.cocoaDark,marginBottom:6}}>How are you feeling?</Text>
-        <Text style={{fontSize:13,color:C.muted,marginBottom:12}}>Tap a number from 0 (not present) to 5 (very strong). You can leave any emotion unrated.</Text>
-        {EMOTION_AXES.map(axis=><View key={axis.id} style={{paddingVertical:9,borderBottomWidth:1,borderBottomColor:C.line}}>
-          <Text style={{color:C.cocoaDark,fontWeight:'600',marginBottom:8}}>{axis.label}</Text>
-          <View style={{flexDirection:'row',gap:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} accessibilityRole="button" accessibilityLabel={axis.label+' '+n+' out of 5'} accessibilityState={{ selected: ratings[axis.id] === n }} onPress={()=>{ setRatings(current=>({...current,[axis.id]:n})); setActionError(null); setActionNotice(null); }} style={{flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:ratings[axis.id]===n?'#B87862':'#F5ECE5',borderWidth:ratings[axis.id]===n?2:0,borderColor:C.cocoaDark}}><Text style={{color:C.cocoaDark,fontWeight:'600'}}>{n}</Text></Pressable>)}</View>
-        </View>)}
-        <Text style={{color:C.cocoaDark,fontWeight:'600',marginTop:14}}>Energy: {energy}/5</Text>
-        <View style={{flexDirection:'row',gap:8,marginTop:8}}>{[0,1,2,3,4,5].map(n=><Pressable key={n} accessibilityRole="button" accessibilityLabel={`Energy ${n} out of 5`} accessibilityState={{ selected: energy === n }} onPress={()=>{ setEnergy(n); setActionError(null); setActionNotice(null); }} style={{flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:energy===n?'#B87862':'#F5ECE5'}}><Text style={{color:C.cocoaDark}}>{n}</Text></Pressable>)}</View>
-        <Text style={{color:C.cocoaDark,fontWeight:'600',marginTop:14,marginBottom:8}}>What would help right now?</Text>
-        <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{([{id:'listen',label:'Just listen'},{id:'advice',label:'Practical advice'},{id:'encouragement',label:'Encouragement'},{id:'unsure',label:'Not sure'}] as const).map(option=><Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: support === option.id }} onPress={()=>{ setSupport(option.id); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [{ minHeight:48, paddingVertical:9, paddingHorizontal:12, borderRadius:14, backgroundColor:support===option.id?'#E7D0C2':'#F5ECE5', borderWidth:support===option.id?1:0, borderColor:'#B87862' }, pressed && styles.pressed, pressed && styles.squeezePressed]}><Text style={{color:C.cocoaDark}}>{option.label}</Text></Pressable>)}</View>
-        <Text style={{fontSize:12,color:C.muted,marginTop:12}}>Optional note (saved only on this device)</Text>
-        <TextInput accessibilityLabel="Emotion check-in note (optional)" value={note} onChangeText={value => { setNote(value.slice(0, 2000)); setActionError(null); setActionNotice(null); }} multiline maxLength={2000} placeholder="Anything you want to remember about this moment…" placeholderTextColor={C.muted} style={{minHeight:76,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:7,textAlignVertical:'top'}} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Save emotion check-in" disabled={saving} onPress={saveCheckIn} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:14 }, saving && styles.buttonDisabled, pressed && styles.pressed]}><Text style={{color:'#FFFFFF',fontWeight:'700'}}>{saving ? 'Saving check-in…' : 'Save privately on this device'}</Text></Pressable>
+      {showForm ? <View style={__teddyBudExtractedStyles14.style9}>
+        <Text style={__teddyBudExtractedStyles14.style10}>How are you feeling?</Text>
+        <Text style={__teddyBudExtractedStyles14.style11}>Tap a number from 0 (not present) to 5 (very strong). You can leave any emotion unrated.</Text>
+        {EMOTION_AXES.map(axis=>{
+          const __teddyBudExtractedStyles15 = StyleSheet.create({
+            style0: ({paddingVertical:9,borderBottomWidth:1,borderBottomColor:C.line}) as const,
+            style1: ({color:C.cocoaDark,fontWeight:'600',marginBottom:8}) as const,
+            style2: ({flexDirection:'row',gap:8}) as const,
+          });
+          return <View key={axis.id} style={__teddyBudExtractedStyles15.style0}>
+          <Text style={__teddyBudExtractedStyles15.style1}>{axis.label}</Text>
+          <View style={__teddyBudExtractedStyles15.style2}>{[0,1,2,3,4,5].map(n=>{
+            const __teddyBudExtractedStyles16 = StyleSheet.create({
+              style0: ({flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:ratings[axis.id]===n?'#B87862':'#F5ECE5',borderWidth:ratings[axis.id]===n?2:0,borderColor:C.cocoaDark}) as const,
+              style1: ({color:C.cocoaDark,fontWeight:'600'}) as const,
+            });
+            return <Pressable key={n} accessibilityRole="button" accessibilityLabel={axis.label+' '+n+' out of 5'} accessibilityState={{ selected: ratings[axis.id] === n }} onPress={()=>{ setRatings(current=>({...current,[axis.id]:n})); setActionError(null); setActionNotice(null); }} style={__teddyBudExtractedStyles16.style0}><Text style={__teddyBudExtractedStyles16.style1}>{n}</Text></Pressable>;
+          })}</View>
+        </View>;
+        })}
+        <Text style={__teddyBudExtractedStyles14.style12}>Energy: {energy}/5</Text>
+        <View style={__teddyBudExtractedStyles14.style13}>{[0,1,2,3,4,5].map(n=>{
+          const __teddyBudExtractedStyles17 = StyleSheet.create({
+            style0: ({flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:energy===n?'#B87862':'#F5ECE5'}) as const,
+            style1: ({color:C.cocoaDark}) as const,
+          });
+          return <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Energy ${n} out of 5`} accessibilityState={{ selected: energy === n }} onPress={()=>{ setEnergy(n); setActionError(null); setActionNotice(null); }} style={__teddyBudExtractedStyles17.style0}><Text style={__teddyBudExtractedStyles17.style1}>{n}</Text></Pressable>;
+        })}</View>
+        <Text style={__teddyBudExtractedStyles14.style14}>What would help right now?</Text>
+        <View style={__teddyBudExtractedStyles14.style15}>{([{id:'listen',label:'Just listen'},{id:'advice',label:'Practical advice'},{id:'encouragement',label:'Encouragement'},{id:'unsure',label:'Not sure'}] as const).map(option=>{
+          const __teddyBudExtractedStyles18 = StyleSheet.create({
+            style0: ({color:C.cocoaDark}) as const,
+          });
+          return <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: support === option.id }} onPress={()=>{ setSupport(option.id); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [{ minHeight:48, paddingVertical:9, paddingHorizontal:12, borderRadius:14, backgroundColor:support===option.id?'#E7D0C2':'#F5ECE5', borderWidth:support===option.id?1:0, borderColor:'#B87862' }, pressed && styles.pressed, pressed && styles.squeezePressed]}><Text style={__teddyBudExtractedStyles18.style0}>{option.label}</Text></Pressable>;
+        })}</View>
+        <Text style={__teddyBudExtractedStyles14.style16}>Optional note (saved only on this device)</Text>
+        <TextInput accessibilityLabel="Emotion check-in note (optional)" value={note} onChangeText={value => { setNote(value.slice(0, 2000)); setActionError(null); setActionNotice(null); }} multiline maxLength={2000} placeholder="Anything you want to remember about this moment…" placeholderTextColor={C.muted} style={__teddyBudExtractedStyles14.style17} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Save emotion check-in" disabled={saving} onPress={saveCheckIn} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:14 }, saving && styles.buttonDisabled, pressed && styles.pressed]}><Text style={__teddyBudExtractedStyles14.style18}>{saving ? 'Saving check-in…' : 'Save privately on this device'}</Text></Pressable>
       </View> : null}
-      <View style={{backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:18,padding:15,marginTop:18}}>
-        <Text style={{fontSize:16,fontWeight:'700',color:C.cocoaDark}}>Your week in reflection</Text>
+      <View style={__teddyBudExtractedStyles14.style19}>
+        <Text style={__teddyBudExtractedStyles14.style20}>Your week in reflection</Text>
         {weekEntries.length >= 2 ? <>
-          <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>A local summary of {weekEntries.length} check-ins from the last seven days. This uses only ratings you entered and is not a diagnosis or prediction.</Text>
-          <Text style={{fontSize:14,color:C.cocoaDark,marginTop:10}}>Average energy: {weekEnergy.toFixed(1)}/5</Text>
-          {weekEmotionAverages.length ? <Text style={{fontSize:14,color:C.cocoaDark,marginTop:6}}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={{fontSize:13,color:C.muted,marginTop:6}}>No emotion ratings were recorded in these check-ins.</Text>}
-        </> : <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>Add at least two check-ins within seven days to see a summary. It stays on this device and never labels or scores your mental health.</Text>}
+          <Text style={__teddyBudExtractedStyles14.style21}>A local summary of {weekEntries.length} check-ins from the last seven days. This uses only ratings you entered and is not a diagnosis or prediction.</Text>
+          <Text style={__teddyBudExtractedStyles14.style22}>Average energy: {weekEnergy.toFixed(1)}/5</Text>
+          {weekEmotionAverages.length ? <Text style={__teddyBudExtractedStyles14.style23}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={__teddyBudExtractedStyles14.style24}>No emotion ratings were recorded in these check-ins.</Text>}
+        </> : <Text style={__teddyBudExtractedStyles14.style25}>Add at least two check-ins within seven days to see a summary. It stays on this device and never labels or scores your mental health.</Text>}
       </View>
-      {entries.length >= 2 ? <View style={{backgroundColor:'#F4ECE6',borderRadius:18,padding:15,marginTop:18}}>
-        <Text style={{fontSize:16,fontWeight:'700',color:C.cocoaDark}}>Your recent pattern</Text>
-        <Text style={{fontSize:13,color:C.muted,lineHeight:20,marginTop:6}}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
-        {EMOTION_AXES.map(axis=>{const sample=entries.slice(0,7).filter(entry=>typeof entry.emotions[axis.id]==='number');if(!sample.length)return null;const avg=sample.reduce((sum,entry)=>sum+(entry.emotions[axis.id]??0),0)/sample.length;return <View key={axis.id} style={{marginTop:9}}><View style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={{fontSize:12,color:C.cocoaDark}}>{axis.label}</Text><Text style={{fontSize:12,color:C.cocoaDark}}>{avg.toFixed(1)}/5</Text></View><View style={{height:6,backgroundColor:'#E1D5CC',borderRadius:4,marginTop:4,overflow:'hidden'}}><View style={{height:6,width:`${(avg/5*100)}%` as `${number}%`,backgroundColor:'#B87862',borderRadius:4}} /></View></View>;})}
+      {entries.length >= 2 ? <View style={__teddyBudExtractedStyles14.style26}>
+        <Text style={__teddyBudExtractedStyles14.style27}>Your recent pattern</Text>
+        <Text style={__teddyBudExtractedStyles14.style28}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
+        {EMOTION_AXES.map(axis=>{const sample=entries.slice(0,7).filter(entry=>typeof entry.emotions[axis.id]==='number');if(!sample.length)return null;const avg=sample.reduce((sum,entry)=>sum+(entry.emotions[axis.id]??0),0)/sample.length;const __teddyBudExtractedStyles19 = StyleSheet.create({
+          style0: ({marginTop:9}) as const,
+          style1: ({flexDirection:'row',justifyContent:'space-between'}) as const,
+          style2: ({fontSize:12,color:C.cocoaDark}) as const,
+          style3: ({fontSize:12,color:C.cocoaDark}) as const,
+          style4: ({height:6,backgroundColor:'#E1D5CC',borderRadius:4,marginTop:4,overflow:'hidden'}) as const,
+          style5: ({height:6,width:`${(avg/5*100)}%` as `${number}%`,backgroundColor:'#B87862',borderRadius:4}) as const,
+        });
+        return <View key={axis.id} style={__teddyBudExtractedStyles19.style0}><View style={__teddyBudExtractedStyles19.style1}><Text style={__teddyBudExtractedStyles19.style2}>{axis.label}</Text><Text style={__teddyBudExtractedStyles19.style3}>{avg.toFixed(1)}/5</Text></View><View style={__teddyBudExtractedStyles19.style4}><View style={__teddyBudExtractedStyles19.style5} /></View></View>;})}
       </View> : null}
-      <Text style={{fontSize:19,fontWeight:'700',color:C.cocoaDark,marginTop:24,marginBottom:10}}>Past check-ins</Text>
-      {entries.length===0 ? <Text style={{color:C.muted,paddingVertical:14}}>Nothing recorded yet. Your check-ins are optional and stay in local app storage.</Text> : entries.map(entry=><View key={entry.id} style={{backgroundColor:C.paper,borderWidth:1,borderColor:C.line,borderRadius:16,padding:14,marginBottom:9}}>
-        <Text style={{color:C.cocoaDark,fontWeight:'700'}}>{new Date(entry.createdAt).toLocaleString()}</Text>
-        <Text style={{color:C.muted,fontSize:13,marginTop:5}}>{EMOTION_AXES.filter(a=>entry.emotions[a.id]!==undefined).sort((a,b)=>(entry.emotions[b.id]??0)-(entry.emotions[a.id]??0)).slice(0,4).map(a=>a.label+' '+entry.emotions[a.id]+'/5').join(' · ') || 'No emotion ratings'} · Energy {entry.energy}/5</Text>
-        {entry.note ? <Text style={{color:C.cocoaDark,marginTop:6}}>{entry.note}</Text> : null}
-        <Pressable accessibilityRole="button" accessibilityLabel={`Delete check-in from ${new Date(entry.createdAt).toLocaleString()}`} disabled={deletingId !== null} onPress={()=>deleteCheckIn(entry)} style={({ pressed }) => [{ minHeight:48, alignSelf:'flex-end', justifyContent:'center', paddingHorizontal:12 }, deletingId === entry.id && styles.buttonDisabled, pressed && styles.pressed]}><Text style={{color:'#98594B',fontWeight:'600'}}>{deletingId === entry.id ? 'Deleting…' : 'Delete'}</Text></Pressable>
-      </View>)}
-      <Text style={{fontSize:12,color:C.muted,lineHeight:18,marginTop:10}}>These ratings are self-reported reflections, not a clinical assessment. No emotions are inferred from your chats.</Text>
+      <Text style={__teddyBudExtractedStyles14.style29}>Past check-ins</Text>
+      {entries.length===0 ? <Text style={__teddyBudExtractedStyles14.style30}>Nothing recorded yet. Your check-ins are optional and stay in local app storage.</Text> : entries.map(entry=>{
+        const __teddyBudExtractedStyles20 = StyleSheet.create({
+          style0: ({backgroundColor:C.paper,borderWidth:1,borderColor:C.line,borderRadius:16,padding:14,marginBottom:9}) as const,
+          style1: ({color:C.cocoaDark,fontWeight:'700'}) as const,
+          style2: ({color:C.muted,fontSize:13,marginTop:5}) as const,
+          style3: ({color:C.cocoaDark,marginTop:6}) as const,
+          style4: ({color:'#98594B',fontWeight:'600'}) as const,
+        });
+        return <View key={entry.id} style={__teddyBudExtractedStyles20.style0}>
+        <Text style={__teddyBudExtractedStyles20.style1}>{new Date(entry.createdAt).toLocaleString()}</Text>
+        <Text style={__teddyBudExtractedStyles20.style2}>{EMOTION_AXES.filter(a=>entry.emotions[a.id]!==undefined).sort((a,b)=>(entry.emotions[b.id]??0)-(entry.emotions[a.id]??0)).slice(0,4).map(a=>a.label+' '+entry.emotions[a.id]+'/5').join(' · ') || 'No emotion ratings'} · Energy {entry.energy}/5</Text>
+        {entry.note ? <Text style={__teddyBudExtractedStyles20.style3}>{entry.note}</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={`Delete check-in from ${new Date(entry.createdAt).toLocaleString()}`} disabled={deletingId !== null} onPress={()=>deleteCheckIn(entry)} style={({ pressed }) => [{ minHeight:48, alignSelf:'flex-end', justifyContent:'center', paddingHorizontal:12 }, deletingId === entry.id && styles.buttonDisabled, pressed && styles.pressed]}><Text style={__teddyBudExtractedStyles20.style4}>{deletingId === entry.id ? 'Deleting…' : 'Delete'}</Text></Pressable>
+      </View>;
+      })}
+      <Text style={__teddyBudExtractedStyles14.style31}>These ratings are self-reported reflections, not a clinical assessment. No emotions are inferred from your chats.</Text>
     </View>
   </ScrollView>;
 }
@@ -2845,6 +3169,15 @@ function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe
   onImport: (fileContents: string, passphrase: string) => Promise<boolean>;
   onLogout: () => void;
 }) {
+  const __teddyBudExtractedStyles21 = StyleSheet.create({
+    style0: ({ color: C.cocoaDark, fontSize: 14, fontWeight: '700', marginTop: 5 }) as const,
+    style1: ({ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }) as const,
+    style2: ({ flex: 1 }) as const,
+    style3: ({ color: C.cocoaDark, fontSize: 22, fontWeight: '700' }) as const,
+    style4: ({ color: C.muted, fontSize: 12, fontWeight: '500' }) as const,
+    style5: ({ height: 7, borderRadius: 4, overflow: 'hidden', backgroundColor: C.paperAlt }) as const,
+    style6: ({ height: '100%', width: `${Math.min(100, Math.max(0, (creditBalance?.remaining ?? 0) / 40 * 100))}%`, backgroundColor: C.cocoa, borderRadius: 4 }) as const,
+  });
   const [backupPassphrase, setBackupPassphrase] = useState('');
   const [backupStatus, setBackupStatus] = useState('');
   const [backupBusy, setBackupBusy] = useState(false);
@@ -2888,21 +3221,21 @@ function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe
   };
 
   return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
-    <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text>{!!username && <Text style={{ color: C.cocoaDark, fontSize: 14, fontWeight: '700', marginTop: 5 }}>@{username}</Text>}<Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
+    <View style={styles.pageIntro}><Text style={styles.eyebrow}>YOUR ACCOUNT</Text><Text style={styles.pageTitle}>Settings</Text>{!!username && <Text style={__teddyBudExtractedStyles21.style0}>@{username}</Text>}<Text style={styles.pageDescription}>Personalize your space and move your data between devices.</Text></View>
     <Text style={styles.settingsSectionLabel}>DAILY USAGE</Text>
     <View style={styles.settingsCardForm}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
-        <View style={{ flex: 1 }}>
+      <View style={__teddyBudExtractedStyles21.style1}>
+        <View style={__teddyBudExtractedStyles21.style2}>
           <Text style={styles.settingTitle}>Daily AI credits</Text>
           <Text style={styles.settingDescription}>40 credits each day. Text and image messages each use 1 credit.</Text>
         </View>
-        <Text style={{ color: C.cocoaDark, fontSize: 22, fontWeight: '700' }}>{creditBalance ? creditBalance.remaining : '—'}<Text style={{ color: C.muted, fontSize: 12, fontWeight: '500' }}> / 40</Text></Text>
+        <Text style={__teddyBudExtractedStyles21.style3}>{creditBalance ? creditBalance.remaining : '—'}<Text style={__teddyBudExtractedStyles21.style4}> / 40</Text></Text>
       </View>
-      <View accessibilityRole="progressbar" accessibilityLabel="Daily AI credits remaining" accessibilityValue={{ min: 0, max: 40, now: creditBalance?.remaining ?? 0 }} style={{ height: 7, borderRadius: 4, overflow: 'hidden', backgroundColor: C.paperAlt }}>
-        <View style={{ height: '100%', width: `${Math.min(100, Math.max(0, (creditBalance?.remaining ?? 0) / 40 * 100))}%`, backgroundColor: C.cocoa, borderRadius: 4 }} />
+      <View accessibilityRole="progressbar" accessibilityLabel="Daily AI credits remaining" accessibilityValue={{ min: 0, max: 40, now: creditBalance?.remaining ?? 0 }} style={__teddyBudExtractedStyles21.style5}>
+        <View style={__teddyBudExtractedStyles21.style6} />
       </View>
       <Text style={styles.settingDescription}>Text: 1 credit · Image analysis: 1 credit · Resets daily at 00:00 UTC.</Text>
-      <Pressable accessibilityRole="button" onPress={() => { void onRefreshCredits(); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => { runInBackground(onRefreshCredits()); }} style={styles.clearButton}><Text style={styles.clearButtonText}>Refresh balance</Text></Pressable>
       {!creditBalance && <Text style={styles.settingDescription}>Balance unavailable right now. Connect to the gateway and refresh.</Text>}
     </View>
     <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
@@ -3028,10 +3361,11 @@ const styles = StyleSheet.create({
   contentArea: { flex: 1, minHeight: 0 }, chatPage: { flex: 1 }, chatHeader: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, chatHeaderWide: { paddingHorizontal: 48, paddingTop: 20, paddingBottom: 14 }, chatHeaderCopy: { flex: 1 }, chatSubtitle: { color: C.muted, fontSize: 12, marginTop: 6 }, privatePill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#E6E5E1', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: C.paper }, privateDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#7A9875' }, privateLabel: { color: C.green, fontSize: 10, fontWeight: '600' }, eyebrow: { color: C.cocoa, fontSize: 9, letterSpacing: 1.7, fontWeight: '700', marginBottom: 7 }, pageTitle: { color: C.ink, fontSize: 22, fontWeight: '600', letterSpacing: -0.55 }, headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },   servicePill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, serviceDot: { width: 6, height: 6, backgroundColor: '#BC9E79', borderRadius: 4 }, serviceText: { color: C.muted, fontSize: 10, fontWeight: '600' }, moreButton: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line }, moreGlyph: { color: C.muted, fontSize: 20, lineHeight: 23, marginTop: -10 }, historyGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 },
   chatActionsMenuButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 13, paddingHorizontal: 8 }, chatActionsMenuGlyph: { color: C.cocoaDark, fontSize: 24, lineHeight: 27, fontWeight: '700' }, chatActionsModalRoot: { flex: 1, justifyContent: 'flex-end' }, chatActionsScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(35, 29, 24, 0.28)' }, chatActionsSheet: { paddingHorizontal: 20, paddingTop: 18, backgroundColor: C.paper, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderColor: C.line, gap: 8 }, chatActionsSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }, chatActionsSheetTitle: { fontSize: 16, fontWeight: '700', color: C.cocoaDark }, chatActionsDismiss: { minHeight: 40, paddingHorizontal: 10, justifyContent: 'center' }, chatActionsDismissText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, chatActionsSheetItem: { minHeight: 48, justifyContent: 'center', borderRadius: 13, backgroundColor: C.paperAlt, paddingHorizontal: 14 }, chatActionsSheetItemText: { fontSize: 13, fontWeight: '600', color: C.cocoaDark }, chatScrollWrap: { flex: 1, minHeight: 0, position: 'relative' }, chatScroll: { flex: 1 }, jumpToLatestButton: { position: 'absolute', alignSelf: 'center', bottom: 10, minHeight: 40, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: '#DDD4C9', backgroundColor: C.paper, shadowColor: '#302821', shadowOpacity: 0.1, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 3 }, jumpToLatestText: { color: C.cocoaDark, fontSize: 12, fontWeight: '700' }, chatContent: { paddingHorizontal: 20, paddingBottom: 26, flexGrow: 1 }, chatContentWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64 }, emptyContent: { justifyContent: 'center' }, emptyState: { width: '100%', maxWidth: 720, alignSelf: 'center', alignItems: 'center', paddingTop: 14, paddingBottom: 20 }, emptyHeroMark: { width: 60, height: 60, borderRadius: 30, overflow: 'hidden', backgroundColor: '#FAF6ED', alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: C.cocoa, shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 }, emptyHeroLogo: { width: 90, height: 90, borderRadius: 30 }, emptyGreeting: { color: C.ink, fontSize: 30, lineHeight: 38, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, emptyDescription: { maxWidth: 440, color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 9, marginBottom: 28 }, starterGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }, starterCard: { width: '31.8%', minWidth: 175, minHeight: 92, borderRadius: 18, borderWidth: 1, borderColor: '#E7E4DE', backgroundColor: '#FFFFFF', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#302821', shadowOpacity: 0.025, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, starterCardMobile: { width: '48%', minWidth: 120, minHeight: 78, padding: 10, gap: 7 }, starterCardPressed: { backgroundColor: '#F8F6F2', borderColor: '#D4C8BA' }, starterIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F3F0EB', alignItems: 'center', justifyContent: 'center' }, starterIconText: { color: C.cocoa, fontSize: 17 }, starterCopy: { flex: 1 }, starterTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, starterDescription: { color: C.muted, fontSize: 10, lineHeight: 14, marginTop: 4 }, starterArrow: { color: '#6F6256', fontSize: 13, alignSelf: 'flex-start' }, conversationColumn: { width: '100%', maxWidth: 760, alignSelf: 'center' }, dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 10, marginBottom: 24 }, dividerLine: { height: 1, backgroundColor: C.line, flex: 1 }, dayText: { color: '#75665A', fontSize: 9, letterSpacing: 1.5, fontWeight: '700' },
   connectCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2ECE3', borderRadius: 16, padding: 14, marginTop: 22, marginLeft: 44, gap: 12, maxWidth: 555 }, connectIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center' }, connectIconText: { color: C.cocoa, fontSize: 17 }, connectCopy: { flex: 1 }, connectTitle: { fontSize: 12, fontWeight: '700', color: C.ink, marginBottom: 4 }, connectBody: { fontSize: 11, color: C.muted, lineHeight: 16 }, connectArrow: { color: C.cocoa, fontSize: 24 }, promptWrap: { marginTop: 22, marginLeft: 44 }, promptHeading: { color: '#796D62', fontSize: 11, fontWeight: '600', marginBottom: 10, marginLeft: 2 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, promptChip: { borderWidth: 1, borderColor: '#E3D9CD', backgroundColor: '#FBF8F3', borderRadius: 18, paddingHorizontal: 14, minHeight: 38, justifyContent: 'center' }, promptChipText: { color: C.cocoaDark, fontSize: 11, fontWeight: '500' },
-  messageRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 14 }, messageRowYou: { justifyContent: 'flex-end' }, messageBubble: { maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 }, chatMessageImage: { width: 220, height: 220, maxWidth: '100%', borderRadius: 12, marginBottom: 8, backgroundColor: '#F2EDE7' }, teddyBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: C.cocoa, borderBottomRightRadius: 4 }, messageText: { color: C.ink, fontSize: 14, lineHeight: 21 }, markdownReply: { gap: 2 }, markdownStrong: { color: C.ink, fontWeight: '700' }, markdownItalic: { fontStyle: 'italic' }, markdownStrike: { textDecorationLine: 'line-through' }, markdownInlineCode: { color: '#61492F', backgroundColor: '#F2EDE4', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }, markdownLink: { color: '#76552F', textDecorationLine: 'underline' }, markdownHeading: { fontWeight: '700', marginTop: 5, marginBottom: 5 }, markdownHeadingLarge: { fontSize: 19 }, markdownListRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 }, markdownListText: { flex: 1 }, markdownFence: { color: C.ink, backgroundColor: '#F5F2ED', borderRadius: 8, padding: 10, marginVertical: 5, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, lineHeight: 18 }, markdownQuote: { borderLeftColor: '#D9B879', borderLeftWidth: 3, paddingLeft: 10, marginLeft: 0, marginVertical: 4 }, markdownRule: { height: 1, backgroundColor: C.line, marginVertical: 7 }, userMessageText: { color: C.white }, messageTime: { color: C.muted, fontSize: 9, textAlign: 'right', marginTop: 5 }, userMessageTime: { color: '#E8D9CC' }, sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, marginBottom: 8 }, typingBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }, typingText: { color: C.muted, fontSize: 12, fontWeight: '600' }, errorBanner: { backgroundColor: '#FCE9E3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 }, errorText: { color: '#8D473F', fontSize: 11, lineHeight: 16 }, retryButton: { alignSelf: 'flex-start', marginTop: 8, minHeight: 30, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#FFFFFF' }, retryButtonText: { color: '#8D473F', fontSize: 11, fontWeight: '700' },
+  messageRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 14 }, messageRowYou: { justifyContent: 'flex-end' }, messageBubble: { maxWidth: '82%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 }, chatMessageImage: { width: 220, height: 220, maxWidth: '100%', borderRadius: 12, marginBottom: 8, backgroundColor: '#F2EDE7' }, chatSticker: { width: 88, height: 88, marginTop: 6, marginBottom: 2, alignSelf: 'flex-start' }, teddyBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: C.cocoa, borderBottomRightRadius: 4 }, messageText: { color: C.ink, fontSize: 14, lineHeight: 21 }, markdownReply: { gap: 2 }, markdownStrong: { color: C.ink, fontWeight: '700' }, markdownItalic: { fontStyle: 'italic' }, markdownStrike: { textDecorationLine: 'line-through' }, markdownInlineCode: { color: '#61492F', backgroundColor: '#F2EDE4', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }, markdownLink: { color: '#76552F', textDecorationLine: 'underline' }, markdownHeading: { fontWeight: '700', marginTop: 5, marginBottom: 5 }, markdownHeadingLarge: { fontSize: 19 }, markdownListRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 }, markdownListText: { flex: 1 }, markdownFence: { color: C.ink, backgroundColor: '#F5F2ED', borderRadius: 8, padding: 10, marginVertical: 5, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, lineHeight: 18 }, markdownQuote: { borderLeftColor: '#D9B879', borderLeftWidth: 3, paddingLeft: 10, marginLeft: 0, marginVertical: 4 }, markdownRule: { height: 1, backgroundColor: C.line, marginVertical: 7 }, userMessageText: { color: C.white }, messageTime: { color: C.muted, fontSize: 9, textAlign: 'right', marginTop: 5 }, userMessageTime: { color: '#E8D9CC' }, sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, marginBottom: 8 }, typingBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }, typingText: { color: C.muted, fontSize: 12, fontWeight: '600' }, errorBanner: { backgroundColor: '#FCE9E3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 }, errorText: { color: '#8D473F', fontSize: 11, lineHeight: 16 }, retryButton: { alignSelf: 'flex-start', marginTop: 8, minHeight: 30, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#FFFFFF' }, retryButtonText: { color: '#8D473F', fontSize: 11, fontWeight: '700' },
   composerWrap: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 68, maxWidth: 760, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 9, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDDCD6', borderRadius: 24, paddingHorizontal: 11, paddingVertical: 8, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerCardFocused: { borderColor: '#B49A83', shadowColor: C.cocoa, shadowOpacity: 0.14, shadowRadius: 17, shadowOffset: { width: 0, height: 0 }, elevation: 3 }, voiceButton: { width: 42, height: 42, borderRadius: 15, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }, voiceButtonActive: { backgroundColor: '#F8E9DF', borderColor: '#D5A98F' }, voiceMicIcon: { width: 20, height: 24, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 1 }, voiceMicHead: { width: 7, height: 11, borderWidth: 1.6, borderColor: C.cocoa, borderRadius: 5, marginBottom: 1 }, voiceMicArc: { position: 'absolute', top: 6, width: 14, height: 9, borderWidth: 1.6, borderColor: C.cocoa, borderTopColor: 'transparent', borderRadius: 8 }, voiceMicStem: { width: 2, height: 4, backgroundColor: C.cocoa, marginTop: -1 }, voiceMicBase: { width: 9, height: 2, borderRadius: 1, backgroundColor: C.cocoa, marginTop: 1 }, voiceStopIndicator: { width: 8, height: 8, borderRadius: 2, backgroundColor: C.rose }, speechStatus: { maxWidth: 760, alignSelf: 'center', width: '100%', color: C.cocoaDark, fontSize: 11, marginTop: 6, paddingHorizontal: 4 }, speechError: { maxWidth: 760, alignSelf: 'center', width: '100%', color: C.rose, fontSize: 11, marginTop: 6, paddingHorizontal: 4 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, maxWidth: 760, alignSelf: 'center', width: '100%', marginBottom: 7 }, chatToolButton: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', paddingHorizontal: 10 }, chatToolIcon: { color: C.cocoa, fontSize: 13 }, chatToolLabel: { color: C.cocoaDark, fontSize: 10, fontWeight: '600' }, toolIconButton: { width: 31, height: 31, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { flex: 1, minWidth: 0, color: C.ink, fontSize: 14, paddingTop: 10, paddingBottom: 8, paddingHorizontal: 7, maxHeight: 110, minHeight: 46 }, sendButton: { flexShrink: 0, width: 46, height: 46, borderRadius: 17, backgroundColor: '#B9A797', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: C.cocoa }, sendButtonDisabled: { opacity: 0.72 }, sendArrowIcon: { width: 20, height: 20, position: 'relative' }, sendArrowShaft: { position: 'absolute', left: 2, top: 9, width: 15, height: 1.7, borderRadius: 1, backgroundColor: C.white, transform: [{ rotate: '-45deg' }] }, sendArrowTop: { position: 'absolute', left: 9, top: 3, width: 8, height: 1.7, borderRadius: 1, backgroundColor: C.white }, sendArrowRight: { position: 'absolute', right: 3, top: 3, width: 1.7, height: 8, borderRadius: 1, backgroundColor: C.white }, composerFootnote: { color: '#706458', fontSize: 11, textAlign: 'center', marginTop: 8, lineHeight: 14 },
   bottomNav: { minHeight: 70, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.paper, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingTop: 5, paddingHorizontal: 3 }, bottomNavItem: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 13, paddingHorizontal: 1, paddingVertical: 3 }, bottomNavItemActive: { backgroundColor: '#F6F0E9' }, bottomIcon: { fontSize: 19, color: '#75685C', lineHeight: 23 }, bottomIconActive: { color: C.cocoaDark }, bottomLabel: { fontSize: 10, color: '#6F6256', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' }, bottomNavPlusAction: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center' }, bottomNavPlusBox: { width: 46, height: 46, borderRadius: 14, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', shadowColor: '#302821', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 }, bottomNavPlusGlyph: { color: C.white, fontSize: 29, lineHeight: 32, fontWeight: '400', includeFontPadding: false }, squeezePressed: { transform: [{ scale: 0.965 }] },
-  pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#6F6256', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#75685C', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#6E6054', fontSize: 17 }, deleteGlyph: { color: '#855748', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
+  pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 },
+  emotionsPageScroll: { padding: 18, paddingBottom: 36, alignItems: 'stretch' }, emotionsPageScrollWide: { padding: 28 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#6F6256', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#75685C', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#6E6054', fontSize: 17 }, deleteGlyph: { color: '#855748', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
   privacyBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: C.greenLight, borderRadius: 16, marginBottom: 27 }, privacyShield: { width: 35, height: 35, backgroundColor: '#D7E3D4', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, shieldGlyph: { color: C.green, fontSize: 19 }, privacyCopy: { flex: 1 }, privacyTitle: { color: '#435943', fontSize: 13, fontWeight: '700', marginBottom: 5 }, privacyBody: { color: '#65745F', fontSize: 12, lineHeight: 17 }, settingsSectionLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginTop: 3 }, settingsCard: { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, paddingHorizontal: 15, marginBottom: 23 }, settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 }, settingIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' }, settingGlyph: { color: C.cocoa, fontSize: 15 }, settingText: { flex: 1 }, settingTitle: { color: C.ink, fontSize: 12, fontWeight: '700', lineHeight: 17 }, settingDescription: { color: C.muted, fontSize: 12, lineHeight: 15, marginTop: 3 }, switchHitArea: { padding: 2 }, switchTrack: { width: 42, height: 25, borderRadius: 14, padding: 3, justifyContent: 'center' }, switchThumb: { width: 19, height: 19, borderRadius: 10, backgroundColor: C.white }, settingSeparator: { height: 1, backgroundColor: C.line, marginLeft: 44 }, gatewaySection: { borderRadius: 18 }, gatewaySectionFocused: { borderWidth: 1, borderColor: '#D6BAA5', padding: 10, marginHorizontal: -10, marginBottom: 14, backgroundColor: '#F8F0E8' }, gatewayIntro: { flexDirection: 'row', gap: 11, paddingTop: 16, paddingBottom: 14 }, gatewayIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, gatewayGlyph: { color: C.cocoa, fontSize: 16 }, inputLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.1, fontWeight: '700', marginBottom: 7 }, gatewayInput: { height: 45, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 12 }, gatewayActions: { paddingTop: 11, paddingBottom: 15, gap: 9 }, connectionStatus: { color: C.muted, fontSize: 11, lineHeight: 15 }, connectionReady: { color: C.green }, connectionError: { color: C.rose }, clearRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15 }, clearIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#F8EAE5', alignItems: 'center', justifyContent: 'center' }, clearGlyph: { color: C.rose, fontSize: 16 }, clearButton: { minHeight: 36, minWidth: 54, borderRadius: 11, borderWidth: 1, borderColor: '#E7D8D2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 }, clearButtonText: { color: C.rose, fontSize: 11, fontWeight: '700' }, versionText: { textAlign: 'center', color: '#6E6258', fontSize: 10, letterSpacing: 1.4, marginTop: 2, marginBottom: 16 },
   button: { minHeight: 48, backgroundColor: C.cocoa, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, buttonQuiet: { backgroundColor: '#F2ECE4' }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: C.white, fontSize: 12, fontWeight: '700' }, buttonTextQuiet: { color: C.cocoaDark }, pressed: { opacity: 0.88 }, disabledText: { color: '#6E6258' },
   localLoadingScreen: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: C.canvas },

@@ -19,7 +19,7 @@ describe('GatewayService', () => {
     const fetchMock = jest.fn().mockResolvedValueOnce(response({ choices: [{ message: { content: 'That sounds like a lot to carry.' } }] }));
     globalThis.fetch = fetchMock;
     const gateway = new GatewayService('https://gateway.test', auth);
-    await expect(gateway.sendChatMessage('I feel overwhelmed.', [], 'test-token', { assistantName: 'Pankaj', assistantCharacterId: 'sunny' })).resolves.toBe('That sounds like a lot to carry.');
+    await expect(gateway.sendChatMessage('I feel overwhelmed.', [], 'test-token', { assistantName: 'Pankaj', assistantCharacterId: 'sunny', task: 'conversation' })).resolves.toBe('That sounds like a lot to carry.');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe('https://gateway.test/v1/chat/completions');
     expect(fetchMock.mock.calls[0][1].headers).toEqual(expect.objectContaining({ Authorization: 'Bearer test-token' }));
@@ -29,6 +29,8 @@ describe('GatewayService', () => {
     expect(request.messages[0].content).toContain('You are Pankaj');
     expect(request.messages[0].content).toContain('Do not disclose or guess the underlying model');
     expect(request.messages[0].content).toContain('occasional fitting emoji');
+    expect(request.messages[0].content).toContain('OPTIONAL STICKER EXPRESSION');
+    expect(request.messages[0].content).toContain('[[TEDDY_STICKER:wave]]');
     expect(request.messages[0].content).toContain('Be bright and lightly playful');
   });
 

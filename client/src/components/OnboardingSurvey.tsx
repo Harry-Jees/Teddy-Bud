@@ -75,9 +75,9 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
         <Pressable accessibilityRole="button" disabled={saving || index === 0} onPress={() => setIndex(current => Math.max(0, current - 1))} style={styles.secondary}><Text style={styles.secondaryText}>Back</Text></Pressable>
         {index < QUESTIONS.length - 1
           ? <Pressable accessibilityRole="button" disabled={saving} onPress={() => setIndex(current => Math.min(QUESTIONS.length - 1, current + 1))} style={styles.primary}><Text style={styles.primaryText}>{answers[index] ? 'Continue' : 'Skip question'}</Text></Pressable>
-          : <Pressable accessibilityRole="button" disabled={saving} onPress={() => void finish()} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Finish'}</Text></Pressable>}
+          : <Pressable accessibilityRole="button" disabled={saving} onPress={() => { finish().catch(() => undefined); }} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Finish'}</Text></Pressable>}
       </View>
-      <Pressable accessibilityRole="button" disabled={saving} onPress={() => void finish(true)} style={styles.skip}><Text style={styles.skipText}>Skip the survey for now</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={saving} onPress={() => { finish(true).catch(() => undefined); }} style={styles.skip}><Text style={styles.skipText}>Skip the survey for now</Text></Pressable>
       <Text style={styles.privacy}>Your answers stay in this account’s encrypted local app data unless you opt in above. If enabled, they are sent once to the AI service only to create your starting emotion web; the generated scores are saved on this device.</Text>
     </ScrollView>
   </View>;
