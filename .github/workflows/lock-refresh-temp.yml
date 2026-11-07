@@ -1,0 +1,36 @@
+name: Temporary gateway lockfile refresh
+
+on:
+  push:
+    branches: [security/audit-fixes]
+    paths:
+      - '.github/workflows/lock-refresh-temp.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gateway-worker/package-lock.json
+      - name: Resolve current compatible Wrangler dependency tree
+        working-directory: gateway-worker
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Export compressed lockfile for secure review
+        working-directory: gateway-worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "LOCK_GZIP_BASE64_BEGIN"
+          gzip -c package-lock.json | base64 -w0
+          echo
+          echo "LOCK_GZIP_BASE64_END"
+          node -e "const p=require('./package-lock.json'); console.log('Resolved Wrangler:',p.packages['node_modules/wrangler'].version); console.log('Resolved undici:',p.packages['node_modules/undici'].version)"
