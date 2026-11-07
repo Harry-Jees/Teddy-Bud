@@ -2889,7 +2889,7 @@ function SettingsPage({ wide, username, creditBalance, onRefreshCredits, aboutMe
           const savedName = assistantCharacterNames?.[character.id] ?? character.name;
           const shownName = selected && characterNameDraft.trim() ? characterNameDraft.trim() : savedName;
           return <Pressable key={character.id} accessibilityRole="radio" accessibilityLabel={`${shownName}, ${character.tagline}`} accessibilityState={{ selected }} onPress={() => { setSelectedCharacterId(character.id); setCharacterNameDraft(savedName); }} style={[styles.characterChoice, selected && styles.characterChoiceSelected]}>
-            <Text style={styles.characterChoiceIcon}>{character.symbol}</Text>
+            <View style={styles.characterChoiceIcon}><AppIcon name={character.icon} color={C.cocoa} size={19} /></View>
             <View style={styles.characterChoiceCopy}><Text style={styles.characterChoiceName}>{shownName}</Text><Text style={styles.characterChoiceTagline}>{character.tagline}</Text></View>
             {selected && <AppIcon name="check" color={C.cocoa} size={17} />}
           </Pressable>;
@@ -3040,7 +3040,7 @@ const styles = StyleSheet.create({
   characterChoices: { gap: 8, marginVertical: 4 },
   characterChoice: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: C.line, backgroundColor: '#FDFCFA', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9 },
   characterChoiceSelected: { borderColor: '#B89668', backgroundColor: '#F8F0E5' },
-  characterChoiceIcon: { width: 38, height: 38, lineHeight: 38, textAlign: 'center', borderRadius: 12, backgroundColor: '#F2E9DC', fontSize: 23, overflow: 'hidden' },
+  characterChoiceIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#F2E9DC', alignItems: 'center', justifyContent: 'center' },
   characterChoiceCopy: { flex: 1, gap: 3 },
   characterChoiceName: { color: C.ink, fontSize: 13, fontWeight: '700' },
   characterChoiceTagline: { color: C.muted, fontSize: 11 },
