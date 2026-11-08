@@ -5,12 +5,11 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
   Vibration,
   View,
 } from 'react-native';
 import { AppIcon } from './AppIcon';
-import { RoundedText as Text } from './RoundedText';
+import { RoundedText as Text, RoundedTextInput as TextInput } from './RoundedText';
 
 type StudioMode = 'breathe' | 'ground' | 'focus' | 'rest';
 
