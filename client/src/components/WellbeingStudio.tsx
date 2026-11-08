@@ -85,7 +85,7 @@ export function WellbeingStudio({ wide, reduceMotion, hapticsEnabled }: { wide: 
   }, [active, mode, orb, reduceMotion]);
 
   const tap = (action: () => void) => {
-    if (hapticsEnabled) Vibration.vibrate(8);
+    if (hapticsEnabled) { try { Vibration.vibrate(8); } catch { /* Haptics are optional and must not interrupt a session. */ } }
     action();
   };
 
