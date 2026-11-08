@@ -1033,10 +1033,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       onboardingSurveyAnswers,
       reduceMotion: reduceMotionPreference,
       hapticsEnabled,
+      careRemindersEnabled,
     });
     setEmotionCheckIns(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled, careRemindersEnabled]);
 
   const deleteEmotionCheckIn = useCallback(async (id: string) => {
     const nextEntries = emotionCheckIns.filter(entry => entry.id !== id);
@@ -1047,10 +1048,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       onboardingSurveyAnswers,
       reduceMotion: reduceMotionPreference,
       hapticsEnabled,
+      careRemindersEnabled,
     });
     setEmotionCheckIns(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled, careRemindersEnabled]);
 
   const saveJournalEntry = useCallback(async (entry: JournalEntry) => {
     const nextEntries = [entry, ...journalEntries.filter(existing => existing.id !== entry.id)].slice(0, 1000);
@@ -1061,10 +1063,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       onboardingSurveyAnswers,
       reduceMotion: reduceMotionPreference,
       hapticsEnabled,
+      careRemindersEnabled,
     });
     setJournalEntries(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled, careRemindersEnabled]);
 
   const deleteJournalEntry = useCallback(async (id: string) => {
     const nextEntries = journalEntries.filter(entry => entry.id !== id);
@@ -1075,10 +1078,11 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       onboardingSurveyAnswers,
       reduceMotion: reduceMotionPreference,
       hapticsEnabled,
+      careRemindersEnabled,
     });
     setJournalEntries(nextEntries);
     setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled, careRemindersEnabled]);
 
   const exportBackup = (passphrase: string) => createEncryptedBackup({
     conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers,
