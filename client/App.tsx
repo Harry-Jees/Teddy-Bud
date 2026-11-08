@@ -168,7 +168,7 @@ function AccessGate() {
     style0: ({ flex: 1, opacity: loadingOpacity }) as const,
   });
   const [error, setError] = useState<string | null>(null);
-  const [initialMode, setInitialMode] = useState<'login' | 'create'>('create');
+  const [initialMode, setInitialMode] = useState<'login' | 'create'>('login');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
   const [canCreateAccount, setCanCreateAccount] = useState(false);
 
