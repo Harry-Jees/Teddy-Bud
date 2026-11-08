@@ -32,6 +32,7 @@ import { GATEWAY_BASE_URL } from './src/config/gateway';
 import { ASSISTANT_CHARACTERS, DEFAULT_ASSISTANT_CHARACTER_ID } from './src/characters';
 import type { AssistantCharacterId, AssistantCharacterNames } from './src/characters';
 import { GatewayService } from './src/services/gateway';
+import { cancelCareReminder, requestCareReminderPermission, scheduleCareReminder } from './src/services/careReminders';
 import { browserAuthService } from './src/services/browserAuth';
 import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
@@ -550,6 +551,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const [onboardingSurveyAnswers, setOnboardingSurveyAnswers] = useState<{ question: string; answer: string }[] | undefined>(undefined);
   const [reduceMotionPreference, setReduceMotionPreference] = useState(false);
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
+  const [careRemindersEnabled, setCareRemindersEnabled] = useState(false);
   const [localDataReady, setLocalDataReady] = useState(false);
   const [localDataOwner, setLocalDataOwner] = useState<string | null>(null);
   const [localDataError, setLocalDataError] = useState<string | null>(null);
@@ -591,6 +593,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       onboardingSurveyAnswers,
       reduceMotion: reduceMotionPreference,
       hapticsEnabled,
+      careRemindersEnabled,
     };
     const nextSnapshot: LocalAppData = { ...currentSnapshot, ...overrides };
     await localDataService.save(owner, nextSnapshot);
@@ -612,8 +615,23 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     if ('assistantCharacterId' in overrides) setAssistantCharacterId(nextSnapshot.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
     if ('assistantCharacterNames' in overrides) setAssistantCharacterNames(nextSnapshot.assistantCharacterNames ?? {});
     if ('onboardingSurveyAnswers' in overrides) setOnboardingSurveyAnswers(nextSnapshot.onboardingSurveyAnswers);
+    if ('careRemindersEnabled' in overrides) setCareRemindersEnabled(nextSnapshot.careRemindersEnabled === true);
     if (!pendingLocalAction) setLocalDataSaveError(null);
-  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled, pendingLocalAction]);
+  }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled, careRemindersEnabled, pendingLocalAction]);
+  useEffect(() => {
+    if (!localDataReady || localDataOwner !== owner) return undefined;
+    if (!careRemindersEnabled) {
+      cancelCareReminder().catch(() => undefined);
+      return undefined;
+    }
+    const schedule = () => { scheduleCareReminder().catch(() => undefined); };
+    schedule();
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active' || state === 'background') schedule();
+    });
+    return () => subscription.remove();
+  }, [careRemindersEnabled, localDataReady, localDataOwner, owner]);
+
   const refreshCreditBalance = useCallback(async () => {
     try {
       setCreditBalance(await gatewayService.getCreditBalance(sessionToken));
@@ -657,6 +675,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       setOnboardingSurveyAnswers(data.onboardingSurveyAnswers);
       setReduceMotionPreference(data.reduceMotion === true);
       setHapticsEnabled(data.hapticsEnabled !== false);
+      setCareRemindersEnabled(data.careRemindersEnabled === true);
       setLocalDataOwner(owner);
       setLocalDataReady(true);
     }).catch(error => {
@@ -685,12 +704,13 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       onboardingSurveyAnswers,
       reduceMotion: reduceMotionPreference,
       hapticsEnabled,
+      careRemindersEnabled,
     }).then(() => {
       if (!pendingLocalAction) setLocalDataSaveError(null);
     }).catch(error => {
       setLocalDataSaveError(error instanceof Error ? error.message : 'Could not save private data on this device.');
     });
-  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled, pendingLocalAction]);
+  }, [localDataReady, localDataOwner, owner, conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, emotionCheckIns, journalEntries, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled, careRemindersEnabled, pendingLocalAction]);
 
   const appendConversationMessage = (conversationId: string, message: Message) => {
     const updatedAt = new Date().toISOString();
@@ -1400,7 +1420,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
               {tab === 'discover' && discoverFramePage === 'emotions' && <DiscoverSectionTransition transitionKey={discoverFramePage}><EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} /></DiscoverSectionTransition>}
               {tab === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
               {tab === 'settings' && page === 'privacy' && <DiscoverSectionTransition transitionKey="privacy"><PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} /></DiscoverSectionTransition>}
-              {tab === 'settings' && page !== 'privacy' && <SettingsPage wide={wide} username={username} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} onReduceMotionChange={value => { setReduceMotionPreference(value); runInBackground(persistLocalSnapshot({ reduceMotion: value })); }} onHapticsChange={value => { setHapticsEnabled(value); runInBackground(persistLocalSnapshot({ hapticsEnabled: value })); }} onOpenPrivacy={() => setPage('privacy')} creditBalance={creditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
+              {tab === 'settings' && page !== 'privacy' && <SettingsPage wide={wide} username={username} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} careRemindersEnabled={careRemindersEnabled} onCareRemindersChange={value => { if (value) { runInBackground((async () => { const allowed = await requestCareReminderPermission(); if (!allowed) { Alert.alert('Notifications are disabled', 'Allow Teddy Bud notifications in Android Settings to receive gentle check-ins.'); return; } setCareRemindersEnabled(true); await persistLocalSnapshot({ careRemindersEnabled: true }); })()); } else { setCareRemindersEnabled(false); runInBackground(persistLocalSnapshot({ careRemindersEnabled: false })); runInBackground(cancelCareReminder()); } }} onReduceMotionChange={value => { setReduceMotionPreference(value); runInBackground(persistLocalSnapshot({ reduceMotion: value })); }} onHapticsChange={value => { setHapticsEnabled(value); runInBackground(persistLocalSnapshot({ hapticsEnabled: value })); }} onOpenPrivacy={() => setPage('privacy')} creditBalance={creditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
                 const savedName = name.trim().slice(0, 32);
                 if (!savedName) return;
                 setAssistantCharacterId(id);
@@ -3115,13 +3135,15 @@ function PrivacyPage({ wide, rememberInSession, shareMemories, shareChatHistory,
   </ScrollView>;
 }
 
-function SettingsPage({ wide, username, reduceMotion, hapticsEnabled, onReduceMotionChange, onHapticsChange, onOpenPrivacy, creditBalance, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
+function SettingsPage({ wide, username, reduceMotion, hapticsEnabled, careRemindersEnabled, onReduceMotionChange, onHapticsChange, onCareRemindersChange, onOpenPrivacy, creditBalance, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onAboutMeChange, onSaveAssistantCharacter, onExport, onImport, onLogout }: {
   wide: boolean;
   username: string;
   reduceMotion: boolean;
   hapticsEnabled: boolean;
+  careRemindersEnabled: boolean;
   onReduceMotionChange: (value: boolean) => void;
   onHapticsChange: (value: boolean) => void;
+  onCareRemindersChange: (value: boolean) => void;
   onOpenPrivacy: () => void;
   creditBalance: CreditBalance | null;
   aboutMe: string;
@@ -3192,6 +3214,10 @@ function SettingsPage({ wide, username, reduceMotion, hapticsEnabled, onReduceMo
       <SettingRow icon="sparkle" title="Reduce motion" description="Use calmer transitions and reduce non-essential movement." value={reduceMotion} onChange={onReduceMotionChange} />
       <View style={styles.settingDivider} />
       <SettingRow icon="heart" title="Haptic feedback" description="Use gentle vibration feedback for supported interactions." value={hapticsEnabled} onChange={onHapticsChange} />
+    </View>
+    <Text style={styles.settingsSectionLabel}>GENTLE CHECK-INS</Text>
+    <View style={styles.settingsCardForm}>
+      <SettingRow icon="heart" title="Friendly check-ins" description="A warm Android notification after three days away. You can turn it off whenever you like." value={careRemindersEnabled} onChange={onCareRemindersChange} />
     </View>
     <Text style={styles.settingsSectionLabel}>PRIVACY</Text>
     <View style={styles.settingsCardForm}>
