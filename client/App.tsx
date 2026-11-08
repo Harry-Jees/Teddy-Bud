@@ -2065,7 +2065,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       key={item.id}
       accessibilityRole="button"
       accessibilityLabel={item.label}
-      accessibilityHint={item.id === 'discover' ? 'Open your journal, emotional check-ins, wellbeing exercises, privacy controls, and chat history' : undefined}
+      accessibilityHint={item.id === 'discover' ? 'Open your journal, emotional check-ins, and wellbeing exercises' : undefined}
       accessibilityState={{ selected }}
       onPress={() => { triggerHaptic(); setPulseKeys(current => ({ ...current, [item.id]: current[item.id] + 1 })); onNavigate(item.id); }}
       style={({ pressed }) => [
