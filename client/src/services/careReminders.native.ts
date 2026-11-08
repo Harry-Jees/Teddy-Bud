@@ -46,7 +46,6 @@ export async function scheduleCareReminder(lastActiveAt = Date.now()): Promise<b
       body: CHECK_INS[messageIndex],
       android: {
         channelId,
-        smallIcon: 'ic_launcher',
         color: '#75513D',
         autoCancel: true,
         pressAction: { id: 'default' },
