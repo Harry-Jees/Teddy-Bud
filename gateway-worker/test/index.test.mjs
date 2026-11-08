@@ -612,7 +612,7 @@ test('streaming inference failure before any text refunds the reserved credit', 
   assert.equal(balance.body.used, 0);
 });
 
-test('image requests are routed to Cloudflare Qwen and charge one credit', async () => {
+test('image requests are routed to Cloudflare Qwen and charge five credits', async () => {
   const env = makeEnv();
   let selectedModel;
   env.AI.run = async model => {
@@ -631,8 +631,8 @@ test('image requests are routed to Cloudflare Qwen and charge one credit', async
   const result = await jsonResponse(response);
   assert.equal(result.status, 200);
   assert.equal(selectedModel, '@cf/qwen/qwen3.8-27b');
-  assert.equal(result.body.teddyBudCredits.charged, 1);
-  assert.equal(result.body.teddyBudCredits.used, 1);
+  assert.equal(result.body.teddyBudCredits.charged, 5);
+  assert.equal(result.body.teddyBudCredits.used, 5);
 });
 
 test('background title tasks do not consume chat credits and have their own daily cap', async () => {
