@@ -556,6 +556,24 @@ test('authenticated text chat uses Cloudflare GLM and charges one unified credit
   assert.equal(result.body.teddyBudCredits.used, 1);
 });
 
+test('image chat charges five credits and reports the remaining balance', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => ({ response: 'Image description.' });
+  const accessToken = await createSession(env, 'image-credit-user');
+  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/qwen/qwen3.8-27b',
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'Describe this image.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env);
+  const result = await jsonResponse(response);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.teddyBudCredits.charged, 5);
+  assert.equal(result.body.teddyBudCredits.used, 5);
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 5);
+  assert.equal(balance.body.remaining, 35);
+});
+
 test('streaming chat commits one credit after a successful stream', async () => {
   const env = makeEnv();
   const accessToken = await createSession(env, 'streaming-credit-user');
@@ -656,7 +674,7 @@ test('daily unified credit limit rejects a request that would exceed 40 credits'
   const env = makeEnv();
   env.AI.run = async () => ({ response: 'Test reply.' });
   const accessToken = await createSession(env, 'daily-credit-user');
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < 8; i += 1) {
     const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
       model: '@cf/qwen/qwen3.8-27b',
       messages: [{ role: 'user', content: [{ type: 'text', text: 'Describe this.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }],
