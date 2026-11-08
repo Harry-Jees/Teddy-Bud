@@ -70,6 +70,7 @@ export type LocalAppData = {
   onboardingSurveyAnswers?: { question: string; answer: string }[];
   reduceMotion?: boolean;
   hapticsEnabled?: boolean;
+  careRemindersEnabled?: boolean;
 };
 
 const DATA_KEY_PREFIX = 'teddy-bud:local-data:';
@@ -200,6 +201,7 @@ function normalize(value: unknown): LocalAppData {
       : undefined,
     reduceMotion: data.reduceMotion === true,
     hapticsEnabled: data.hapticsEnabled !== false,
+    careRemindersEnabled: data.careRemindersEnabled === true,
   };
 }
 
