@@ -61,7 +61,6 @@ jobs:
       - run: npm test
 
   android-build:
-    if: ${{ github.event_name != 'pull_request' }}
     name: Android release APK
     runs-on: ubuntu-24.04
     steps:
