@@ -38,7 +38,7 @@ export async function scheduleCareReminder(lastActiveAt = Date.now()): Promise<b
   });
 
   await notifee.cancelNotification(REMINDER_ID);
-  const messageIndex = Math.floor(lastActiveAt / (24 * 60 * 60 * 1000)) % CHECK_INS.length;
+  const messageIndex = Math.floor(lastActiveAt / THREE_DAYS_MS) % CHECK_INS.length;
   await notifee.createTriggerNotification(
     {
       id: REMINDER_ID,
