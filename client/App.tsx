@@ -2303,15 +2303,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
           </View>
           {message.author === 'you' && messages.filter(item => item.author === 'you').slice(-1)[0]?.id === message.id && onEditMessage && <Pressable accessibilityRole="button" accessibilityLabel="Edit and resend your last message" disabled={isSending} onPress={() => onEditMessage(message)} style={__teddyBudExtractedStyles5.style0}><Text style={__teddyBudExtractedStyles5.style1}>Edit & resend</Text></Pressable>}
           {message.author === 'teddy' && messages[messages.length - 1]?.id === message.id && onRegenerate && <Pressable accessibilityRole="button" accessibilityLabel="Generate another reply" disabled={isSending} onPress={onRegenerate} style={__teddyBudExtractedStyles5.style2}><Text style={__teddyBudExtractedStyles5.style3}>Try another reply</Text></Pressable>}
-          {message.author === 'teddy' && <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === 'web' ? 'Copy Teddy Bud reply' : 'Share Teddy Bud reply'} onPress={() => {
-            if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-              runInBackground(navigator.clipboard.writeText(message.text)
-                .then(() => Alert.alert('Reply copied', 'Teddy Bud’s reply was copied to your clipboard.'))
-                .catch(() => Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.'))));
-              return;
-            }
-            runInBackground(Share.share({ title: 'Teddy Bud reply', message: message.text }).catch(() => Alert.alert('Could not share reply', 'Please try again.')));
-          }} style={__teddyBudExtractedStyles5.style4}><Text style={__teddyBudExtractedStyles5.style5}>{Platform.OS === 'web' ? 'Copy reply' : 'Share reply'}</Text></Pressable>}
+          
           {message.author === 'teddy' && memorySuggestion?.messageId === message.id && <MemorySuggestionCard fact={memorySuggestion.fact} onSave={onSaveMemorySuggestion} onDismiss={onDismissMemorySuggestion} />}
         </View>;
         })}
