@@ -77,8 +77,8 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 const C = {
   canvas: '#F7F0E7', paper: '#FFFCF7', paperAlt: '#F1E6DA', ink: '#3B3029',
   muted: '#857568', line: '#E8D9CA', cocoa: '#75513D', cocoaDark: '#503728',
-  peach: '#D9B49C', peachLight: '#F4E3D7', green: '#536C53', greenLight: '#E8EFE5',
-  rose: '#8D473F', white: '#FFFFFF',
+  peach: '#D9B49C', peachLight: '#F4E3D7', green: '#8A6A51', greenLight: '#F1E6DA',
+  rose: '#A56D55', white: '#FFFFFF',
 };
 
 type PrimaryNavPage = 'chat' | 'discover' | 'memories' | 'settings';
