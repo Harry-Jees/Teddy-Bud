@@ -16,6 +16,7 @@ module.exports = {
   Image: MockIcon,
   Info: MockIcon,
   MessageSquare: MockIcon,
+  MoreHorizontal: MockIcon,
   Pencil: MockIcon,
   Plus: MockIcon,
   Search: MockIcon,
