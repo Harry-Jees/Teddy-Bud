@@ -55,7 +55,7 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
 
   return <View accessible={false} style={styles.container}>
     <Animated.View pointerEvents="none" style={[styles.activeBackground, { opacity: selected, transform: [{ scale: activeScale }] }]} />
-    <Animated.View style={{ transform: [{ scale: pulseScale }, { translateY: lift }, { rotate }] }}>
+    <Animated.View style={[styles.iconMotion, { transform: [{ scale: pulseScale }, { translateY: lift }, { rotate }] }]}>
       <Icon size={21} color={active ? '#684D3B' : '#82766C'} strokeWidth={1.85} />
     </Animated.View>
   </View>;
@@ -64,4 +64,5 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
 const styles = StyleSheet.create({
   container: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   activeBackground: { position: 'absolute', width: 36, height: 36, borderRadius: 13, backgroundColor: '#F0E1D4' },
+  iconMotion: {},
 });
