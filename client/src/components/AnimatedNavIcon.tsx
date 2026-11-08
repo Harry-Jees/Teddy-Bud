@@ -48,10 +48,12 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
   }, [reduceMotion, interaction]);
 
   const Icon = ICONS[name];
-  const activeScale = selected.interpolate({ inputRange: [0, 1], outputRange: [1, 1.07] });
-  const pulseScale = interaction.interpolate({ inputRange: [0, 0.55, 1], outputRange: [1, 1.16, 1] });
-  const lift = interaction.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -2, 0] });
-  const rotate = interaction.interpolate({ inputRange: [0, 1], outputRange: ['0deg', name === 'settings' ? '28deg' : '0deg'] });
+  const activeScale = selected.interpolate({ inputRange: [0, 1], outputRange: [1, 1.025] });
+  const pulseScale = interaction.interpolate({ inputRange: [0, 0.55, 1], outputRange: [1, 1.045, 1] });
+  const liftAmount = name === 'memories' ? -3 : name === 'chat' ? -2 : -1;
+  const rotationAmount = name === 'settings' ? '18deg' : name === 'discover' ? '9deg' : name === 'memories' ? '-5deg' : '-3deg';
+  const lift = interaction.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, liftAmount, 0] });
+  const rotate = interaction.interpolate({ inputRange: [0, 1], outputRange: ['0deg', rotationAmount] });
 
   return <View accessible={false} style={styles.container}>
     <Animated.View pointerEvents="none" style={[styles.activeBackground, { opacity: selected, transform: [{ scale: activeScale }] }]} />
@@ -63,6 +65,6 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
 
 const styles = StyleSheet.create({
   container: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  activeBackground: { position: 'absolute', width: 36, height: 36, borderRadius: 13, backgroundColor: '#F0E1D4' },
+  activeBackground: { position: 'absolute', width: 36, height: 36, borderRadius: 14, backgroundColor: 'rgba(255, 255, 255, 0.66)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.92)', shadowColor: '#75513D', shadowOpacity: 0.12, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
   iconMotion: {},
 });
