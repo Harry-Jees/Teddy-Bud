@@ -1085,7 +1085,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   }, [owner, conversations, activeConversationId, memories, emotionCheckIns, journalEntries, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, reduceMotionPreference, hapticsEnabled, careRemindersEnabled]);
 
   const exportBackup = (passphrase: string) => createEncryptedBackup({
-    conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers,
+    conversations, activeConversationId, memories, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe, assistantName, assistantCharacterId, assistantCharacterNames, onboardingSurveyAnswers, careRemindersEnabled,
   }, owner, passphrase);
 
   const importBackup = async (fileContents: string, passphrase: string) => {
@@ -1115,6 +1115,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       rememberInSession, shareMemories, shareChatHistory, shareAboutMe, shareOnboardingSurvey, aboutMe,
       assistantName, assistantCharacterId, assistantCharacterNames,
       onboardingSurveyAnswers,
+      careRemindersEnabled,
     };
     const restored = mode === 'merge' ? mergeLocalAppData(currentData, imported) : imported;
     // Persist the complete replacement in one storage operation before updating React state.
@@ -1131,6 +1132,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     setShareAboutMe(restored.shareAboutMe);
     setShareOnboardingSurvey(restored.shareOnboardingSurvey ?? false);
     setOnboardingSurveyAnswers(restored.onboardingSurveyAnswers);
+    setCareRemindersEnabled(restored.careRemindersEnabled === true);
     setAboutMe(restored.aboutMe);
     setAssistantName(restored.assistantName);
     setAssistantCharacterId(restored.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
