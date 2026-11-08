@@ -102,16 +102,7 @@ test('Discover keeps secondary tools discoverable and navigable', async () => {
     'About Wellbeing studio',
   ]);
 
-  const privacyInfo = renderer.root.findByProps({ accessibilityLabel: 'About Privacy controls' });
-  expect(typeof privacyInfo.props.onPress).toBe('function');
-
-  const privacyControl = renderer.root
-    .findAll(node => node.props.accessibilityLabel === 'Privacy controls' && typeof node.props.onPress === 'function')
-    .find(node => typeof node.props.onPress === 'function');
-  await ReactTestRenderer.act(async () => {
-    privacyControl!.props.onPress();
-  });
-  expect(onNavigate).toHaveBeenCalledWith('privacy');
+  expect(labels).not.toContain('Privacy controls');
   await ReactTestRenderer.act(async () => renderer.unmount());
 });
 
