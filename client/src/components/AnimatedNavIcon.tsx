@@ -9,6 +9,7 @@ type Props = {
   active: boolean;
   pulseKey: number;
   reduceMotion: boolean;
+  glass?: boolean;
 };
 
 const ICONS = {
@@ -18,7 +19,7 @@ const ICONS = {
   settings: Settings,
 } as const;
 
-export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props) {
+export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion, glass = false }: Props) {
   const selected = useRef(new Animated.Value(active ? 1 : 0)).current;
   const interaction = useRef(new Animated.Value(0)).current;
   const previousPulse = useRef(pulseKey);
@@ -56,7 +57,7 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
   const rotate = interaction.interpolate({ inputRange: [0, 1], outputRange: ['0deg', rotationAmount] });
 
   return <View accessible={false} style={styles.container}>
-    <Animated.View pointerEvents="none" style={[styles.activeBackground, { opacity: selected, transform: [{ scale: activeScale }] }]} />
+    <Animated.View pointerEvents="none" style={[styles.activeBackground, glass && styles.glassActiveBackground, { opacity: selected, transform: [{ scale: activeScale }] }]} />
     <Animated.View style={[styles.iconMotion, { transform: [{ scale: pulseScale }, { translateY: lift }, { rotate }] }]}>
       <Icon size={21} color={active ? '#684D3B' : '#82766C'} strokeWidth={1.85} />
     </Animated.View>
