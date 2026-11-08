@@ -1467,10 +1467,10 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
             const nextIndex = Math.max(0, Math.min(mobileNavItems.length - 1, currentIndex + direction));
             if (nextIndex !== currentIndex) setPage(mobileNavItems[nextIndex].id);
           }} enabled={!wide}>
-            <View style={styles.pagerFrame}>{renderPageFrame('chat')}</View>
-            <View style={styles.pagerFrame}>{renderPageFrame('discover')}</View>
-            <View style={styles.pagerFrame}>{renderPageFrame('memories')}</View>
-            <View style={styles.pagerFrame}>{renderPageFrame('settings')}</View>
+            <AppErrorBoundary><View style={styles.pagerFrame}>{renderPageFrame('chat')}</View></AppErrorBoundary>
+            <AppErrorBoundary><View style={styles.pagerFrame}>{renderPageFrame('discover')}</View></AppErrorBoundary>
+            <AppErrorBoundary><View style={styles.pagerFrame}>{renderPageFrame('memories')}</View></AppErrorBoundary>
+            <AppErrorBoundary><View style={styles.pagerFrame}>{renderPageFrame('settings')}</View></AppErrorBoundary>
           </SoftPageTransition>
         </View>
         {!wide && !keyboardVisible && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
