@@ -22,7 +22,6 @@ import {
   StatusBar,
   Vibration,
   StyleSheet,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -37,7 +36,7 @@ import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
 import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
-import { RoundedText as Text } from './src/components/RoundedText';
+import { RoundedText as Text, RoundedTextInput as TextInput } from './src/components/RoundedText';
 import { OnboardingSurvey } from './src/components/OnboardingSurvey';
 import { WellbeingStudio } from './src/components/WellbeingStudio';
 import { AnimatedNavIcon } from './src/components/AnimatedNavIcon';
