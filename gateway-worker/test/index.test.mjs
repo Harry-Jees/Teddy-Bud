@@ -50,6 +50,10 @@ class MemorySessions {
           const body = JSON.parse(init.body ?? (input instanceof Request ? await input.text() : '{}'));
           if (pathname === '/credits/reserve') {
             const background = body.background === true;
+            const existingReservation = state.credits.reservations[body.reservationId];
+            if (existingReservation && existingReservation.cost === body.cost && existingReservation.background === background && ['reserved', 'committed'].includes(existingReservation.status)) {
+              return new Response(JSON.stringify({ allowed: true, duplicate: true, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
+            }
             if (background && state.credits.backgroundUsed >= Math.min(body.backgroundDailyLimit ?? 10, 10)) {
               return new Response(JSON.stringify({ allowed: false, backgroundLimit: true, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
             }
@@ -668,6 +672,41 @@ test('background title tasks do not consume chat credits and have their own dail
   }, { Authorization: `Bearer ${accessToken}` }), env));
   assert.equal(chat.status, 200);
   assert.equal(chat.body.teddyBudCredits.charged, 1);
+});
+
+test('text follow-up after an image in history still costs one credit', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => ({ response: 'Text follow-up.' });
+  const accessToken = await createSession(env, 'image-history-text-user');
+  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/qwen/qwen3.8-27b',
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'Describe this earlier image.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] },
+      { role: 'user', content: 'What did I ask you about it?' },
+    ],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env);
+  const result = await jsonResponse(response);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.teddyBudCredits.charged, 1);
+  assert.equal(result.body.teddyBudCredits.used, 1);
+});
+
+test('repeating a chat request with the same idempotency key does not double charge', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => ({ response: 'A reply.' });
+  const accessToken = await createSession(env, 'idempotent-credit-user');
+  const makeChat = () => request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello again.' }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}`, 'Idempotency-Key': 'chat-test-request-0001' });
+  const first = await jsonResponse(await worker.fetch(makeChat(), env));
+  const second = await jsonResponse(await worker.fetch(makeChat(), env));
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 1);
 });
 
 test('daily unified credit limit rejects a request that would exceed 40 credits', async () => {
