@@ -1652,6 +1652,7 @@ export function ChatHistoryPage({ conversations, activeConversationId, busyConve
   onDelete: (conversation: Conversation) => void;
   onRename: (conversation: Conversation) => void;
 }) {
+  const triggerHaptic = useHapticFeedback();
   const [search, setSearch] = useState('');
   const visibleConversations = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
