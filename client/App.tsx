@@ -1440,7 +1440,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   return (
     <UISettingsContext.Provider value={{ reduceMotion: reduceMotionPreference, hapticsEnabled }}>
     <View style={[styles.root, rootInsetsStyle]}>
-      {wide && <Sidebar
+      {wide && <AppErrorBoundary><Sidebar
         collapsed={sidebarCollapsed}
         onToggleCollapsed={toggleSidebarCollapsed}
         page={page}
@@ -1453,7 +1453,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
         onDeleteConversation={deleteConversation}
         onRenameConversation={beginRenameConversation}
         onSelectConversation={selectConversation}
-      />}
+      /></AppErrorBoundary>}
       <View style={styles.main}>
         <View style={[styles.topbar, !wide && styles.mobileTopbar]}>
           {!wide && <>
@@ -1479,7 +1479,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
             <AppErrorBoundary><View style={styles.pagerFrame}>{renderPageFrame('settings')}</View></AppErrorBoundary>
           </SoftPageTransition>
         </View>
-        {!wide && !keyboardVisible && <BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} />}
+        {!wide && !keyboardVisible && <AppErrorBoundary><BottomNav page={page} onNavigate={setPage} onNewConversation={startNewConversation} bottomInset={insets.bottom} /></AppErrorBoundary>}
       </View>
 
       <Modal visible={memoryModal} animationType="fade" transparent onRequestClose={closeMemoryEditor}>
@@ -1958,7 +1958,7 @@ function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }:
 function useHapticFeedback() {
   const { hapticsEnabled } = useContext(UISettingsContext);
   return useCallback(() => {
-    if (hapticsEnabled) Vibration.vibrate(8);
+    if (hapticsEnabled) { try { Vibration.vibrate(8); } catch { /* Haptics must never interrupt navigation. */ } }
   }, [hapticsEnabled]);
 }
 
