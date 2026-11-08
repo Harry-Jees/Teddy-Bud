@@ -2087,7 +2087,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
       accessibilityRole="button"
       accessibilityLabel="Start a new chat"
       accessibilityHint="Creates a new conversation and opens the message composer"
-      onPress={onNewConversation}
+      onPress={() => { triggerHaptic(); onNewConversation(); }}
       style={({ pressed }) => [
         styles.bottomNavPlusAction,
         pressed && styles.pressed,
