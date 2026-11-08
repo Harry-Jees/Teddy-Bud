@@ -38,6 +38,7 @@ import { findRelevantChatHistory, localDataService, ownerFromToken } from './src
 import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
 import { OnboardingSurvey } from './src/components/OnboardingSurvey';
+import { WellbeingStudio } from './src/components/WellbeingStudio';
 import { AnimatedNavIcon } from './src/components/AnimatedNavIcon';
 import { AppIcon } from './src/components/AppIcon';
 import type { AppIconName } from './src/components/AppIcon';
@@ -1362,7 +1363,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                   setPage('chat');
                 }
               }} /></DiscoverSectionTransition>}
-              {tab === 'discover' && discoverFramePage === 'studio' && <DiscoverSectionTransition transitionKey={discoverFramePage}><WellbeingStudio wide={wide} /></DiscoverSectionTransition>}
+              {tab === 'discover' && discoverFramePage === 'studio' && <DiscoverSectionTransition transitionKey={discoverFramePage}><WellbeingStudio wide={wide} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} /></DiscoverSectionTransition>}
               {tab === 'discover' && discoverFramePage === 'emotions' && <DiscoverSectionTransition transitionKey={discoverFramePage}><EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} /></DiscoverSectionTransition>}
               {tab === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
               {tab === 'settings' && page === 'privacy' && <DiscoverSectionTransition transitionKey="privacy"><PrivacyPage wide={wide} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} /></DiscoverSectionTransition>}
@@ -2736,156 +2737,6 @@ export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
       </Pressable>
     </View>)}
     {visible.length === 0 && <Text style={styles.journalEmptyText}>{search ? 'No entries match your search.' : 'Your journal is empty. Write a little whenever you are ready.'}</Text>}
-  </ScrollView>;
-}
-function WellbeingStudio({wide}:{wide:boolean}) {
-  const [mode, setMode] = useState<'breathe'|'ground'|'focus'|'rest'>('breathe');
-  const [duration, setDuration] = useState(3);
-  const [remaining, setRemaining] = useState(180);
-  const [active, setActive] = useState(false);
-  const [completed, setCompleted] = useState(false);
-  const routines = {
-    breathe: { title: 'A slower breath', intro: 'Settle into a comfortable rhythm. Nothing to get right.', total: 180, cues: ['Breathe in softly', 'Let the breath leave slowly', 'Rest for a moment'] },
-    ground: { title: 'Come back to now', intro: 'A gentle sensory pause. Let your attention wander naturally.', total: 180, cues: ['Notice the colours around you', 'Feel where your body is supported', 'Listen to the nearest sound', 'Notice the air on your skin', 'Let your eyes rest'] },
-    focus: { title: 'A little breathing room', intro: 'A quiet pocket of time for one thing, or for doing nothing at all.', total: 300, cues: ['Choose one small thing, if you want', 'Stay with it at your own pace', 'Let the rest wait for now'] },
-    rest: { title: 'Ease into rest', intro: 'A soft landing. You can keep your eyes open or closed.', total: 240, cues: ['Unclench your jaw and soften your shoulders', 'Let your hands rest', 'Allow the day to become a little quieter', 'There is nothing else to finish here'] },
-  } as const;
-  const routine = routines[mode];
-  const totalSeconds = duration * 60;
-  const elapsed = Math.max(0, totalSeconds - remaining);
-  const cueIndex = mode === 'breathe'
-    ? (Math.floor(elapsed / 5) % 3)
-    : Math.min(routine.cues.length - 1, Math.floor(elapsed / Math.max(1, totalSeconds / routine.cues.length)));
-  const cue = routine.cues[cueIndex] ?? routine.cues[0];
-  const progress = Math.min(1, elapsed / totalSeconds);
-  useEffect(() => {
-    if (!active) return undefined;
-    const timer = setInterval(() => {
-      setRemaining(current => {
-        if (current <= 1) {
-          setActive(false);
-          setCompleted(true);
-          return 0;
-        }
-        return current - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [active]);
-  const chooseMode = (next: typeof mode) => {
-    setMode(next);
-    setActive(false);
-    setCompleted(false);
-    setDuration(next === 'focus' ? 5 : next === 'rest' ? 4 : 3);
-    setRemaining((next === 'focus' ? 5 : next === 'rest' ? 4 : 3) * 60);
-  };
-  const chooseDuration = (minutes: number) => {
-    setDuration(minutes);
-    setRemaining(minutes * 60);
-    setCompleted(false);
-  };
-  const startOrPause = () => {
-    if (active) {
-      setActive(false);
-      return;
-    }
-    if (remaining <= 0 || completed) {
-      setRemaining(totalSeconds);
-      setCompleted(false);
-    }
-    setActive(true);
-  };
-  const reset = () => {
-    setActive(false);
-    setRemaining(totalSeconds);
-    setCompleted(false);
-  };
-  const clock = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
-  const phase = mode === 'breathe' ? cueIndex === 0 ? 'Breathe in' : cueIndex === 1 ? 'Breathe out' : 'Rest' : 'Take your time';
-  const orbScale = useRef(new Animated.Value(1)).current;
-  const __teddyBudExtractedStyles7 = StyleSheet.create({
-    style0: ({fontSize:28,fontWeight:'700',color:C.cocoaDark}) as const,
-    style1: ({color:C.muted,lineHeight:22,marginTop:8,maxWidth:600}) as const,
-    style2: ({flexDirection:'row',flexWrap:'wrap',gap:9,marginTop:20}) as const,
-    style3: ({backgroundColor:'#F3EAE3',borderRadius:30,borderWidth:1,borderColor:'#E8D8CB',padding:wide?28:20,marginTop:16,alignItems:'center'}) as const,
-    style4: ({fontSize:12,letterSpacing:1.5,fontWeight:'700',color:'#8A6D58'}) as const,
-    style5: ({fontSize:23,fontWeight:'700',color:C.cocoaDark,marginTop:10,textAlign:'center'}) as const,
-    style6: ({fontSize:14,lineHeight:21,color:C.muted,marginTop:7,textAlign:'center',maxWidth:420}) as const,
-    style7: ({width:156,height:156,borderRadius:78,backgroundColor:'#D9BBA7',borderWidth:10,borderColor:'#EAD8CA',alignItems:'center',justifyContent:'center',marginTop:24,marginBottom:18,transform:[{scale:orbScale}]}) as const,
-    style8: ({width:116,height:116,borderRadius:58,backgroundColor:'#C69A7D',alignItems:'center',justifyContent:'center'}) as const,
-    style9: ({fontSize:15,fontWeight:'700',color:'#FFF9F4'}) as const,
-    style10: ({fontSize:18,fontWeight:'600',color:C.cocoaDark,textAlign:'center',minHeight:28}) as const,
-    style11: ({fontSize:35,fontWeight:'300',fontVariant:['tabular-nums'],color:C.cocoaDark,marginTop:8}) as const,
-    style12: ({height:6,width:'100%',maxWidth:360,backgroundColor:'#E5D5C9',borderRadius:8,overflow:'hidden',marginTop:12}) as const,
-    style13: ({height:6,width:`${progress*100}%`,backgroundColor:'#96745E',borderRadius:8}) as const,
-    style14: ({flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10,flexWrap:'wrap',marginTop:22}) as const,
-    style15: ({color:'#FFF',fontWeight:'700'}) as const,
-    style16: ({paddingVertical:13,paddingHorizontal:17,borderRadius:17,backgroundColor:'#E9D9CE'}) as const,
-    style17: ({color:C.cocoaDark,fontWeight:'600'}) as const,
-    style18: ({flexDirection:'row',alignItems:'center',gap:8,marginTop:18}) as const,
-    style19: ({fontSize:12,color:C.muted}) as const,
-    style20: ({fontSize:12,lineHeight:18,color:'#846F5F',textAlign:'center',marginTop:18,maxWidth:420}) as const,
-  });
-  useEffect(() => {
-    if (!active || mode !== 'breathe') {
-      Animated.spring(orbScale, { toValue: 1, useNativeDriver: true, speed: 1.2, bounciness: 2 }).start();
-      return undefined;
-    }
-    const target = cueIndex === 0 ? 1.13 : cueIndex === 1 ? 0.92 : 1;
-    Animated.spring(orbScale, { toValue: target, useNativeDriver: true, speed: 0.45, bounciness: 1 }).start();
-    return undefined;
-  }, [active, cueIndex, mode, orbScale]);
-  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]}>
-    <Text style={__teddyBudExtractedStyles7.style0}>A softer moment</Text>
-    <Text style={__teddyBudExtractedStyles7.style1}>Choose a feeling, settle in, and let the session guide itself. You do not need to keep tapping through steps.</Text>
-    <View style={__teddyBudExtractedStyles7.style2}>
-      {([{id:'breathe',label:'Breathe',symbol:'◌'},{id:'ground',label:'Grounding',symbol:'⌂'},{id:'focus',label:'Focus',symbol:'✳'},{id:'rest',label:'Wind down',symbol:'☾'}] as const).map(item=>
-        {
-        const __teddyBudExtractedStyles8 = StyleSheet.create({
-          style0: ({color:C.cocoaDark,fontWeight:'600'}) as const,
-        });
-        return <Pressable key={item.id} accessibilityRole="button" accessibilityState={{selected:mode===item.id}} onPress={()=>chooseMode(item.id)} style={({pressed})=>[{paddingVertical:12,paddingHorizontal:15,borderRadius:18,backgroundColor:mode===item.id?'#E9D7CA':C.paper,borderWidth:1,borderColor:mode===item.id?'#B9957E':C.line,opacity:pressed?0.82:1}]}>
-          <Text style={__teddyBudExtractedStyles8.style0}>{item.symbol}  {item.label}</Text>
-        </Pressable>;
-      }
-      )}
-    </View>
-    <View style={__teddyBudExtractedStyles7.style3}>
-      <Text style={__teddyBudExtractedStyles7.style4}>A LITTLE SPACE FOR YOU</Text>
-      <Text style={__teddyBudExtractedStyles7.style5}>{routine.title}</Text>
-      <Text style={__teddyBudExtractedStyles7.style6}>{routine.intro}</Text>
-      <Animated.View style={__teddyBudExtractedStyles7.style7}>
-        <View style={__teddyBudExtractedStyles7.style8}>
-          <Text style={__teddyBudExtractedStyles7.style9}>{mode==='breathe'&&active?phase:active?'With you':'Take a pause'}</Text>
-        </View>
-      </Animated.View>
-      <Text accessibilityLiveRegion="polite" style={__teddyBudExtractedStyles7.style10}>{completed?'You made a little room for yourself.':active?cue:'Whenever you are ready'}</Text>
-      <Text style={__teddyBudExtractedStyles7.style11}>{clock(remaining)}</Text>
-      <View style={__teddyBudExtractedStyles7.style12}>
-        <View style={__teddyBudExtractedStyles7.style13}/>
-      </View>
-      <View style={__teddyBudExtractedStyles7.style14}>
-        <Pressable accessibilityRole="button" onPress={startOrPause} style={({pressed})=>[{minWidth:148,paddingVertical:14,paddingHorizontal:22,borderRadius:18,backgroundColor:C.cocoaDark,alignItems:'center',opacity:pressed?0.86:1}]}>
-          <Text style={__teddyBudExtractedStyles7.style15}>{active?'Pause':completed?'Begin again':remaining<totalSeconds?'Resume':'Begin gently'}</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" onPress={reset} style={__teddyBudExtractedStyles7.style16}>
-          <Text style={__teddyBudExtractedStyles7.style17}>Reset</Text>
-        </Pressable>
-      </View>
-      {!active && !completed ? <View style={__teddyBudExtractedStyles7.style18}>
-        <Text style={__teddyBudExtractedStyles7.style19}>Time</Text>
-        {[2,3,5,10].map(minutes=>{
-          const __teddyBudExtractedStyles9 = StyleSheet.create({
-            style0: ({paddingVertical:7,paddingHorizontal:11,borderRadius:12,backgroundColor:duration===minutes?'#DCC3B1':'#F8F3EF'}) as const,
-            style1: ({fontSize:12,fontWeight:'600',color:C.cocoaDark}) as const,
-          });
-          return <Pressable key={minutes} accessibilityRole="button" accessibilityState={{selected:duration===minutes}} onPress={()=>chooseDuration(minutes)} style={__teddyBudExtractedStyles9.style0}>
-          <Text style={__teddyBudExtractedStyles9.style1}>{minutes} min</Text>
-        </Pressable>;
-        })}
-      </View>:null}
-      <Text style={__teddyBudExtractedStyles7.style20}>No streaks, scores, or pressure. You can pause, stop, or leave at any time. This is a gentle self-care tool, not medical treatment.</Text>
-    </View>
   </ScrollView>;
 }
 export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entries: EmotionCheckIn[]; onSave: (entry: EmotionCheckIn) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
