@@ -47,6 +47,7 @@ const sampleData: LocalAppData = {
   onboardingSurveyAnswers: undefined,
   reduceMotion: false,
   hapticsEnabled: true,
+  careRemindersEnabled: false,
 };
 
 describe('encrypted Teddy Bud backups', () => {
