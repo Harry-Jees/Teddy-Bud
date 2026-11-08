@@ -2500,26 +2500,6 @@ function OccasionWidget({ value, onChange, onSave, onDismiss }: { value: string;
   </View>;
 }
 
-function PaperPlaneIcon() {
-  if (Platform.OS === 'web') {
-    return React.createElement('svg' as any, {
-      viewBox: '0 0 24 24',
-      width: 24,
-      height: 24,
-      focusable: false,
-      'aria-hidden': true,
-    }, React.createElement('path' as any, {
-      d: 'm3.4 20.4 17.45-7.48c.81-.35.81-1.49 0-1.84L3.4 3.6c-.66-.29-1.39.2-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91',
-      fill: '#FFFFFF',
-    }));
-  }
-  return <View accessibilityElementsHidden style={styles.sendArrowIcon}>
-    <View style={styles.sendArrowShaft} />
-    <View style={styles.sendArrowTop} />
-    <View style={styles.sendArrowRight} />
-  </View>;
-}
-
 function TypingIndicator() {
   const dots = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
   const [reduceMotion, setReduceMotion] = useState(true);
