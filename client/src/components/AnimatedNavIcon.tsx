@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { BookHeart, Compass, MessageSquare, Settings } from 'lucide-react-native';
 
 export type AnimatedNavIconName = 'chat' | 'discover' | 'memories' | 'settings';
@@ -53,10 +53,15 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
   const lift = interaction.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -2, 0] });
   const rotate = interaction.interpolate({ inputRange: [0, 1], outputRange: ['0deg', name === 'settings' ? '28deg' : '0deg'] });
 
-  return <View accessible={false} style={{ width: 34, height: 34, alignItems: 'center', justifyContent: 'center' }}>
-    <Animated.View pointerEvents="none" style={{ position: 'absolute', width: 36, height: 36, borderRadius: 13, backgroundColor: '#F0E1D4', opacity: selected, transform: [{ scale: activeScale }] }} />
+  return <View accessible={false} style={styles.container}>
+    <Animated.View pointerEvents="none" style={[styles.activeBackground, { opacity: selected, transform: [{ scale: activeScale }] }]} />
     <Animated.View style={{ transform: [{ scale: pulseScale }, { translateY: lift }, { rotate }] }}>
       <Icon size={21} color={active ? '#684D3B' : '#82766C'} strokeWidth={1.85} />
     </Animated.View>
   </View>;
 }
+
+const styles = StyleSheet.create({
+  container: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  activeBackground: { position: 'absolute', width: 36, height: 36, borderRadius: 13, backgroundColor: '#F0E1D4' },
+});
