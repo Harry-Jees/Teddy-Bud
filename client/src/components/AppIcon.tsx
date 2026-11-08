@@ -1,14 +1,14 @@
 import React from 'react';
 import {
   ArrowRight, BookOpen, Check, ChevronRight, Cloud, Eye, EyeOff,
-  Heart, History, Image, Info, Mic, MoreHorizontal, Pencil, Plus, Search, Send, Share2, ShieldCheck,
+  Fingerprint, Heart, History, Image, Info, Mic, MoreHorizontal, Pencil, Plus, Search, Send, Share2, ShieldCheck,
   Sparkles, Square, Sun, Trash2, X,
 } from 'lucide-react-native';
 
 export type AppIconName =
   | 'sparkle' | 'edit' | 'close' | 'chevron' | 'info' | 'book'
   | 'heart' | 'plus' | 'shield' | 'search' | 'trash' | 'check'
-  | 'arrow' | 'sun' | 'cloud' | 'history' | 'image' | 'share' | 'menu' | 'eye' | 'eyeOff' | 'mic' | 'send' | 'square';
+  | 'arrow' | 'sun' | 'cloud' | 'history' | 'image' | 'share' | 'menu' | 'eye' | 'eyeOff' | 'mic' | 'send' | 'square' | 'fingerprint';
 
 type Props = { name: AppIconName; color?: string; size?: number };
 
@@ -35,6 +35,7 @@ const ICONS = {
   mic: Mic,
   send: Send,
   square: Square,
+  fingerprint: Fingerprint,
   eye: Eye,
   eyeOff: EyeOff,
 } as const;
