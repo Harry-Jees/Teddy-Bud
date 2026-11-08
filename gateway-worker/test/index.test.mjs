@@ -1021,6 +1021,37 @@ test('legacy session indexes migrate to the newest active session', async () => 
   assert.equal(values.has('user-session-ids'), false);
 });
 
+test('credit state accepts five-credit image reservations and deduplicates retries', async () => {
+  const values = new Map();
+  const storage = {
+    get: async key => values.get(key),
+    transaction: async callback => callback({
+      get: async key => values.get(key),
+      put: async (key, value) => { values.set(key, value); },
+      delete: async key => { values.delete(key); },
+    }),
+  };
+  const state = new GatewayStateStore({ storage }, {});
+  const reserve = (reservationId, cost) => state.fetch(new Request('https://state/credits/reserve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reservationId, cost, background: false }),
+  }));
+  const first = await reserve('image-reservation-0001', 5);
+  const firstBody = await first.json();
+  assert.equal(firstBody.allowed, true);
+  assert.equal(firstBody.used, 5);
+  const retry = await reserve('image-reservation-0001', 5);
+  const retryBody = await retry.json();
+  assert.equal(retryBody.allowed, true);
+  assert.equal(retryBody.duplicate, true);
+  assert.equal(retryBody.used, 5);
+  const mismatch = await reserve('image-reservation-0001', 1);
+  assert.equal((await mismatch.json()).allowed, false);
+  const text = await reserve('text-reservation-0002', 1);
+  assert.equal((await text.json()).used, 6);
+});
+
 test('removing a stale session never clears the newer active session', async () => {
   const values = new Map([['active-user-session-id', 'newest-session']]);
   const storage = {
