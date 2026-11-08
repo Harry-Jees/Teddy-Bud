@@ -3215,10 +3215,12 @@ function SettingsPage({ wide, username, reduceMotion, hapticsEnabled, careRemind
       <View style={styles.settingDivider} />
       <SettingRow icon="heart" title="Haptic feedback" description="Use gentle vibration feedback for supported interactions." value={hapticsEnabled} onChange={onHapticsChange} />
     </View>
-    <Text style={styles.settingsSectionLabel}>GENTLE CHECK-INS</Text>
-    <View style={styles.settingsCardForm}>
-      <SettingRow icon="heart" title="Friendly check-ins" description="A warm Android notification after three days away. You can turn it off whenever you like." value={careRemindersEnabled} onChange={onCareRemindersChange} />
-    </View>
+    {Platform.OS === 'android' && <>
+      <Text style={styles.settingsSectionLabel}>GENTLE CHECK-INS</Text>
+      <View style={styles.settingsCardForm}>
+        <SettingRow icon="heart" title="Friendly check-ins" description="A warm Android notification after three days away. You can turn it off whenever you like." value={careRemindersEnabled} onChange={onCareRemindersChange} />
+      </View>
+    </>}
     <Text style={styles.settingsSectionLabel}>PRIVACY</Text>
     <View style={styles.settingsCardForm}>
       <Pressable accessibilityRole="button" accessibilityLabel="Open privacy controls" onPress={onOpenPrivacy} style={({ pressed }) => [styles.settingRow, pressed && styles.pressed]}>
