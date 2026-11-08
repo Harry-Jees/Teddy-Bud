@@ -149,7 +149,8 @@ const styles = StyleSheet.create({
   backButtonDisabled: { opacity: 0.5 },
   disabledText: { color: '#B8B1A8' },
   swipeHint: { color: '#85837D', fontSize: 12, marginLeft: 'auto' },
-  primary: { backgroundColor: '#75513D', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 22, alignItems: 'center', flex: 1 },
+  primary: { minHeight: 48, backgroundColor: '#75513D', borderRadius: 15, paddingVertical: 13, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, flex: 1 },
+  primaryDisabled: { opacity: 0.42 },
   primaryText: { color: '#FFFCF7', fontFamily: 'sans-serif-rounded', fontWeight: '700', fontSize: 15 },
 
   secondaryText: { color: '#514234', fontWeight: '600', fontSize: 15 },
