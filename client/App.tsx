@@ -170,6 +170,7 @@ function AccessGate() {
   const [error, setError] = useState<string | null>(null);
   const [initialMode, setInitialMode] = useState<'login' | 'create'>('create');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
+  const [canCreateAccount, setCanCreateAccount] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -189,6 +190,7 @@ function AccessGate() {
           } catch {
             if (mounted) {
               setInitialMode('login');
+              setCanCreateAccount(await browserAuthService.shouldCreateAccount());
               setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
             }
           }
@@ -198,7 +200,8 @@ function AccessGate() {
             setSession(current);
             if (current) await browserAuthService.markSetupComplete(current.username);
             else {
-              setInitialMode(await browserAuthService.shouldCreateAccount() ? 'create' : 'login');
+              setInitialMode('login');
+              setCanCreateAccount(await browserAuthService.shouldCreateAccount());
               setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
             }
           }
@@ -209,6 +212,7 @@ function AccessGate() {
           // A failed restore on an already configured device must return to
           // sign-in, never expose account creation as the default recovery path.
           setInitialMode('login');
+          setCanCreateAccount(false);
           try {
             setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
           } catch {
@@ -256,7 +260,7 @@ function AccessGate() {
   // A valid in-memory session remains unlocked until its normal expiry.
 
   if (busy) return <Animated.View style={__teddyBudExtractedStyles0.style0}><AuthLoading /></Animated.View>;
-  if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
+  if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} allowAccountCreation={canCreateAccount} onAuthenticated={next => { setError(null); setInitialMode('login'); setCanCreateAccount(false); setSession(next); }} />;
   return <TeddyBud sessionToken={session.accessToken} username={session.username ?? ''} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
       const message = authErrorMessage(logoutError, 'sign-out');
@@ -311,7 +315,7 @@ function AuthLoading() {
   </View>;
 }
 
-export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
+export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, allowAccountCreation = true, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; allowAccountCreation?: boolean; onAuthenticated: (session: StoredSession) => void }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compact = width < 600;
@@ -328,6 +332,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   const [recoveryPassphraseVisible, setRecoveryPassphraseVisible] = useState(true);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  const [biometricReady, setBiometricReady] = useState(false);
   const authScrollRef = useRef<ScrollView>(null);
   const keepFocusedFieldVisible = (target: number) => {
     const responder = authScrollRef.current?.getScrollResponder() as unknown as {
@@ -335,6 +340,32 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
     } | undefined;
     responder?.scrollResponderScrollNativeHandleToKeyboard?.(target, 24, true);
   };
+  useEffect(() => {
+    let mounted = true;
+    if (Platform.OS !== 'android' || mode !== 'login') {
+      setBiometricReady(false);
+      return () => { mounted = false; };
+    }
+    browserAuthService.hasBiometricSignIn().then(ready => {
+      if (mounted) setBiometricReady(ready);
+    }).catch(() => { if (mounted) setBiometricReady(false); });
+    return () => { mounted = false; };
+  }, [mode]);
+
+  const signInWithBiometrics = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setFormError(null);
+    setNotice(null);
+    try {
+      onAuthenticated(await browserAuthService.signInWithBiometrics());
+    } catch {
+      setNotice('Biometric sign-in was cancelled or unavailable. You can use your password instead.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const clearFieldError = (field: AuthField) => {
     setFieldErrors(current => {
       if (!current[field]) return current;
@@ -438,7 +469,9 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
       </Pressable>
+      {mode === 'login' && biometricReady && <Pressable accessibilityRole="button" accessibilityLabel="Sign in with fingerprint" disabled={submitting} onPress={() => { runInBackground(signInWithBiometrics()); }} style={({ pressed }) => [styles.authBiometricButton, pressed && styles.pressed, submitting && styles.buttonDisabled]}><AppIcon name="fingerprint" color={C.cocoaDark} size={21} /><Text style={styles.authBiometricText}>Use fingerprint</Text></Pressable>}
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
+      {mode === 'login' && allowAccountCreation && <Pressable accessibilityRole="button" onPress={() => changeMode('create')} style={styles.authLink}><Text style={styles.authLinkText}>Create a new account</Text></Pressable>}
       {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Restore existing chats</Text></Pressable>}
       {(mode === 'recover' || mode === 'create') && <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'recover' ? 'Back to sign in' : 'Already set up? Sign in'}</Text></Pressable>}
     </View>
@@ -3286,7 +3319,8 @@ const styles = StyleSheet.create({
   authDivider: { color: C.muted, fontSize: 9, letterSpacing: 1.2, textAlign: 'center', marginVertical: 16 },
   authToggle: { alignSelf: 'center', minHeight: 38, justifyContent: 'center', marginTop: 8 },
   authToggleText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
-  authScreen: { flex: 1, minHeight: 0, width: '100%', backgroundColor: C.canvas }, authLoadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: C.canvas }, authLoadingMark: { width: 76, height: 76, borderRadius: 30, overflow: 'hidden', backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLoadingLogo: { width: 76, height: 76, borderRadius: 30 }, authLoadingTitle: { color: C.ink, fontSize: 20, lineHeight: 27, fontWeight: '600', textAlign: 'center', letterSpacing: -0.4 }, authLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 }, authLoadingHourglass: { width: 42, height: 64, marginTop: 22, alignItems: 'center', justifyContent: 'center', position: 'relative' }, authLoadingGlassTop: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderTopWidth: 3, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidTop: { width: '100%', backgroundColor: '#D8AD83', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }, authLoadingGlassNeck: { width: 5, height: 5, backgroundColor: C.cocoa }, authLoadingGlassBottom: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderBottomWidth: 3, borderTopLeftRadius: 11, borderTopRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidBottom: { width: '100%', backgroundColor: '#D8AD83', borderTopLeftRadius: 8, borderTopRightRadius: 8 }, authLoadingShimmer: { position: 'absolute', width: 42, height: 1, backgroundColor: '#E8C6A7', opacity: 0.55 }, authScrollContent: { flexGrow: 1, width: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 20 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 16, justifyContent: 'flex-start' }, authScrollContentShort: { justifyContent: 'flex-start', paddingTop: 12, paddingBottom: 18 }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 20 }, authCardShort: { paddingTop: 18, paddingBottom: 18 }, authMark: { width: 56, height: 56, borderRadius: 30, overflow: 'hidden', backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 30 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
+  authScreen: { flex: 1, minHeight: 0, width: '100%', backgroundColor: C.canvas }, authLoadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: C.canvas }, authLoadingMark: { width: 76, height: 76, borderRadius: 30, overflow: 'hidden', backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLoadingLogo: { width: 76, height: 76, borderRadius: 30 }, authLoadingTitle: { color: C.ink, fontSize: 20, lineHeight: 27, fontWeight: '600', textAlign: 'center', letterSpacing: -0.4 }, authLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 }, authLoadingHourglass: { width: 42, height: 64, marginTop: 22, alignItems: 'center', justifyContent: 'center', position: 'relative' }, authLoadingGlassTop: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderTopWidth: 3, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidTop: { width: '100%', backgroundColor: '#D8AD83', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }, authLoadingGlassNeck: { width: 5, height: 5, backgroundColor: C.cocoa }, authLoadingGlassBottom: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderBottomWidth: 3, borderTopLeftRadius: 11, borderTopRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidBottom: { width: '100%', backgroundColor: '#D8AD83', borderTopLeftRadius: 8, borderTopRightRadius: 8 }, authLoadingShimmer: { position: 'absolute', width: 42, height: 1, backgroundColor: '#E8C6A7', opacity: 0.55 }, authScrollContent: { flexGrow: 1, width: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 20 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 16, justifyContent: 'flex-start' }, authScrollContentShort: { justifyContent: 'flex-start', paddingTop: 12, paddingBottom: 18 }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 20 }, authCardShort: { paddingTop: 18, paddingBottom: 18 }, authMark: { width: 56, height: 56, borderRadius: 30, overflow: 'hidden', backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 30 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authBiometricButton: { minHeight: 46, width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 15, borderWidth: 1, borderColor: '#DCCBBB', backgroundColor: '#F4E8DE', marginTop: 10 }, authBiometricText: { color: C.cocoaDark, fontFamily: 'sans-serif-rounded', fontSize: 13, fontWeight: '700' },
+  authButtonText: { color: C.white, fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
   root: { flex: 1, flexDirection: 'row', backgroundColor: C.canvas }, main: { flex: 1, minWidth: 0 },
   pagerFrame: { flex: 1, width: '100%', minWidth: 0, height: '100%' },
   newChatButton: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatButtonCollapsed: { paddingHorizontal: 0, justifyContent: 'center' }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
