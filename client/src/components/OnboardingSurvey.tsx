@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { AppIcon } from './AppIcon';
+import { RoundedText as Text } from './RoundedText';
 import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export type WellbeingSurveyAnswer = { question: string; answer: string };
