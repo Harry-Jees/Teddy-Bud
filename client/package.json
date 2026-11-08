@@ -37,7 +37,7 @@
     "lucide-react-native": "^1.70.0",
     "react-native-svg": "^15.15.1",
     "lucide-react": "^1.70.0",
-    "@notifee/react-native": "^9.1.8"
+    "@notifee/react-native": "9.1.8"
   },
   "op-sqlite": {
     "sqlcipher": true
