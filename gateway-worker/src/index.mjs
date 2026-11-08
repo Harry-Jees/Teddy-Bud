@@ -822,11 +822,11 @@ async function completions(request, env) {
   const effectiveModel = enterpriseMode
     ? (hasImage ? enterpriseVisionModel : env.ENTERPRISE_TEXT_MODEL_ID.trim())
     : (hasImage ? PRIMARY_MODEL : FALLBACK_MODEL);
-  // User messages cost one credit regardless of text/image. Small auxiliary tasks
-  // use a separate strict daily cap so auto-titles and memory suggestions don't
-  // silently consume a user's 40 chat credits.
+  // Text prompts cost one credit; requests containing an image cost five.
+  // Small auxiliary tasks use a separate strict daily cap so auto-titles and
+  // memory suggestions do not silently consume a user's 40 chat credits.
   const backgroundTask = ['title', 'memory'].includes(input.metadata?.teddyBudTask) ? input.metadata.teddyBudTask : null;
-  const costCredits = backgroundTask ? 0 : 1;
+  const costCredits = backgroundTask ? 0 : hasImage ? 5 : 1;
   const reservationId = crypto.randomUUID();
   const reservation = await dailyCreditsRequest(env, claims.sub, '/credits/reserve', {
     reservationId, cost: costCredits, background: Boolean(backgroundTask), dailyLimit: 40, backgroundDailyLimit: 10,
