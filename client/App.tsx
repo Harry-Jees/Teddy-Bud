@@ -3273,15 +3273,15 @@ function SettingsPage({ wide, username, reduceMotion, hapticsEnabled, careRemind
     </View>
     <Text style={styles.settingsSectionLabel}>BACKUP & RESTORE</Text>
     <View style={styles.settingsCardForm}>
-      <Text style={styles.settingTitle}>Encrypted device backup</Text>
-      <Text style={styles.settingDescription}>Export chats, memories, and preferences as a portable .teddybud file. The backup is encrypted and can only be restored to the same signed-in account.</Text>
+      <Text style={styles.settingTitle}>Account data backup</Text>
+      <Text style={styles.settingDescription}>Export chats, memories, and preferences as an encrypted .teddybud file. After reinstalling, sign in with the same username and import this file to restore your account data.</Text>
       <TextInput value={backupPassphrase} onChangeText={setBackupPassphrase} placeholder="Backup passphrase (12+ characters)" placeholderTextColor={C.muted} autoCapitalize="none" autoCorrect={false} secureTextEntry style={[styles.settingsTextInput, styles.backupPassphraseInput]} accessibilityLabel="Backup passphrase" />
       <View style={styles.backupActions}>
         <Button label={backupBusy ? 'Working…' : 'Export .teddybud'} onPress={exportBackupFile} disabled={backupBusy || backupPassphrase.trim().length < 12} />
-        <Button label="Import backup" tone="quiet" onPress={chooseBackupFile} disabled={backupBusy || backupPassphrase.trim().length < 12} />
+        <Button label="Import account data" tone="quiet" onPress={chooseBackupFile} disabled={backupBusy || backupPassphrase.trim().length < 12} />
       </View>
       {!!backupStatus && <Text accessibilityLiveRegion="polite" style={styles.backupStatus}>{backupStatus}</Text>}
-      <Text style={styles.backupFootnote}>Use the same account and backup passphrase on the new device. Teddy Bud cannot reset the backup passphrase.</Text>
+      <Text style={styles.backupFootnote}>Your username and password restore account access; this encrypted file restores local chats, memories, and preferences. Keep the backup passphrase safe.</Text>
     </View>
     <Text style={styles.settingsSectionLabel}>ACCOUNT</Text>
     <View style={styles.settingsCardForm}>
