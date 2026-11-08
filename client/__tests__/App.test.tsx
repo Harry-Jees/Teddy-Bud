@@ -4,7 +4,7 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { Animated, Image, Modal, ScrollView, Share, Text } from 'react-native';
+import { Animated, Image, Modal, ScrollView, Text } from 'react-native';
 import { ChatPage, EmotionsPage, JournalPage } from '../App';
 
 jest.mock('@react-native-documents/picker', () => ({
