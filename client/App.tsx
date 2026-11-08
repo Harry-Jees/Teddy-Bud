@@ -3241,7 +3241,6 @@ function SettingsPage({ wide, username, reduceMotion, hapticsEnabled, careRemind
       </View>
       <Text style={styles.settingDescription}>Text: 1 credit · Image upload: 5 credits · Resets daily at 00:00 UTC.</Text>
       <Text style={styles.settingDescription}>{creditBalance ? `${40 - creditBalance.remaining} used · ${creditBalance.remaining} remaining` : 'Balance is temporarily unavailable. It will update automatically when the service reconnects.'}</Text>
-      {!creditBalance && <Text style={styles.settingDescription}>Balance unavailable right now. Connect to the gateway and refresh.</Text>}
     </View>
     <Text style={styles.settingsSectionLabel}>ABOUT YOU</Text>
     <View style={styles.settingsCardForm}>
