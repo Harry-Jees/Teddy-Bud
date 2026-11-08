@@ -429,7 +429,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, allow
   const title = mode === 'create' ? 'Create account' : mode === 'recover' ? 'Reset password' : mode === 'migrate' ? 'Restore account' : 'Sign in';
   const actionLabel = mode === 'create' ? 'Continue setup' : mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
 
-  return <KeyboardAvoidingView style={[styles.authScreen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} behavior="padding">
+  return <KeyboardAvoidingView style={[styles.authScreen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView ref={authScrollRef} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.authScrollContent, compact && styles.authScrollContentCompact, shortScreen && styles.authScrollContentShort]}>
     <View style={[styles.authCard, compact && styles.authCardCompact, shortScreen && styles.authCardShort]}>
       <View style={styles.authMark}><Image source={teddyBudLogo} style={styles.authLogo} accessibilityLabel="Teddy Bud" /></View>
@@ -2165,6 +2165,14 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     scrollRef.current?.scrollToEnd({ animated: false });
   }, [conversationId]);
   useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const keyboardShown = Keyboard.addListener('keyboardDidShow', () => {
+      shouldAutoScrollRef.current = true;
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => keyboardShown.remove();
+  }, []);
+  useEffect(() => {
     if (Platform.OS !== 'android' || !NativeModules.TeddyBudSpeechRecognition) return undefined;
     const module = NativeModules.TeddyBudSpeechRecognition as NativeSpeechModule;
     const emitter = new NativeEventEmitter(NativeModules.TeddyBudSpeechRecognition);
@@ -2279,7 +2287,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     onSend(selectedImage?.dataUrl);
     setSelectedImage(null);
   };
-  return <KeyboardAvoidingView style={styles.chatPage} behavior="padding">
+  return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={[styles.chatHeader, wide && styles.chatHeaderWide]}>
       <View style={styles.chatHeaderCopy}><Text style={styles.pageTitle} numberOfLines={1}>{conversationTitle}</Text></View>
       <View style={styles.headerActions}>
@@ -2399,7 +2407,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={__teddyBudExtractedStyles6.style1} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
       {editingMessageId !== null && editingMessageId !== undefined && <View style={__teddyBudExtractedStyles6.style2}><Text style={__teddyBudExtractedStyles6.style3}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={__teddyBudExtractedStyles6.style4}><Text style={__teddyBudExtractedStyles6.style5}>Cancel</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
-        <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
+        <TextInput value={draft} onChangeText={setDraft} onFocus={() => { setComposerFocused(true); shouldAutoScrollRef.current = true; scrollRef.current?.scrollToEnd({ animated: true }); }} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         <Pressable accessibilityRole="button" accessibilityLabel={speechListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Speech is transcribed into your editable message. Nothing is sent until you press Send." onPress={speechListening ? stopSpeechInput : () => { runInBackground(startSpeechInput()); }} disabled={isSending} style={({ pressed }) => [styles.voiceButton, speechListening && styles.voiceButtonActive, isSending && styles.buttonDisabled, pressed && styles.pressed]}>
           {speechListening ? <AppIcon name="square" color={C.cocoa} size={17} /> : <AppIcon name="mic" color={C.cocoa} size={20} />}
         </Pressable>
