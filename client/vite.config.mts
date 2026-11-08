@@ -24,7 +24,6 @@ export default defineConfig({
   resolve: {
     alias: {
       'react-native': 'react-native-web',
-      'react-native-svg': fileURLToPath(new URL('./node_modules/react-native-svg/lib/module/ReactNativeSVG.web.js', import.meta.url)),
       '@': fileURLToPath(new URL('.', import.meta.url)),
     },
     extensions: [
