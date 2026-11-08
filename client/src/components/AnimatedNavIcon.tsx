@@ -65,6 +65,7 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
 
 const styles = StyleSheet.create({
   container: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  activeBackground: { position: 'absolute', width: 36, height: 36, borderRadius: 14, backgroundColor: 'rgba(255, 255, 255, 0.66)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.92)', shadowColor: '#75513D', shadowOpacity: 0.12, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
+  activeBackground: { position: 'absolute', width: 36, height: 36, borderRadius: 13, backgroundColor: '#F0E1D4' },
+  glassActiveBackground: { backgroundColor: 'rgba(255, 255, 255, 0.66)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.92)', shadowColor: '#75513D', shadowOpacity: 0.12, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
   iconMotion: {},
 });
