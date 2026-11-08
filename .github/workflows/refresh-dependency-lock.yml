@@ -29,12 +29,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin overhaul/stability-cozy-ux
-          git rebase origin/overhaul/stability-cozy-ux
           git add client/package-lock.json
           if git diff --cached --quiet; then
             echo "Lockfile already current."
             exit 0
           fi
           git commit -m "chore: refresh notification dependency lockfile"
+          git fetch origin overhaul/stability-cozy-ux
+          git rebase origin/overhaul/stability-cozy-ux
           git push origin HEAD:overhaul/stability-cozy-ux
