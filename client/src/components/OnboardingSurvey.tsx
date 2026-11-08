@@ -74,10 +74,6 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
   const chooseOption = (option: string) => {
     if (saving || transitionLock.current) return;
     setAnswers(current => ({ ...current, [index]: option }));
-    if (index < QUESTIONS.length - 1) {
-      // Give the selected state a brief moment to register before advancing.
-      setTimeout(() => moveTo(index + 1, 1), 140);
-    }
   };
 
   const finish = async (skip = false) => {
@@ -125,7 +121,7 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
         </Pressable>
         {index === QUESTIONS.length - 1
           ? <Pressable accessibilityRole="button" disabled={saving} onPress={() => { finish().catch(() => undefined); }} style={styles.primary}><Text style={styles.primaryText}>{saving ? 'Saving…' : 'Finish'}</Text></Pressable>
-          : <Text style={styles.swipeHint}>Swipe to go back</Text>}
+          : <Pressable accessibilityRole="button" accessibilityLabel="Next question" disabled={saving || !answers[index]} onPress={next} style={[styles.primary, !answers[index] && styles.primaryDisabled]}><Text style={styles.primaryText}>Next</Text><AppIcon name="arrow" color="#FFFFFF" size={16} /></Pressable>}
       </View>
     </ScrollView>
   </View>;
