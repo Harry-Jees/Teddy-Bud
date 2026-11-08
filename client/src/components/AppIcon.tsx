@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   ArrowRight, BookOpen, Check, ChevronRight, Cloud, Ellipsis, Eye, EyeOff,
-  Heart, History, Image, Info, Menu, Pencil, Plus, Search, Share2, ShieldCheck,
+  Heart, History, Image, Info, Pencil, Plus, Search, Share2, ShieldCheck,
   Sparkles, Sun, Trash2, X,
 } from 'lucide-react-native';
 
