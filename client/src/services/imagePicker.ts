@@ -42,12 +42,26 @@ export async function pickChatImage(): Promise<PickedChatImage | null> {
     if (typeof file.size === 'number' && file.size > MAX_IMAGE_BYTES) {
       throw new Error('Choose an image smaller than 8 MB.');
     }
-    const mime = file.type?.toLowerCase();
-    if (mime && !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) {
-      throw new Error('Choose a JPEG, PNG, WebP, or GIF image.');
+    const extension = file.name?.split('.').pop()?.toLowerCase();
+    const mimeByExtension: Record<string, string> = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      webp: 'image/webp',
+      gif: 'image/gif',
+    };
+    const mime = file.type?.toLowerCase() || (extension ? mimeByExtension[extension] : undefined);
+    if (!mime || !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) {
+      throw new Error('This image format is not supported. Choose a JPEG, PNG, WebP, or GIF image.');
     }
     const base64 = await FileSystem.readFile(file.uri, 'base64');
-    return { dataUrl: `data:${mime || 'image/jpeg'};base64,${base64}`, name: file.name || 'image' };
+    // Some Android document providers omit the file size. Check the actual
+    // decoded payload length before creating a large data URL or sending it.
+    const estimatedBytes = Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+    if (estimatedBytes > MAX_IMAGE_BYTES) {
+      throw new Error('Choose an image smaller than 8 MB.');
+    }
+    return { dataUrl: `data:${mime};base64,${base64}`, name: file.name || 'image' };
   } catch (error) {
     if (isErrorWithCode(error) && error.code === errorCodes.OPERATION_CANCELED) return null;
     throw error;

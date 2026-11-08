@@ -4,7 +4,7 @@
 
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { Animated, Image, Modal, ScrollView, Share, Text } from 'react-native';
+import { Animated, Image, Modal, ScrollView, Text } from 'react-native';
 import { ChatPage, EmotionsPage, JournalPage } from '../App';
 
 jest.mock('@react-native-documents/picker', () => ({
@@ -367,56 +367,48 @@ test('memory suggestion appears beside its reply and requires explicit approval'
 });
 
 
-test('assistant replies can be shared through the platform share sheet', async () => {
-  const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+test('assistant replies no longer expose the unnecessary share action', async () => {
   const onRegenerate = jest.fn();
   const noop = jest.fn();
   let renderer!: ReactTestRenderer.ReactTestRenderer;
-  try {
-    await ReactTestRenderer.act(async () => {
-      renderer = ReactTestRenderer.create(
-        <ChatPage
-          wide={false}
-          messages={[{ id: 2, author: 'teddy', text: 'Take a breath. You can go one step at a time.', time: 'Now' }]}
-          conversationTitle="A little room to breathe"
-          onOpenHistory={noop}
-          onRenameChat={noop}
-          isPinned={false}
-          onTogglePin={noop}
-          onOpenCrisisResources={noop}
-          emergencyCallOption={null}
-          crisisHelplineOption={null}
-          onCallEmergency={noop}
-          onCallHelpline={noop}
-          onTextHelpline={noop}
-          onOpenHelplineWebsite={noop}
-          memorySuggestion={null}
-          onSaveMemorySuggestion={noop}
-          onDismissMemorySuggestion={noop}
-          draft=""
-          setDraft={noop}
-          onSend={noop}
-          onStop={noop}
-          onRetry={noop}
-          onRegenerate={onRegenerate}
-          retryPending={false}
-          isSending={false}
-          chatError={null}
-        />,
-      );
-    });
-    const shareButton = renderer.root.findByProps({ accessibilityLabel: 'Share Teddy Bud reply' });
-    await ReactTestRenderer.act(async () => shareButton.props.onPress());
-    expect(shareSpy).toHaveBeenCalledWith({ title: 'Teddy Bud reply', message: 'Take a breath. You can go one step at a time.' });
-    const regenerateButton = renderer.root.findByProps({ accessibilityLabel: 'Generate another reply' });
-    await ReactTestRenderer.act(async () => regenerateButton.props.onPress());
-    expect(onRegenerate).toHaveBeenCalledTimes(1);
-  } finally {
-    await ReactTestRenderer.act(async () => renderer?.unmount());
-    shareSpy.mockRestore();
-  }
-}, 15000);
-
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <ChatPage
+        wide={false}
+        messages={[{ id: 2, author: 'teddy', text: 'Take a breath. You can go one step at a time.', time: 'Now' }]}
+        conversationTitle="A little room to breathe"
+        onOpenHistory={noop}
+        onRenameChat={noop}
+        isPinned={false}
+        onTogglePin={noop}
+        onOpenCrisisResources={noop}
+        emergencyCallOption={null}
+        crisisHelplineOption={null}
+        onCallEmergency={noop}
+        onCallHelpline={noop}
+        onTextHelpline={noop}
+        onOpenHelplineWebsite={noop}
+        memorySuggestion={null}
+        onSaveMemorySuggestion={noop}
+        onDismissMemorySuggestion={noop}
+        draft=""
+        setDraft={noop}
+        onSend={noop}
+        onStop={noop}
+        onRetry={noop}
+        onRegenerate={onRegenerate}
+        retryPending={false}
+        isSending={false}
+        chatError={null}
+      />,
+    );
+  });
+  expect(renderer.root.findAll(node => node.props.accessibilityLabel === 'Share Teddy Bud reply')).toHaveLength(0);
+  const regenerateButton = renderer.root.findByProps({ accessibilityLabel: 'Generate another reply' });
+  await ReactTestRenderer.act(async () => regenerateButton.props.onPress());
+  expect(onRegenerate).toHaveBeenCalledTimes(1);
+  await ReactTestRenderer.act(async () => renderer.unmount());
+});
 
 test('the latest user message can be edited and resent', async () => {
   const onEditMessage = jest.fn();

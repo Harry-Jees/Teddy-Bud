@@ -799,6 +799,9 @@ async function completions(request, env) {
     .flatMap(message => message.content)
     .filter(part => part && (part.type === 'image_url' || part.type === 'image' || part.image_url || part.image));
   const hasImage = imageParts.length > 0;
+  const latestUserMessage = [...input.messages].reverse().find(message => message?.role === 'user');
+  const currentHasImage = Array.isArray(latestUserMessage?.content)
+    && latestUserMessage.content.some(part => part && (part.type === 'image_url' || part.type === 'image' || part.image_url || part.image));
   if (hasImage) {
     for (const part of imageParts) {
       const imageUrl = typeof part.image_url === 'object' && part.image_url !== null
@@ -822,12 +825,16 @@ async function completions(request, env) {
   const effectiveModel = enterpriseMode
     ? (hasImage ? enterpriseVisionModel : env.ENTERPRISE_TEXT_MODEL_ID.trim())
     : (hasImage ? PRIMARY_MODEL : FALLBACK_MODEL);
-  // User messages cost one credit regardless of text/image. Small auxiliary tasks
-  // use a separate strict daily cap so auto-titles and memory suggestions don't
-  // silently consume a user's 40 chat credits.
+  // Text prompts cost one credit; requests containing an image cost five.
+  // Small auxiliary tasks use a separate strict daily cap so auto-titles and
+  // memory suggestions do not silently consume a user's 40 chat credits.
   const backgroundTask = ['title', 'memory'].includes(input.metadata?.teddyBudTask) ? input.metadata.teddyBudTask : null;
-  const costCredits = backgroundTask ? 0 : 1;
-  const reservationId = crypto.randomUUID();
+  const costCredits = backgroundTask ? 0 : currentHasImage ? 5 : 1;
+  const suppliedIdempotencyKey = request.headers.get('Idempotency-Key');
+  if (suppliedIdempotencyKey && !/^[A-Za-z0-9._:-]{8,128}$/.test(suppliedIdempotencyKey)) {
+    return json(400, { error: { message: 'Invalid request idempotency key.' } });
+  }
+  const reservationId = suppliedIdempotencyKey || crypto.randomUUID();
   const reservation = await dailyCreditsRequest(env, claims.sub, '/credits/reserve', {
     reservationId, cost: costCredits, background: Boolean(backgroundTask), dailyLimit: 40, backgroundDailyLimit: 10,
   });
@@ -1137,9 +1144,20 @@ export class GatewayStateStore {
         if (action === 'reserve') {
           const cost = body.cost;
           const background = body.background === true;
-          if (typeof body.reservationId !== 'string' || (background ? cost !== 0 : cost !== 1)) {
+          if (typeof body.reservationId !== 'string' || !body.reservationId || (background ? cost !== 0 : cost !== 1 && cost !== 5)) {
             responseBody = { allowed: false, error: 'Invalid credit reservation.' };
             return;
+          }
+          const existingReservation = state.reservations[body.reservationId];
+          if (existingReservation) {
+            if (existingReservation.cost !== cost || existingReservation.background !== background) {
+              responseBody = { allowed: false, error: 'Request idempotency key was reused for a different operation.' };
+              return;
+            }
+            if (existingReservation.status === 'reserved' || existingReservation.status === 'committed') {
+              responseBody = { allowed: true, duplicate: true, used: state.used, remaining: Math.max(0, 40 - state.used), resetAt: dailyResetAt(day), backgroundRemaining: Math.max(0, 10 - state.backgroundUsed) };
+              return;
+            }
           }
           if (background && state.backgroundUsed >= (Number.isInteger(body.backgroundDailyLimit) ? Math.min(body.backgroundDailyLimit, 10) : 10)) {
             responseBody = { allowed: false, backgroundLimit: true, used: state.used, remaining: Math.max(0, 40 - state.used), resetAt: dailyResetAt(day) };

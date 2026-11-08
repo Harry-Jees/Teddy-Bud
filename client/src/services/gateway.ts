@@ -505,13 +505,14 @@ export class GatewayService {
       temperature: 0.65,
       top_p: 0.9,
     };
+    const idempotencyKey = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
     let content: string | undefined;
     if (body.stream) {
       let chunksReceived = 0;
       try {
         content = await this.requestChatStream(
           '/v1/chat/completions',
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+          { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(body) },
           accessToken,
           chunk => {
             chunksReceived += 1;
@@ -530,7 +531,7 @@ export class GatewayService {
           error?: { message?: string };
         }>('/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
           body: JSON.stringify(fallbackBody),
           signal: options.signal,
         }, accessToken, 1);
@@ -544,7 +545,7 @@ export class GatewayService {
         error?: { message?: string };
       }>('/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify(body),
         signal: options.signal,
       }, accessToken, 1)).choices?.[0]?.message?.content;

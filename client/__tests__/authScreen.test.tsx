@@ -137,10 +137,26 @@ test('returning sign-in does not offer a second account setup path', async () =>
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
-      <BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
+      <BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} allowAccountCreation={false} onAuthenticated={jest.fn()} />,
     );
   });
   expect(renderer.root.findAll(node => node.props.accessibilityLabel === 'Create a private space')).toHaveLength(0);
+  expect(renderer.root.findAllByType(Text).some(node => node.props.children === 'Create a new account')).toBe(false);
   expect(renderer.root.findAllByType(Text).some(node => node.props.children === 'Forgot password?')).toBe(true);
   await ReactTestRenderer.act(async () => renderer.unmount());
 });
+test('fresh install can explicitly choose account creation without opening that flow by default', async () => {
+  let renderer!: ReactTestRenderer.ReactTestRenderer;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} allowAccountCreation onAuthenticated={jest.fn()} />,
+    );
+  });
+  expect(renderer.root.findAllByType(Text).some(node => node.props.children === 'Create a new account')).toBe(true);
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Create a new account' }).props.onPress();
+  });
+  expect(renderer.root.findByProps({ accessibilityLabel: 'Continue setup' })).toBeTruthy();
+  await ReactTestRenderer.act(async () => renderer.unmount());
+});
+

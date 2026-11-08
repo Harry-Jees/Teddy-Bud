@@ -45,6 +45,9 @@ const sampleData: LocalAppData = {
   assistantCharacterId: 'teddy-bud',
   assistantCharacterNames: { 'teddy-bud': 'Buddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
   onboardingSurveyAnswers: undefined,
+  reduceMotion: false,
+  hapticsEnabled: true,
+  careRemindersEnabled: false,
 };
 
 describe('encrypted Teddy Bud backups', () => {

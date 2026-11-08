@@ -50,6 +50,10 @@ class MemorySessions {
           const body = JSON.parse(init.body ?? (input instanceof Request ? await input.text() : '{}'));
           if (pathname === '/credits/reserve') {
             const background = body.background === true;
+            const existingReservation = state.credits.reservations[body.reservationId];
+            if (existingReservation && existingReservation.cost === body.cost && existingReservation.background === background && ['reserved', 'committed'].includes(existingReservation.status)) {
+              return new Response(JSON.stringify({ allowed: true, duplicate: true, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
+            }
             if (background && state.credits.backgroundUsed >= Math.min(body.backgroundDailyLimit ?? 10, 10)) {
               return new Response(JSON.stringify({ allowed: false, backgroundLimit: true, used: state.credits.used, remaining: 40 - state.credits.used, resetAt }), { status: 200 });
             }
@@ -556,6 +560,24 @@ test('authenticated text chat uses Cloudflare GLM and charges one unified credit
   assert.equal(result.body.teddyBudCredits.used, 1);
 });
 
+test('image chat charges five credits and reports the remaining balance', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => ({ response: 'Image description.' });
+  const accessToken = await createSession(env, 'image-credit-user');
+  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/qwen/qwen3.8-27b',
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'Describe this image.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env);
+  const result = await jsonResponse(response);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.teddyBudCredits.charged, 5);
+  assert.equal(result.body.teddyBudCredits.used, 5);
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 5);
+  assert.equal(balance.body.remaining, 35);
+});
+
 test('streaming chat commits one credit after a successful stream', async () => {
   const env = makeEnv();
   const accessToken = await createSession(env, 'streaming-credit-user');
@@ -590,7 +612,7 @@ test('streaming inference failure before any text refunds the reserved credit', 
   assert.equal(balance.body.used, 0);
 });
 
-test('image requests are routed to Cloudflare Qwen and charge one credit', async () => {
+test('image requests are routed to Cloudflare Qwen and charge five credits', async () => {
   const env = makeEnv();
   let selectedModel;
   env.AI.run = async model => {
@@ -609,8 +631,8 @@ test('image requests are routed to Cloudflare Qwen and charge one credit', async
   const result = await jsonResponse(response);
   assert.equal(result.status, 200);
   assert.equal(selectedModel, '@cf/qwen/qwen3.8-27b');
-  assert.equal(result.body.teddyBudCredits.charged, 1);
-  assert.equal(result.body.teddyBudCredits.used, 1);
+  assert.equal(result.body.teddyBudCredits.charged, 5);
+  assert.equal(result.body.teddyBudCredits.used, 5);
 });
 
 test('background title tasks do not consume chat credits and have their own daily cap', async () => {
@@ -652,11 +674,46 @@ test('background title tasks do not consume chat credits and have their own dail
   assert.equal(chat.body.teddyBudCredits.charged, 1);
 });
 
+test('text follow-up after an image in history still costs one credit', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => ({ response: 'Text follow-up.' });
+  const accessToken = await createSession(env, 'image-history-text-user');
+  const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
+    model: '@cf/qwen/qwen3.8-27b',
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'Describe this earlier image.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] },
+      { role: 'user', content: 'What did I ask you about it?' },
+    ],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}` }), env);
+  const result = await jsonResponse(response);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.teddyBudCredits.charged, 1);
+  assert.equal(result.body.teddyBudCredits.used, 1);
+});
+
+test('repeating a chat request with the same idempotency key does not double charge', async () => {
+  const env = makeEnv();
+  env.AI.run = async () => ({ response: 'A reply.' });
+  const accessToken = await createSession(env, 'idempotent-credit-user');
+  const makeChat = () => request('/v1/chat/completions', 'POST', {
+    model: '@cf/zai-org/glm-4.7-flash',
+    messages: [{ role: 'user', content: 'Hello again.' }],
+    stream: false,
+  }, { Authorization: `Bearer ${accessToken}`, 'Idempotency-Key': 'chat-test-request-0001' });
+  const first = await jsonResponse(await worker.fetch(makeChat(), env));
+  const second = await jsonResponse(await worker.fetch(makeChat(), env));
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  const balance = await jsonResponse(await worker.fetch(request('/v1/credits', 'GET', undefined, { Authorization: `Bearer ${accessToken}` }), env));
+  assert.equal(balance.body.used, 1);
+});
+
 test('daily unified credit limit rejects a request that would exceed 40 credits', async () => {
   const env = makeEnv();
   env.AI.run = async () => ({ response: 'Test reply.' });
   const accessToken = await createSession(env, 'daily-credit-user');
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < 8; i += 1) {
     const response = await worker.fetch(request('/v1/chat/completions', 'POST', {
       model: '@cf/qwen/qwen3.8-27b',
       messages: [{ role: 'user', content: [{ type: 'text', text: 'Describe this.' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }],
@@ -962,6 +1019,37 @@ test('legacy session indexes migrate to the newest active session', async () => 
   assert.deepEqual(await response.json(), { activeSessionId: 'newest-session' });
   assert.equal(values.get('active-user-session-id'), 'newest-session');
   assert.equal(values.has('user-session-ids'), false);
+});
+
+test('credit state accepts five-credit image reservations and deduplicates retries', async () => {
+  const values = new Map();
+  const storage = {
+    get: async key => values.get(key),
+    transaction: async callback => callback({
+      get: async key => values.get(key),
+      put: async (key, value) => { values.set(key, value); },
+      delete: async key => { values.delete(key); },
+    }),
+  };
+  const state = new GatewayStateStore({ storage }, {});
+  const reserve = (reservationId, cost) => state.fetch(new Request('https://state/credits/reserve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reservationId, cost, background: false }),
+  }));
+  const first = await reserve('image-reservation-0001', 5);
+  const firstBody = await first.json();
+  assert.equal(firstBody.allowed, true);
+  assert.equal(firstBody.used, 5);
+  const retry = await reserve('image-reservation-0001', 5);
+  const retryBody = await retry.json();
+  assert.equal(retryBody.allowed, true);
+  assert.equal(retryBody.duplicate, true);
+  assert.equal(retryBody.used, 5);
+  const mismatch = await reserve('image-reservation-0001', 1);
+  assert.equal((await mismatch.json()).allowed, false);
+  const text = await reserve('text-reservation-0002', 1);
+  assert.equal((await text.json()).used, 6);
 });
 
 test('removing a stale session never clears the newer active session', async () => {
