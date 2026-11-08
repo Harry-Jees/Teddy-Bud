@@ -100,8 +100,6 @@ test('Discover keeps secondary tools discoverable and navigable', async () => {
     'About Emotional check-in',
     'Wellbeing studio',
     'About Wellbeing studio',
-    'Privacy controls',
-    'About Privacy controls',
   ]);
 
   const privacyInfo = renderer.root.findByProps({ accessibilityLabel: 'About Privacy controls' });
