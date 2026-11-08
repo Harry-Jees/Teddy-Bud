@@ -58,17 +58,17 @@ export function WellbeingStudio({ wide, reduceMotion, hapticsEnabled }: { wide: 
   useEffect(() => {
     if (!active || mode === 'ground') return undefined;
     const timer = setInterval(() => {
-      setRemaining(current => {
-        if (current <= 1) {
-          setActive(false);
-          setCompleted(true);
-          return 0;
-        }
-        return current - 1;
-      });
+      setRemaining(current => Math.max(0, current - 1));
     }, 1000);
     return () => clearInterval(timer);
   }, [active, mode]);
+
+  useEffect(() => {
+    if (active && remaining === 0) {
+      setActive(false);
+      setCompleted(true);
+    }
+  }, [active, remaining]);
 
   useEffect(() => {
     orb.stopAnimation();
