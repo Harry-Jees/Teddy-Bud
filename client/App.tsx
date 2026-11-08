@@ -2333,13 +2333,13 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
       {!keyboardVisible && <View style={styles.chatTools}>
         <Pressable accessibilityRole="button" accessibilityLabel="Attach an image" onPress={async () => { try { setSelectedImage(await pickChatImage()); } catch (error) { Alert.alert('Could not add image', imagePickerErrorMessage(error)); } }} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
-          <AppIcon name="image" color={C.cocoa} size={15} /><Text numberOfLines={1} style={styles.chatToolLabel}>Add image · 5 credits</Text>
+          <AppIcon name="image" color={C.cocoa} size={14} /><Text numberOfLines={1} style={styles.chatToolLabel}>Image · 5</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Open crisis support" onPress={() => setManualCrisisSupport(true)} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
-          <AppIcon name="heart" color={C.cocoa} size={15} /><Text style={styles.chatToolLabel}>Crisis support</Text>
+          <AppIcon name="heart" color={C.cocoa} size={14} /><Text numberOfLines={1} style={styles.chatToolLabel}>Support</Text>
         </Pressable>
         {onSaveOccasion && <Pressable accessibilityRole="button" accessibilityLabel="Save an occasion" onPress={() => { setOccasionDraft(''); setOccasionOpen(true); }} style={({ pressed }) => [styles.chatToolButton, pressed && styles.pressed]}>
-          <AppIcon name="sparkle" color={C.cocoa} size={15} /><Text style={styles.chatToolLabel}>Save an occasion</Text>
+          <AppIcon name="sparkle" color={C.cocoa} size={14} /><Text numberOfLines={1} style={styles.chatToolLabel}>Save occasion</Text>
         </Pressable>}
       </View>}
       {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={__teddyBudExtractedStyles6.style1} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
@@ -2347,11 +2347,11 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         <Pressable accessibilityRole="button" accessibilityLabel={speechListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Speech is transcribed into your editable message. Nothing is sent until you press Send." onPress={speechListening ? stopSpeechInput : () => { runInBackground(startSpeechInput()); }} disabled={isSending} style={({ pressed }) => [styles.voiceButton, speechListening && styles.voiceButtonActive, isSending && styles.buttonDisabled, pressed && styles.pressed]}>
-          {speechListening ? <View style={styles.voiceStopIndicator} /> : <View style={styles.voiceMicIcon}><View style={styles.voiceMicHead} /><View style={styles.voiceMicArc} /><View style={styles.voiceMicStem} /><View style={styles.voiceMicBase} /></View>}
+          {speechListening ? <AppIcon name="square" color={C.cocoa} size={17} /> : <AppIcon name="mic" color={C.cocoa} size={20} />}
         </Pressable>
         {isSending
           ? <Pressable accessibilityRole="button" accessibilityLabel="Stop response" onPress={onStop} style={({ pressed }) => [styles.sendButton, styles.stopButton, pressed && styles.pressed]}><View style={styles.stopIcon} /></Pressable>
-          : <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={submitMessage} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, !canSend && styles.sendButtonDisabled, pressed && styles.pressed]}><PaperPlaneIcon /></Pressable>}
+          : <Pressable accessibilityRole="button" accessibilityLabel="Send message" onPress={submitMessage} disabled={!canSend} style={({ pressed }) => [styles.sendButton, canSend && styles.sendButtonActive, !canSend && styles.sendButtonDisabled, pressed && styles.pressed]}><AppIcon name="send" color={C.white} size={19} /></Pressable>}
       </View>
       {speechListening && <Text accessibilityLiveRegion="polite" style={styles.speechStatus}>Listening… Tap the microphone to stop. Review the transcript before sending.</Text>}
       {!!speechError && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.speechError}>{speechError}</Text>}
