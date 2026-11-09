@@ -38,7 +38,7 @@ import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, Loc
 import { EMOTION_AXES } from './src/services/localData';
 import { RoundedText as Text, RoundedTextInput as TextInput } from './src/components/RoundedText';
 import { OnboardingSurvey } from './src/components/OnboardingSurvey';
-import { WellbeingStudio } from './src/components/WellbeingStudio';
+const LazyWellbeingStudio = React.lazy(() => import('./src/components/WellbeingStudio').then(({ WellbeingStudio }) => ({ default: WellbeingStudio })));
 import { AnimatedNavIcon } from './src/components/AnimatedNavIcon';
 import { AppIcon } from './src/components/AppIcon';
 import type { AppIconName } from './src/components/AppIcon';
@@ -1408,7 +1408,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                   setPage('chat');
                 }
               }} /></DiscoverSectionTransition>}
-              {tab === 'discover' && discoverFramePage === 'studio' && <DiscoverSectionTransition transitionKey={discoverFramePage}><WellbeingStudio wide={wide} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} /></DiscoverSectionTransition>}
+              {tab === 'discover' && discoverFramePage === 'studio' && <DiscoverSectionTransition transitionKey={discoverFramePage}><React.Suspense fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}><Text style={{ color: C.muted }}>Preparing your wellbeing studio…</Text></View>}><LazyWellbeingStudio wide={wide} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} /></React.Suspense></DiscoverSectionTransition>}
               {tab === 'discover' && discoverFramePage === 'emotions' && <DiscoverSectionTransition transitionKey={discoverFramePage}><EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} /></DiscoverSectionTransition>}
               {tab === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
               {tab === 'settings' && page === 'privacy' && <DiscoverSectionTransition transitionKey="privacy"><PrivacyPage wide={wide} onBack={() => setPage('settings')} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} /></DiscoverSectionTransition>}
@@ -2067,7 +2067,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
         pressed && !reduceMotion && styles.squeezePressed,
       ]}
     >
-      <AnimatedNavIcon name={item.id} active={selected} pulseKey={pulseKeys[item.id]} reduceMotion={reduceMotion} glass />
+      <AnimatedNavIcon name={item.id} active={selected} pulseKey={pulseKeys[item.id]} reduceMotion={reduceMotion} />
       <Text numberOfLines={1} style={[styles.bottomLabel, selected && styles.bottomLabelActive]}>{item.label}</Text>
     </Pressable>;
   };
@@ -3047,7 +3047,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
         {weekEntries.length >= 2 ? <>
           <Text style={__teddyBudExtractedStyles14.style21}>A local summary of {weekEntries.length} check-ins from the last seven days. This uses only ratings you entered and is not a diagnosis or prediction.</Text>
           <Text style={__teddyBudExtractedStyles14.style22}>Average energy: {weekEnergy.toFixed(1)}/5</Text>
-          {weekEmotionAverages.length ? <Text style={__teddyBudExtractedStyles14.style23}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={__teddyBudExtractedStyles14.style24}>No emotion ratings were recorded in these check-ins.</Text>}
+          {weekEmotionAverages[0]?.average !== null ? <Text style={__teddyBudExtractedStyles14.style23}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={__teddyBudExtractedStyles14.style24}>No emotion ratings were recorded in these check-ins.</Text>}
         </> : <Text style={__teddyBudExtractedStyles14.style25}>Add at least two check-ins within seven days to see a summary. It stays on this device and never labels or scores your mental health.</Text>}
       </View>
       {entries.length >= 2 ? <View style={__teddyBudExtractedStyles14.style26}>
