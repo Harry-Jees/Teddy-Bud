@@ -3,27 +3,15 @@
  * These screens own their editing state and receive persistence actions from the app shell.
  */
 import React, { useRef, useState } from 'react';
-import { Alert, Animated, Platform, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Animated, Platform, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { RoundedText as Text, RoundedTextInput as TextInput } from '../components/RoundedText';
 import { AppIcon } from '../components/AppIcon';
 import { styles } from '../theme/appStyles';
+import { confirmAction } from '../services/confirmAction';
 import { EMOTION_AXES } from '../services/localData';
 import type { EmotionCheckIn, JournalEntry } from '../services/localData';
 import { savePlainTextFile } from '../services/backupFiles';
 import { C } from '../theme/palette';
-
-/** Ask for confirmation using the platform-native interaction before destructive actions. */
-function confirmAction(title: string, message: string, onConfirm: () => void) {
-  if (Platform.OS === 'web') {
-    // eslint-disable-next-line no-alert -- confirmation protects destructive local-data deletion.
-    if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${message}`)) onConfirm();
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Confirm', style: 'destructive', onPress: onConfirm },
-  ]);
-}
 
 export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
   wide: boolean;
