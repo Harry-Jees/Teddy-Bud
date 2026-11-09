@@ -3048,10 +3048,10 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
         {weekEntries.length >= 2 ? <>
           <Text style={__teddyBudExtractedStyles14.style21}>A local summary of {weekEntries.length} check-ins from the last seven days. This uses only ratings you entered and is not a diagnosis or prediction.</Text>
           <Text style={__teddyBudExtractedStyles14.style22}>Average energy: {weekEnergy.toFixed(1)}/5</Text>
-          {weekEmotionAverages[0]?.average !== null ? <Text style={__teddyBudExtractedStyles14.style23}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={__teddyBudExtractedStyles14.style24}>No emotion ratings were recorded in these check-ins.</Text>}
+          {typeof weekEmotionAverages[0]?.average === 'number' ? <Text style={__teddyBudExtractedStyles14.style23}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={__teddyBudExtractedStyles14.style24}>No emotion ratings were recorded in these check-ins.</Text>}
         </> : <Text style={__teddyBudExtractedStyles14.style25}>Add at least two check-ins within seven days to see a summary. It stays on this device and never labels or scores your mental health.</Text>}
       </View>
-      {entries.length >= 2 ? <View style={__teddyBudExtractedStyles14.style26}>
+      <View style={__teddyBudExtractedStyles14.style26}>
         <Text style={__teddyBudExtractedStyles14.style27}>Your recent pattern</Text>
         <Text style={__teddyBudExtractedStyles14.style28}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
         {EMOTION_AXES.map(axis=>{const sample=entries.slice(0,7).filter(entry=>typeof entry.emotions[axis.id]==='number');const avg=sample.length ? sample.reduce((sum,entry)=>sum+(entry.emotions[axis.id]??0),0)/sample.length : 0;const __teddyBudExtractedStyles19 = StyleSheet.create({
@@ -3063,7 +3063,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
           style5: ({height:6,width:`${(avg/5*100)}%` as `${number}%`,backgroundColor:'#B87862',borderRadius:4}) as const,
         });
         return <View key={axis.id} style={__teddyBudExtractedStyles19.style0}><View style={__teddyBudExtractedStyles19.style1}><Text style={__teddyBudExtractedStyles19.style2}>{axis.label}</Text><Text style={__teddyBudExtractedStyles19.style3}>{sample.length ? `${avg.toFixed(1)}/5` : 'Not rated'}</Text></View><View style={__teddyBudExtractedStyles19.style4}><View style={__teddyBudExtractedStyles19.style5} /></View></View>;})}
-      </View> : null}
+      </View>
       <Text style={__teddyBudExtractedStyles14.style29}>Past check-ins</Text>
       {entries.length===0 ? <Text style={__teddyBudExtractedStyles14.style30}>Nothing recorded yet. Your check-ins are optional and stay in local app storage.</Text> : entries.map(entry=>{
         const __teddyBudExtractedStyles20 = StyleSheet.create({
