@@ -23,7 +23,7 @@ const C = {
 function confirmAction(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
     // eslint-disable-next-line no-alert -- confirmation protects destructive local-data deletion.
-    if (typeof window !== 'undefined' && window.confirm(`${title}\\n\\n${message}`)) onConfirm();
+    if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${message}`)) onConfirm();
     return;
   }
   Alert.alert(title, message, [
