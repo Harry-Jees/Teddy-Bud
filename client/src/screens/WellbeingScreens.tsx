@@ -10,14 +10,7 @@ import { styles } from '../theme/appStyles';
 import { EMOTION_AXES } from '../services/localData';
 import type { EmotionCheckIn, JournalEntry } from '../services/localData';
 import { savePlainTextFile } from '../services/backupFiles';
-import { teddyTheme } from '../theme';
-
-const C = {
-  canvas: teddyTheme.colors.canvas, paper: teddyTheme.colors.surface, paperAlt: teddyTheme.colors.surfaceAlt, ink: teddyTheme.colors.text,
-  muted: teddyTheme.colors.textSecondary, line: teddyTheme.colors.border, cocoa: teddyTheme.colors.primary, cocoaDark: teddyTheme.colors.onPrimaryContainer,
-  peach: teddyTheme.colors.clay, peachLight: teddyTheme.colors.claySoft, green: teddyTheme.colors.success, greenLight: teddyTheme.colors.successContainer,
-  rose: teddyTheme.colors.accentText, white: teddyTheme.colors.white,
-};
+import { C } from '../theme/palette';
 
 /** Ask for confirmation using the platform-native interaction before destructive actions. */
 function confirmAction(title: string, message: string, onConfirm: () => void) {
