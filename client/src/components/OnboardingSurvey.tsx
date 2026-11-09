@@ -1,10 +1,10 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { AppIcon } from './AppIcon';
-import { RoundedText as Text } from './RoundedText';
+import { RoundedText as Text, RoundedTextInput as TextInput } from './RoundedText';
 import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 export type WellbeingSurveyAnswer = { question: string; answer: string };
-type Question = { prompt: string; options: string[] };
+type Question = { prompt: string; options?: string[]; freeText?: boolean };
 
 const QUESTIONS: Question[] = [
   { prompt: 'How has your sleep been lately?', options: ['Very restful', 'Mostly okay', 'A little disrupted', 'Very difficult', 'Prefer not to say'] },
@@ -31,7 +31,7 @@ const QUESTIONS: Question[] = [
   { prompt: 'What tone feels most comfortable?', options: ['Warm and gentle', 'Light and playful', 'Calm and direct', 'Thoughtful and reflective'] },
   { prompt: 'Are there topics you would prefer Teddy Bud not to bring up?', options: ['No particular topics', 'Family', 'Relationships', 'Health', 'Work or studies', 'I will mention them when ready'] },
   { prompt: 'What is one small thing you hope to improve?', options: ['Sleep', 'Stress', 'Balance', 'Connection', 'Confidence', 'Consistency', 'I am not sure yet'] },
-  { prompt: 'Anything else you would like Teddy Bud to know?', options: ['No, that is enough for now', 'I would rather share naturally in chat'] },
+  { prompt: 'Anything else you would like Teddy Bud to know?', freeText: true },
 ];
 
 export function OnboardingSurvey({ onComplete }: { onComplete: (answers: WellbeingSurveyAnswer[], createInitialMap: boolean) => Promise<void> }) {
@@ -100,14 +100,23 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
       <Text style={styles.count}>{index + 1} / {QUESTIONS.length}</Text>
       <Animated.View style={{ transform: [{ translateX: slideX }] }} {...panResponder.panHandlers}>
         <Text style={styles.question}>{question.prompt}</Text>
-        <View style={styles.options}>
-          {question.options.map(option => <Pressable key={option} accessibilityRole="radio" accessibilityState={{ selected: answers[index] === option }} onPress={() => chooseOption(option)} style={[styles.option, answers[index] === option && styles.optionSelected]}>
+        {question.freeText ? <TextInput
+          accessibilityLabel="Anything else you would like Teddy Bud to know?"
+          value={answers[index] ?? ''}
+          onChangeText={value => setAnswers(current => ({ ...current, [index]: value.slice(0, 1200) }))}
+          multiline
+          maxLength={1200}
+          placeholder="Share anything you would like us to know…"
+          placeholderTextColor="#9A8878"
+          style={styles.freeTextInput}
+        /> : <View style={styles.options}>
+          {(question.options ?? []).map(option => <Pressable key={option} accessibilityRole="radio" accessibilityState={{ selected: answers[index] === option }} onPress={() => chooseOption(option)} style={[styles.option, answers[index] === option && styles.optionSelected]}>
             <Text style={[styles.optionText, answers[index] === option && styles.optionTextSelected]}>{option}</Text>
             {answers[index] === option && <AppIcon name="check" color="#75513D" size={17} />}
           </Pressable>)}
-        </View>
+        </View>}
       </Animated.View>
-      {index === QUESTIONS.length - 1 && Object.keys(answers).length > 0 ? <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: createInitialMap }} onPress={() => setCreateInitialMap(value => !value)} style={styles.aiConsent}>
+      {index === QUESTIONS.length - 1 ? <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: createInitialMap }} onPress={() => setCreateInitialMap(value => !value)} style={styles.aiConsent}>
         <View style={[styles.aiConsentBox, createInitialMap && styles.aiConsentBoxChecked]}>{createInitialMap ? <AppIcon name="check" color="#FFFCF7" size={13} /> : null}</View>
         <View style={styles.aiConsentCopy}>
           <Text style={styles.aiConsentTitle}>Create a starting emotion map</Text>
@@ -141,6 +150,7 @@ const styles = StyleSheet.create({
   count: { color: '#8A735F', fontSize: 11, fontWeight: '700', letterSpacing: 1.4, marginBottom: 12 },
   question: { color: '#3B3029', fontFamily: 'sans-serif-rounded', fontSize: 22, lineHeight: 29, fontWeight: '600', marginBottom: 18 },
   options: { gap: 10 },
+  freeTextInput: { minHeight: 132, borderWidth: 1, borderColor: '#E8D9CA', backgroundColor: '#FFFCF7', borderRadius: 14, paddingHorizontal: 15, paddingVertical: 14, color: '#3B3029', fontSize: 15, lineHeight: 22, textAlignVertical: 'top' },
   option: { borderWidth: 1, borderColor: '#E8D9CA', backgroundColor: '#FFFCF7', borderRadius: 14, paddingHorizontal: 15, paddingVertical: 13, minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   optionSelected: { borderColor: '#75513D', backgroundColor: '#F4EEE8' },
   optionText: { color: '#4C4B46', fontFamily: 'sans-serif-rounded', fontSize: 15 },

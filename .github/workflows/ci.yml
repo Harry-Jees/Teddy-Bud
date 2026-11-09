@@ -61,7 +61,6 @@ jobs:
       - run: npm test
 
   android-build:
-    if: ${{ github.event_name != 'pull_request' }}
     name: Android release APK
     runs-on: ubuntu-24.04
     steps:
@@ -111,7 +110,7 @@ jobs:
           if-no-files-found: error
 
   desktop-packages:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     name: Desktop package (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
