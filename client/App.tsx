@@ -30,7 +30,6 @@ import { GATEWAY_BASE_URL } from './src/config/gateway';
 import { teddyTheme } from './src/theme';
 import { styles } from './src/theme/appStyles';
 import { MarkdownReply, TypingIndicator } from './src/components/ChatPresentation';
-import { JournalPage, EmotionsPage } from './src/screens/WellbeingScreens';
 import { BrowserLoginScreen } from './src/components/BrowserLoginScreen';
 import { ASSISTANT_CHARACTERS, DEFAULT_ASSISTANT_CHARACTER_ID } from './src/characters';
 import type { AssistantCharacterId, AssistantCharacterNames } from './src/characters';
@@ -58,6 +57,9 @@ import assistantIconAsset from './assets/icon.png';
 
 const LazyOnboardingSurvey = React.lazy(() => import('./src/components/OnboardingSurvey').then(({ OnboardingSurvey }) => ({ default: OnboardingSurvey })));
 const LazyWellbeingStudio = React.lazy(() => import('./src/components/WellbeingStudio').then(({ WellbeingStudio }) => ({ default: WellbeingStudio })));
+// Keep optional wellbeing features out of the initial application bundle.
+const LazyJournalPage = React.lazy(() => import('./src/screens/WellbeingScreens').then(({ JournalPage }) => ({ default: JournalPage })));
+const LazyEmotionsPage = React.lazy(() => import('./src/screens/WellbeingScreens').then(({ EmotionsPage }) => ({ default: EmotionsPage })));
 
 type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio' | 'discover';
 type Memory = LocalMemory;
@@ -1241,7 +1243,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                 onDelete={deleteConversation}
                 onRename={beginRenameConversation}
               />}
-              {tab === 'discover' && discoverFramePage === 'journal' && <DiscoverSectionTransition transitionKey={discoverFramePage}><JournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
+              {tab === 'discover' && discoverFramePage === 'journal' && <DiscoverSectionTransition transitionKey={discoverFramePage}><React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Opening your journal…</Text></View>}><LazyJournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
                 const preparedMessage = `I'd like to talk about this journal entry with you.\\n\\n${entry.title}\\n\\n${entry.body}\\n\\nPlease help me reflect on it.`;
                 if (draft.trim()) {
                   confirmAction('Keep your existing draft?', 'Your current chat draft is not empty. Continuing will append the journal entry so your draft is preserved.', () => {
@@ -1252,9 +1254,9 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                   setDraft(preparedMessage);
                   setPage('chat');
                 }
-              }} /></DiscoverSectionTransition>}
+              }} /></React.Suspense></DiscoverSectionTransition>}
               {tab === 'discover' && discoverFramePage === 'studio' && <DiscoverSectionTransition transitionKey={discoverFramePage}><React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Preparing your wellbeing studio…</Text></View>}><LazyWellbeingStudio wide={wide} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} /></React.Suspense></DiscoverSectionTransition>}
-              {tab === 'discover' && discoverFramePage === 'emotions' && <DiscoverSectionTransition transitionKey={discoverFramePage}><EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} /></DiscoverSectionTransition>}
+              {tab === 'discover' && discoverFramePage === 'emotions' && <DiscoverSectionTransition transitionKey={discoverFramePage}><React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Opening your emotion web…</Text></View>}><LazyEmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} /></React.Suspense></DiscoverSectionTransition>}
               {tab === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
               {tab === 'settings' && page === 'privacy' && <DiscoverSectionTransition transitionKey="privacy"><PrivacyPage wide={wide} onBack={() => setPage('settings')} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} /></DiscoverSectionTransition>}
               {tab === 'settings' && page !== 'privacy' && <SettingsPage wide={wide} username={username} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} careRemindersEnabled={careRemindersEnabled} onCareRemindersChange={value => { if (value) { runInBackground((async () => { const allowed = await requestCareReminderPermission(); if (!allowed) { Alert.alert('Notifications are disabled', 'Allow Teddy Bud notifications in Android Settings to receive gentle check-ins.'); return; } setCareRemindersEnabled(true); await persistLocalSnapshot({ careRemindersEnabled: true }); })()); } else { setCareRemindersEnabled(false); runInBackground(persistLocalSnapshot({ careRemindersEnabled: false })); runInBackground(cancelCareReminder()); } }} onReduceMotionChange={value => { setReduceMotionPreference(value); runInBackground(persistLocalSnapshot({ reduceMotion: value })); }} onHapticsChange={value => { setHapticsEnabled(value); runInBackground(persistLocalSnapshot({ hapticsEnabled: value })); }} onOpenPrivacy={() => setPage('privacy')} creditBalance={creditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
