@@ -10,7 +10,6 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   NativeEventEmitter,
   PanResponder,
@@ -18,7 +17,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StatusBar,
   Vibration,
   StyleSheet,
@@ -27,6 +25,12 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GATEWAY_BASE_URL } from './src/config/gateway';
+import { C } from './src/theme/palette';
+import { openExternalUrl } from './src/services/externalNavigation';
+import { confirmAction } from './src/services/confirmAction';
+import { styles } from './src/theme/appStyles';
+import { MarkdownReply, TypingIndicator } from './src/components/ChatPresentation';
+import { BrowserLoginScreen } from './src/components/BrowserLoginScreen';
 import { ASSISTANT_CHARACTERS, DEFAULT_ASSISTANT_CHARACTER_ID } from './src/characters';
 import type { AssistantCharacterId, AssistantCharacterNames } from './src/characters';
 import { GatewayService } from './src/services/gateway';
@@ -35,24 +39,27 @@ import { browserAuthService } from './src/services/browserAuth';
 import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
 import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
-import { EMOTION_AXES } from './src/services/localData';
 import { RoundedText as Text, RoundedTextInput as TextInput } from './src/components/RoundedText';
-import { OnboardingSurvey } from './src/components/OnboardingSurvey';
-import { WellbeingStudio } from './src/components/WellbeingStudio';
+
 import { AnimatedNavIcon } from './src/components/AnimatedNavIcon';
 import { AppIcon } from './src/components/AppIcon';
 import type { AppIconName } from './src/components/AppIcon';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncryptedBackup } from './src/services/backup';
-import { pickBackupFile, saveBackupFile, savePlainTextFile } from './src/services/backupFiles';
+import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import { extractTeddyStickerResponse, getTeddySticker, inferTeddySticker, stripTeddyStickerMarker } from './src/services/stickers';
-import { authErrorMessage, AuthServiceError, AuthValidationError } from './src/services/authErrors';
-import type { AuthField } from './src/services/authErrors';
+import { authErrorMessage, AuthServiceError } from './src/services/authErrors';
 import { backupErrorMessage, chatErrorMessage, imagePickerErrorMessage, localDataErrorMessage } from './src/services/userFacingErrors';
 import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/conversationSafety';
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
+
+const LazyOnboardingSurvey = React.lazy(() => import('./src/components/OnboardingSurvey').then(({ OnboardingSurvey }) => ({ default: OnboardingSurvey })));
+const LazyWellbeingStudio = React.lazy(() => import('./src/components/WellbeingStudio').then(({ WellbeingStudio }) => ({ default: WellbeingStudio })));
+// Keep optional wellbeing features out of the initial application bundle.
+const LazyJournalPage = React.lazy(() => import('./src/screens/WellbeingScreens').then(({ JournalPage }) => ({ default: JournalPage })));
+const LazyEmotionsPage = React.lazy(() => import('./src/screens/WellbeingScreens').then(({ EmotionsPage }) => ({ default: EmotionsPage })));
 
 type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio' | 'discover';
 type Memory = LocalMemory;
@@ -73,13 +80,6 @@ type SpeechRecognitionLike = {
 };
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
-const C = {
-  canvas: '#F7F0E7', paper: '#FFFCF7', paperAlt: '#F1E6DA', ink: '#3B3029',
-  muted: '#857568', line: '#E8D9CA', cocoa: '#75513D', cocoaDark: '#503728',
-  peach: '#D9B49C', peachLight: '#F4E3D7', green: '#8A6A51', greenLight: '#F1E6DA',
-  rose: '#A56D55', white: '#FFFFFF',
-};
-
 type PrimaryNavPage = 'chat' | 'discover' | 'memories' | 'settings';
 
 const UISettingsContext = React.createContext({ reduceMotion: false, hapticsEnabled: true });
@@ -90,12 +90,8 @@ const navItems: { id: PrimaryNavPage; label: string }[] = [
   { id: 'memories', label: 'Memories' },
   { id: 'settings', label: 'Settings' },
 ];
-const mobileNavItems: { id: PrimaryNavPage; label: string }[] = [
-  { id: 'chat', label: 'Chats' },
-  { id: 'discover', label: 'Discover' },
-  { id: 'memories', label: 'Memories' },
-  { id: 'settings', label: 'Settings' },
-];
+// Both layouts share the same destinations and labels.
+const mobileNavItems = navItems;
 const discoverPages: Page[] = ['discover', 'journal', 'emotions', 'studio'];
 
 const gatewayService = new GatewayService(GATEWAY_BASE_URL);
@@ -105,11 +101,6 @@ const teddyBudLogo: ImageSourcePropType = typeof teddyBudLogoAsset === 'string'
 const assistantIcon: ImageSourcePropType = typeof assistantIconAsset === 'string'
   ? { uri: assistantIconAsset }
   : assistantIconAsset;
-
-function openExternalUrl(url: string): Promise<void> {
-  const desktop = typeof window !== 'undefined' ? window.teddyBudDesktop : undefined;
-  return desktop ? desktop.openExternal(url) : Linking.openURL(url);
-}
 
 function runInBackground(task: Promise<unknown>): void {
   task.then(undefined, error => {
@@ -121,6 +112,7 @@ function mayContainDurableMemory(text: string): boolean {
   return /\b(?:my (?:long[- ]term )?(?:goal|dream|plan)|long[- ]term goal|i (?:plan|hope|want) to|i(?:'m| am) (?:a|an) [a-z-]+|i work as|i live in|i care for|i(?:'ve| have) been (?:working toward|studying))\b/i.test(text);
 }
 
+/** Application root: installs error recovery and safe-area providers once. */
 function App() {
   return (
     <AppErrorBoundary>
@@ -132,6 +124,7 @@ function App() {
   );
 }
 
+/** Prevents an isolated render failure from crashing the entire application shell. */
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
 
@@ -160,6 +153,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
+/** Restores the device session before mounting any private application data. */
 function AccessGate() {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [busy, setBusy] = useState(true);
@@ -220,7 +214,8 @@ function AccessGate() {
           }
         }
       } finally {
-        const remaining = Math.max(0, 2000 - (Date.now() - loadingStartedAt));
+        // Avoid an artificial multi-second delay while retaining a brief, polished loading transition.
+        const remaining = Math.max(0, 450 - (Date.now() - loadingStartedAt));
         setTimeout(() => {
           if (!mounted) return;
           Animated.timing(loadingOpacity, { toValue: 0, duration: 320, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => {
@@ -276,23 +271,17 @@ function AccessGate() {
 }
 
 function AuthLoading() {
-  const fill = useRef(new Animated.Value(0)).current;
   const rotation = useRef(new Animated.Value(0)).current;
   const opening = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const entrance = Animated.spring(opening, { toValue: 1, speed: 13, bounciness: 5, useNativeDriver: true });
-    const fillCycle = Animated.loop(Animated.sequence([
-      Animated.timing(fill, { toValue: 1, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false, isInteraction: false }),
-      Animated.timing(fill, { toValue: 0, duration: 1050, easing: Easing.inOut(Easing.cubic), useNativeDriver: false, isInteraction: false }),
-    ]));
-    const turn = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 2600, easing: Easing.linear, useNativeDriver: true, isInteraction: false }));
+    const turn = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 1000, easing: Easing.linear, useNativeDriver: true, isInteraction: false }));
     entrance.start();
-    fillCycle.start();
     turn.start();
-    return () => { entrance.stop(); fillCycle.stop(); turn.stop(); };
-  }, [fill, rotation, opening]);
-  const liquidHeight = fill.interpolate({ inputRange: [0, 1], outputRange: ['8%', '92%'] });
+    return () => { entrance.stop(); turn.stop(); };
+  }, [rotation, opening]);
   const spin = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const reverseSpin = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-360deg'] });
   const logoScale = opening.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] });
   const logoLift = opening.interpolate({ inputRange: [0, 1], outputRange: [14, 0] });
   const logoOpacity = opening.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
@@ -302,183 +291,13 @@ function AuthLoading() {
     </Animated.View>
     <Text style={styles.authLoadingTitle}>Opening your private space</Text>
     <Text style={styles.authLoadingBody}>Getting your cozy corner ready</Text>
-    <View style={styles.authLoadingHourglass} accessibilityLabel="Loading">
-      <View style={styles.authLoadingGlassTop}>
-        <Animated.View style={[styles.authLoadingLiquidTop, { height: liquidHeight }]} />
-      </View>
-      <View style={styles.authLoadingGlassNeck} />
-      <View style={styles.authLoadingGlassBottom}>
-        <Animated.View style={[styles.authLoadingLiquidBottom, { height: liquidHeight }]} />
-      </View>
-      <Animated.View style={[styles.authLoadingShimmer, { transform: [{ rotate: spin }] }]} />
+    <View style={styles.authLoadingSpinner} accessibilityLabel="Loading">
+      <Animated.View style={[styles.authLoadingOrbit, styles.authLoadingOrbitFirst, { transform: [{ perspective: 700 }, { rotateX: '70deg' }, { rotateZ: spin }] }]} />
+      <Animated.View style={[styles.authLoadingOrbit, styles.authLoadingOrbitSecond, { transform: [{ perspective: 700 }, { rotateY: '70deg' }, { rotateZ: reverseSpin }] }]} />
     </View>
   </View>;
 }
-
-export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, allowAccountCreation = true, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; allowAccountCreation?: boolean; onAuthenticated: (session: StoredSession) => void }) {
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const compact = width < 600;
-  const shortScreen = height < 760;
-  const [mode, setMode] = useState<'login' | 'create' | 'recover' | 'migrate'>(initialMode);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [recoveryPassphrase, setRecoveryPassphrase] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [passwordVisible, setPasswordVisible] = useState(false);
-  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
-  const [recoveryPassphraseVisible, setRecoveryPassphraseVisible] = useState(true);
-  const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
-  const [notice, setNotice] = useState<string | null>(null);
-  const [biometricReady, setBiometricReady] = useState(false);
-  const authScrollRef = useRef<ScrollView>(null);
-  const keepFocusedFieldVisible = (target: number) => {
-    const responder = authScrollRef.current?.getScrollResponder() as unknown as {
-      scrollResponderScrollNativeHandleToKeyboard?: (nodeHandle: number, additionalOffset?: number, preventNegativeScrollOffset?: boolean) => void;
-    } | undefined;
-    responder?.scrollResponderScrollNativeHandleToKeyboard?.(target, 24, true);
-  };
-  useEffect(() => {
-    let mounted = true;
-    if (Platform.OS !== 'android' || mode !== 'login') {
-      setBiometricReady(false);
-      return () => { mounted = false; };
-    }
-    browserAuthService.hasBiometricSignIn().then(ready => {
-      if (mounted) setBiometricReady(ready);
-    }).catch(() => { if (mounted) setBiometricReady(false); });
-    return () => { mounted = false; };
-  }, [mode]);
-
-  const signInWithBiometrics = async () => {
-    if (submitting) return;
-    setSubmitting(true);
-    setFormError(null);
-    setNotice(null);
-    try {
-      onAuthenticated(await browserAuthService.signInWithBiometrics());
-    } catch {
-      setNotice('Biometric sign-in was cancelled or unavailable. You can use your password instead.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const clearFieldError = (field: AuthField) => {
-    setFieldErrors(current => {
-      if (!current[field]) return current;
-      const next = { ...current };
-      delete next[field];
-      return next;
-    });
-    setFormError(null);
-  };
-
-  const submit = async () => {
-    if (submitting) return;
-    setSubmitting(true); setFormError(null); setFieldErrors({}); setNotice(null);
-    try {
-      if (mode !== 'migrate' && !/^[a-z0-9_]{3,24}$/.test(username.trim().toLowerCase())) {
-        throw new AuthValidationError('Use 3–24 characters: lowercase letters, numbers, or underscores.', 'username');
-      }
-      if (mode === 'login' && !password) throw new AuthValidationError('Enter your password.', 'password');
-
-      if (mode === 'login') {
-        onAuthenticated(await browserAuthService.signIn(username.trim().toLowerCase(), password));
-      } else if (mode === 'create') {
-        if (password.length < 15 || password.length > 128) throw new AuthValidationError('Choose a password with 15 to 128 characters.', 'password');
-        if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.', 'confirmPassword');
-        const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.', 'recoveryPassphrase');
-        onAuthenticated(await browserAuthService.createAccount(username.trim().toLowerCase(), password, phrase));
-      } else if (mode === 'migrate') {
-        if (password.length < 15 || password.length > 128) throw new AuthValidationError('Choose a password with 15 to 128 characters.');
-        if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.');
-        const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.');
-        onAuthenticated(await browserAuthService.migrateLegacyAccount(password, phrase));
-      } else {
-        if (password.length < 15 || password.length > 128) throw new AuthValidationError('Choose a new password with 15 to 128 characters.', 'password');
-        if (recoveryPassphrase.trim().length < 10) throw new AuthValidationError('Enter the recovery passphrase you chose when you created your account.', 'recoveryPassphrase');
-        await browserAuthService.recoverPassword(username.trim().toLowerCase(), recoveryPassphrase.trim(), password);
-        setMode('login'); setPassword(''); setRecoveryPassphrase('');
-        setNotice('Password changed. Sign in with your new password.');
-      }
-    } catch (authError) {
-      const context = mode === 'login' ? 'sign-in'
-        : mode === 'create' ? 'create-account'
-          : mode === 'recover' ? 'password-recovery'
-            : 'account-migration';
-      if (authError instanceof AuthValidationError && authError.field) {
-        setFieldErrors({ [authError.field]: authError.message });
-        setFormError(null);
-      } else {
-        setFormError(authErrorMessage(authError, context));
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const changeMode = (next: 'login' | 'create' | 'recover' | 'migrate') => {
-    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setConfirmPassword(''); setConfirmPasswordVisible(false); setRecoveryPassphrase(''); setRecoveryPassphraseVisible(true);
-  };
-
-  const title = mode === 'create' ? 'Create account' : mode === 'recover' ? 'Reset password' : mode === 'migrate' ? 'Restore account' : 'Sign in';
-  const actionLabel = mode === 'create' ? 'Continue setup' : mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
-
-  return <KeyboardAvoidingView style={[styles.authScreen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <ScrollView ref={authScrollRef} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.authScrollContent, compact && styles.authScrollContentCompact, shortScreen && styles.authScrollContentShort]}>
-    <View style={[styles.authCard, compact && styles.authCardCompact, shortScreen && styles.authCardShort]}>
-      <View style={styles.authMark}><Image source={teddyBudLogo} style={styles.authLogo} accessibilityLabel="Teddy Bud" /></View>
-      <Text style={styles.authTitle}>{title}</Text>
-      {(error || formError) && <View style={styles.authError}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authErrorText}>{formError || error}</Text></View>}
-      {!!notice && <View style={styles.authNotice}><Text accessibilityLiveRegion="polite" style={styles.authNoticeText}>{notice}</Text></View>}
-      {mode !== 'migrate' && <>
-        <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Username" accessibilityHint={fieldErrors.username} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" value={username} onChangeText={value => { setUsername(value); clearFieldError('username'); }} placeholder="Username" placeholderTextColor="#938A80" style={[styles.authInput, fieldErrors.username && styles.authInputInvalid]} editable={!submitting} />
-        {fieldErrors.username && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.username}</Text>}
-      </>}
-      {mode === 'recover' && <>
-        <View style={[styles.authPasswordRow, fieldErrors.recoveryPassphrase && styles.authInputInvalid]}>
-          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry={!recoveryPassphraseVisible} value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
-          <Pressable accessibilityRole="button" accessibilityLabel={recoveryPassphraseVisible ? 'Hide recovery passphrase' : 'Show recovery passphrase'} onPress={() => setRecoveryPassphraseVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}><AppIcon name={recoveryPassphraseVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} /></Pressable>
-        </View>
-        {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
-      </>}
-      <View style={[styles.authPasswordRow, fieldErrors.password && styles.authInputInvalid]}>
-        <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel={mode === 'recover' ? 'New password' : 'Password'} accessibilityHint={fieldErrors.password} autoCapitalize="none" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} textContentType={mode === 'login' ? 'password' : 'newPassword'} secureTextEntry={!passwordVisible} value={password} onChangeText={value => { setPassword(value); clearFieldError('password'); }} placeholder={mode === 'recover' ? 'New password' : 'Password'} placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
-        <Pressable accessibilityRole="button" accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'} accessibilityHint="Changes whether the password text is visible on this screen" disabled={submitting} onPress={() => setPasswordVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}>
-          <AppIcon name={passwordVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} />
-        </Pressable>
-      </View>
-      {fieldErrors.password && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.password}</Text>}
-      {(mode === 'create' || mode === 'migrate') && <>
-        <View style={[styles.authPasswordRow, fieldErrors.confirmPassword && styles.authInputInvalid]}>
-          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Confirm password" accessibilityHint={fieldErrors.confirmPassword} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry={!confirmPasswordVisible} value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearFieldError('confirmPassword'); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
-          <Pressable accessibilityRole="button" accessibilityLabel={confirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'} onPress={() => setConfirmPasswordVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}><AppIcon name={confirmPasswordVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} /></Pressable>
-        </View>
-        {fieldErrors.confirmPassword && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.confirmPassword}</Text>}
-        <View style={[styles.authPasswordRow, fieldErrors.recoveryPassphrase && styles.authInputInvalid]}>
-          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Choose recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry={!recoveryPassphraseVisible} value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="10–128 characters" placeholderTextColor="#938A80" maxLength={128} style={styles.authPasswordInput} editable={!submitting} />
-          <Pressable accessibilityRole="button" accessibilityLabel={recoveryPassphraseVisible ? 'Hide recovery passphrase' : 'Show recovery passphrase'} onPress={() => setRecoveryPassphraseVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}><AppIcon name={recoveryPassphraseVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} /></Pressable>
-        </View>
-        {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
-      </>}
-      <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
-        <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
-      </Pressable>
-      {mode === 'login' && biometricReady && <Pressable accessibilityRole="button" accessibilityLabel="Sign in with fingerprint" disabled={submitting} onPress={() => { runInBackground(signInWithBiometrics()); }} style={({ pressed }) => [styles.authBiometricButton, pressed && styles.pressed, submitting && styles.buttonDisabled]}><AppIcon name="fingerprint" color={C.cocoaDark} size={21} /><Text style={styles.authBiometricText}>Use fingerprint</Text></Pressable>}
-      {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
-      {mode === 'login' && allowAccountCreation && <Pressable accessibilityRole="button" accessibilityLabel="Create a new account" onPress={() => changeMode('create')} style={styles.authLink}><Text style={styles.authLinkText}>Create a new account</Text></Pressable>}
-      {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Restore existing chats</Text></Pressable>}
-      {(mode === 'recover' || mode === 'create') && <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'recover' ? 'Back to sign in' : 'Already set up? Sign in'}</Text></Pressable>}
-    </View>
-    </ScrollView>
-  </KeyboardAvoidingView>;
-}
-
+/** Coordinates navigation, local data, and feature screens for an authenticated device. */
 function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; username: string; onLogout: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -1342,7 +1161,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
 
   const rootInsetsStyle = { paddingTop: insets.top, paddingBottom: wide ? insets.bottom : 0 };
   if (localDataReady && localDataOwner === owner && onboardingSurveyAnswers === undefined) {
-    return <OnboardingSurvey onComplete={async (answers, createInitialMap) => {
+    return <React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Preparing your welcome…</Text></View>}><LazyOnboardingSurvey onComplete={async (answers, createInitialMap) => {
       await persistLocalSnapshot({ onboardingSurveyAnswers: answers });
       if (createInitialMap && answers.length) {
         try {
@@ -1377,7 +1196,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
           ],
         );
       }
-    }} />;
+    }} /></React.Suspense>;
   }
 
   const discoverFramePage = discoverPages.includes(page) ? page : lastDiscoverPage;
@@ -1409,7 +1228,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                 onDelete={deleteConversation}
                 onRename={beginRenameConversation}
               />}
-              {tab === 'discover' && discoverFramePage === 'journal' && <DiscoverSectionTransition transitionKey={discoverFramePage}><JournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
+              {tab === 'discover' && discoverFramePage === 'journal' && <DiscoverSectionTransition transitionKey={discoverFramePage}><React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Opening your journal…</Text></View>}><LazyJournalPage wide={wide} entries={journalEntries} onSave={saveJournalEntry} onDelete={deleteJournalEntry} onShare={entry => {
                 const preparedMessage = `I'd like to talk about this journal entry with you.\\n\\n${entry.title}\\n\\n${entry.body}\\n\\nPlease help me reflect on it.`;
                 if (draft.trim()) {
                   confirmAction('Keep your existing draft?', 'Your current chat draft is not empty. Continuing will append the journal entry so your draft is preserved.', () => {
@@ -1420,9 +1239,9 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
                   setDraft(preparedMessage);
                   setPage('chat');
                 }
-              }} /></DiscoverSectionTransition>}
-              {tab === 'discover' && discoverFramePage === 'studio' && <DiscoverSectionTransition transitionKey={discoverFramePage}><WellbeingStudio wide={wide} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} /></DiscoverSectionTransition>}
-              {tab === 'discover' && discoverFramePage === 'emotions' && <DiscoverSectionTransition transitionKey={discoverFramePage}><EmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} /></DiscoverSectionTransition>}
+              }} /></React.Suspense></DiscoverSectionTransition>}
+              {tab === 'discover' && discoverFramePage === 'studio' && <DiscoverSectionTransition transitionKey={discoverFramePage}><React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Preparing your wellbeing studio…</Text></View>}><LazyWellbeingStudio wide={wide} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} /></React.Suspense></DiscoverSectionTransition>}
+              {tab === 'discover' && discoverFramePage === 'emotions' && <DiscoverSectionTransition transitionKey={discoverFramePage}><React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Opening your emotion web…</Text></View>}><LazyEmotionsPage wide={wide} entries={emotionCheckIns} onSave={saveEmotionCheckIn} onDelete={deleteEmotionCheckIn} /></React.Suspense></DiscoverSectionTransition>}
               {tab === 'memories' && <MemoriesPage wide={wide} memories={memories} memoryEnabled={rememberInSession} onAdd={() => openMemory()} onEdit={openMemory} onDelete={removeMemory} actionError={memoryActionError} onDismissActionError={() => { setMemoryActionError(null); setMemoryDeleteRetry(null); }} canRetryDelete={memoryDeleteRetry !== null} onRetryDelete={retryMemoryDelete} />}
               {tab === 'settings' && page === 'privacy' && <DiscoverSectionTransition transitionKey="privacy"><PrivacyPage wide={wide} onBack={() => setPage('settings')} rememberInSession={rememberInSession} shareMemories={shareMemories} shareChatHistory={shareChatHistory} shareAboutMe={shareAboutMe} shareOnboardingSurvey={shareOnboardingSurvey} onShareOnboardingSurveyChange={setShareOnboardingSurvey} onRememberChange={value => { rememberPreferenceRef.current = value; setRememberInSession(value); }} onShareMemoriesChange={setShareMemories} onShareChatHistoryChange={setShareChatHistory} onShareAboutMeChange={setShareAboutMe} onClear={confirmClear} /></DiscoverSectionTransition>}
               {tab === 'settings' && page !== 'privacy' && <SettingsPage wide={wide} username={username} reduceMotion={reduceMotionPreference} hapticsEnabled={hapticsEnabled} careRemindersEnabled={careRemindersEnabled} onCareRemindersChange={value => { if (value) { runInBackground((async () => { const allowed = await requestCareReminderPermission(); if (!allowed) { Alert.alert('Notifications are disabled', 'Allow Teddy Bud notifications in Android Settings to receive gentle check-ins.'); return; } setCareRemindersEnabled(true); await persistLocalSnapshot({ careRemindersEnabled: true }); })()); } else { setCareRemindersEnabled(false); runInBackground(persistLocalSnapshot({ careRemindersEnabled: false })); runInBackground(cancelCareReminder()); } }} onReduceMotionChange={value => { setReduceMotionPreference(value); runInBackground(persistLocalSnapshot({ reduceMotion: value })); }} onHapticsChange={value => { setHapticsEnabled(value); runInBackground(persistLocalSnapshot({ hapticsEnabled: value })); }} onOpenPrivacy={() => setPage('privacy')} creditBalance={creditBalance} aboutMe={aboutMe} assistantName={assistantName} assistantCharacterId={assistantCharacterId} assistantCharacterNames={assistantCharacterNames} onAboutMeChange={setAboutMe} onSaveAssistantCharacter={(id, name) => {
@@ -1672,7 +1491,7 @@ function DiscoverSectionTransition({ transitionKey, children }: { transitionKey:
     animation.start();
     return () => animation.stop();
   }, [transitionKey, reduceMotion, opacity, translateX]);
-  return <Animated.View style={{ flex: 1, opacity, transform: [{ translateX }] }}>{children}</Animated.View>;
+  return <Animated.View style={[styles.pageTransition, { opacity, transform: [{ translateX }] }]}>{children}</Animated.View>;
 }
 
 function ConversationHistoryList({ conversations, activeConversationId, busyConversationId, onSelect, onPin, onDelete, onRename }: {
@@ -1797,18 +1616,6 @@ function LocalDataSaveWarning({ error, onRetry }: { error: string; onRetry: () =
 
 function LocalDataError({ error, onRetry, onClear }: { error: string; onRetry: () => void; onClear: () => void }) {
   return <View style={styles.authScreen}><View style={styles.authCard}><Text style={styles.authTitle}>Your saved space needs attention.</Text><Text style={styles.authBody}>{localDataErrorMessage(error, 'load')}</Text><Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.authButton, pressed && styles.pressed]}><Text style={styles.authButtonText}>Retry local storage</Text></Pressable><Pressable accessibilityRole="button" onPress={onClear} style={styles.authToggle}><Text style={styles.authToggleText}>Clear local data and start over</Text></Pressable><Text style={styles.authFootnote}>Your messages are paused until local storage is available.</Text></View></View>;
-}
-
-function confirmAction(title: string, message: string, onConfirm: () => void) {
-  if (Platform.OS === 'web') {
-    // eslint-disable-next-line no-alert -- native browser confirmation protects destructive local-data deletion.
-    if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${message}`)) onConfirm();
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Confirm', style: 'destructive', onPress: onConfirm },
-  ]);
 }
 
 const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, page, onNavigate, onNewConversation, conversations, activeConversationId, busyConversationId, onSelectConversation, onPinConversation, onDeleteConversation, onRenameConversation }: {
@@ -2080,7 +1887,7 @@ export function BottomNav({ page, onNavigate, onNewConversation, bottomInset }: 
         pressed && !reduceMotion && styles.squeezePressed,
       ]}
     >
-      <AnimatedNavIcon name={item.id} active={selected} pulseKey={pulseKeys[item.id]} reduceMotion={reduceMotion} glass />
+      <AnimatedNavIcon name={item.id} active={selected} pulseKey={pulseKeys[item.id]} reduceMotion={reduceMotion} />
       <Text numberOfLines={1} style={[styles.bottomLabel, selected && styles.bottomLabelActive]}>{item.label}</Text>
     </Pressable>;
   };
@@ -2484,84 +2291,6 @@ function CrisisSupport({ emergencyCallOption, crisisHelplineOption, onCallEmerge
   </View>;
 }
 
-function MarkdownReply({ content }: { content: string }) {
-  const lines = content.split(/\r?\n/);
-  const blocks: React.ReactNode[] = [];
-  let index = 0;
-  while (index < lines.length) {
-    const line = lines[index];
-    if (!line.trim()) { index += 1; continue; }
-    if (/^\s*(```|~~~)/.test(line)) {
-      const fence = line.trim().slice(0, 3);
-      index += 1;
-      const code: string[] = [];
-      while (index < lines.length && !lines[index].trim().startsWith(fence)) code.push(lines[index++]);
-      if (index < lines.length) index += 1;
-      blocks.push(<Text key={`code-${index}`} style={styles.markdownFence}>{code.join('\n')}</Text>);
-      continue;
-    }
-    const heading = line.match(/^\s*(#{1,3})\s+(.+)$/);
-    if (heading) {
-      blocks.push(<Text key={`heading-${index}`} style={[styles.messageText, styles.markdownHeading, heading[1].length === 1 && styles.markdownHeadingLarge]}>{renderInlineMarkdown(heading[2])}</Text>);
-      index += 1;
-      continue;
-    }
-    if (/^\s*(---+|\*\*\*+|___+)\s*$/.test(line)) {
-      blocks.push(<View key={`rule-${index}`} style={styles.markdownRule} />);
-      index += 1;
-      continue;
-    }
-    const list = line.match(/^\s*(?:([-*+])|(\d+)[.)])\s+(.+)$/);
-    if (list) {
-      const ordered = Boolean(list[2]);
-      let number = Number(list[2] ?? 1);
-      while (index < lines.length) {
-        const item = lines[index].match(/^\s*(?:([-*+])|(\d+)[.)])\s+(.+)$/);
-        if (!item || Boolean(item[2]) !== ordered) break;
-        blocks.push(<View key={`list-${index}`} style={styles.markdownListRow}><Text style={styles.messageText}>{ordered ? `${number++}.` : '\u2022'}</Text><Text style={[styles.messageText, styles.markdownListText]}>{renderInlineMarkdown(item[3])}</Text></View>);
-        index += 1;
-      }
-      continue;
-    }
-    if (/^\s*&gt;|^\s*>/.test(line)) {
-      const quote: string[] = [];
-      while (index < lines.length && /^\s*>/.test(lines[index])) quote.push(lines[index++].replace(/^\s*>\s?/, ''));
-      blocks.push(<View key={`quote-${index}`} style={styles.markdownQuote}><Text style={styles.messageText}>{renderInlineMarkdown(quote.join(' '))}</Text></View>);
-      continue;
-    }
-    const paragraph = [line.trim()];
-    index += 1;
-    while (index < lines.length && lines[index].trim() && !/^\s*(?:#{1,3}\s|```|~~~|>|([-*+]|\d+[.)])\s|---+\s*$)/.test(lines[index])) paragraph.push(lines[index++].trim());
-    blocks.push(<Text key={`paragraph-${index}`} style={styles.messageText}>{renderInlineMarkdown(paragraph.join(' '))}</Text>);
-  }
-  return <View style={styles.markdownReply}>{blocks}</View>;
-}
-
-function renderInlineMarkdown(value: string): React.ReactNode[] {
-  const pattern = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|(\*\*|__)(.+?)\3|~~(.+?)~~|\*([^*]+)\*|_([^_]+)_|`([^`]+)`/g;
-  const result: React.ReactNode[] = [];
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(value))) {
-    const current = match;
-    if (current.index > cursor) result.push(value.slice(cursor, current.index));
-    if (current[1] && current[2]) {
-      const url = current[2];
-      result.push(<Text key={`link-${current.index}`} accessibilityRole="link" style={styles.markdownLink} onPress={() => openExternalUrl(url).catch(() => {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') Alert.alert('Could not open this link', 'Copy it and try again in your browser.');
-        else Alert.alert('Could not open link', 'Copy the link and try again in your browser.');
-      })}>{current[1]}</Text>);
-    } else if (current[4] !== undefined) result.push(<Text key={`strong-${current.index}`} style={styles.markdownStrong}>{current[4]}</Text>);
-    else if (current[5] !== undefined) result.push(<Text key={`strike-${current.index}`} style={styles.markdownStrike}>{current[5]}</Text>);
-    else if (current[6] !== undefined) result.push(<Text key={`italic-${current.index}`} style={styles.markdownItalic}>{current[6]}</Text>);
-    else if (current[7] !== undefined) result.push(<Text key={`italic-${current.index}`} style={styles.markdownItalic}>{current[7]}</Text>);
-    else if (current[8] !== undefined) result.push(<Text key={`inline-code-${current.index}`} style={styles.markdownInlineCode}>{current[8]}</Text>);
-    cursor = pattern.lastIndex;
-  }
-  if (cursor < value.length) result.push(value.slice(cursor));
-  return result;
-}
-
 function MemorySuggestionCard({ fact, onSave, onDismiss }: { fact: string; onSave: () => void; onDismiss: () => void }) {
   return <View accessibilityRole="summary" style={styles.memorySuggestionCard}>
     <Text style={styles.memorySuggestionTitle}>Would you like Teddy Bud to remember this?</Text>
@@ -2584,45 +2313,6 @@ function OccasionWidget({ value, onChange, onSave, onDismiss }: { value: string;
       <Button label="Cancel" tone="quiet" onPress={onDismiss} />
       <Button label="Save memory" onPress={onSave} disabled={!value.trim()} />
     </View>
-  </View>;
-}
-
-function TypingIndicator() {
-  const dots = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
-  const [reduceMotion, setReduceMotion] = useState(true);
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    let mounted = true;
-    AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
-      if (mounted) setReduceMotion(enabled);
-    }).catch(() => {
-      if (mounted) setReduceMotion(false);
-    });
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
-  useEffect(() => {
-    if (Platform.OS === 'web' || reduceMotion) return;
-    const animations = dots.map((dot, index) => Animated.loop(Animated.sequence([
-      Animated.delay(index * 150),
-      Animated.timing(dot, { toValue: 1, duration: 240, useNativeDriver: false, isInteraction: false }),
-      Animated.timing(dot, { toValue: 0, duration: 240, useNativeDriver: false, isInteraction: false }),
-      Animated.delay((dots.length - index - 1) * 150),
-    ])));
-    animations.forEach(animation => animation.start());
-    return () => animations.forEach(animation => animation.stop());
-  }, [dots, reduceMotion]);
-
-  return <View accessibilityRole="progressbar" accessibilityLabel="Teddy Bud is responding" accessibilityLiveRegion="polite" style={styles.typingIndicator}>
-    {dots.map((dot, index) => Platform.OS === 'web'
-      ? <View key={index} {...({ dataSet: { typingDot: 'true' } } as Record<string, unknown>)} style={styles.typingDot} />
-      : reduceMotion ? <View key={index} style={styles.typingDot} /> : <Animated.View
-        key={index}
-        style={[styles.typingDot, { transform: [{ translateY: dot.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) }] }]}
-      />)}
   </View>;
 }
 
@@ -2651,451 +2341,6 @@ function MemoriesPage({ wide, memories, memoryEnabled, onAdd, onEdit, onDelete, 
 }
 
 
-
-export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
-  wide: boolean;
-  entries: JournalEntry[];
-  onSave: (entry: JournalEntry) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
-  onShare: (entry: JournalEntry) => void;
-}) {
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [prompt, setPrompt] = useState('Free reflection');
-  const [editing, setEditing] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const prompts = ['Free reflection', 'What felt heavy today?', 'What is one small thing I appreciate?', 'What do I need more of right now?', 'What would I tell a friend in this situation?'];
-
-  const save = async () => {
-    const normalizedBody = body.trim();
-    if (!normalizedBody || saving) {
-      if (!normalizedBody) setActionError('Write a little in your entry before saving.');
-      return;
-    }
-    const entry: JournalEntry = {
-      id: editing ?? (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)),
-      createdAt: editing ? (entries.find(item => item.id === editing)?.createdAt ?? new Date().toISOString()) : new Date().toISOString(),
-      title: title.trim().slice(0, 160) || prompt,
-      body: normalizedBody.slice(0, 30000),
-      prompt,
-    };
-    setSaving(true);
-    setActionError(null);
-    setActionNotice(null);
-    try {
-      await onSave(entry);
-      setTitle('');
-      setBody('');
-      setEditing(null);
-      setPrompt('Free reflection');
-      setActionNotice('Saved privately on this device.');
-    } catch {
-      setActionError('This entry could not be saved to this device. Your text is still in the editor; retry saving before leaving this page.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const beginDelete = (entry: JournalEntry) => {
-    confirmAction(
-      'Delete journal entry?',
-      `“${entry.title}” will be removed from this device. This cannot be undone.`,
-      () => {
-        setDeletingId(entry.id);
-        setActionError(null);
-        setActionNotice(null);
-        onDelete(entry.id).then(() => {
-          if (editing === entry.id) {
-            setEditing(null);
-            setTitle('');
-            setBody('');
-            setPrompt('Free reflection');
-          }
-        }).catch(() => {
-          setActionError('This entry could not be deleted from saved data. The entry remains available; try again.');
-        }).finally(() => setDeletingId(null));
-      },
-    );
-  };
-
-  const exportJournal = async () => {
-    if (!entries.length || exporting) {
-      if (!entries.length) setActionError('Write a journal entry before exporting.');
-      return;
-    }
-    setExporting(true);
-    setActionError(null);
-    setActionNotice(null);
-    const content = entries.map(entry => `# ${entry.title}\n${new Date(entry.createdAt).toLocaleString()} · ${entry.prompt}\n\n${entry.body}`).join('\n\n---\n\n');
-    try {
-      if (Platform.OS === 'web') {
-        await savePlainTextFile(content, `teddy-bud-journal-${new Date().toISOString().slice(0, 10)}.txt`);
-        setActionNotice('Your journal text download has started.');
-      } else {
-        const result = await Share.share({ title: 'Teddy Bud private journal export', message: content });
-        setActionNotice(result.action === Share.dismissedAction
-          ? 'Export canceled. Your journal entries remain saved on this device.'
-          : 'The share sheet opened. Choose where you would like to keep your journal text.');
-      }
-    } catch {
-      setActionError('Teddy Bud could not export the journal text. Try again, or select and copy the entries you want to keep.');
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const cancelEdit = () => {
-    setEditing(null);
-    setTitle('');
-    setBody('');
-    setPrompt('Free reflection');
-    setActionError(null);
-    setActionNotice(null);  };
-  const visible = entries.filter(entry => (entry.title + ' ' + entry.body + ' ' + entry.prompt).toLowerCase().includes(search.toLowerCase()));
-
-  return <ScrollView contentContainerStyle={[styles.pageScroll, wide && styles.pageScrollWide]} keyboardShouldPersistTaps="handled">
-    <View style={styles.pageIntro}>
-      <Text style={styles.eyebrow}>PRIVATE REFLECTION</Text>
-      <Text style={styles.pageTitle}>A page just for you</Text>
-      <Text style={styles.pageDescription}>Your journal stays in this device's local app storage. It is never added to Teddy's context unless you choose “Discuss with Teddy” and then send the prepared message yourself.</Text>
-    </View>
-    {(actionError || actionNotice) && <View accessibilityRole={actionError ? 'alert' : 'summary'} style={actionError ? styles.authError : styles.journalNotice}>
-      <Text accessibilityLiveRegion="polite" style={actionError ? styles.authErrorText : styles.journalNoticeText}>{actionError || actionNotice}</Text>
-      {actionError && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss journal notice" onPress={() => setActionError(null)} style={styles.journalDismiss}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>}
-    </View>}
-    <View style={styles.journalEditorCard}>
-      <Text style={styles.sectionTitle}>{editing ? 'Edit your entry' : 'Write a little'}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.journalPrompts}>{prompts.map(value => <Pressable key={value} accessibilityRole="button" accessibilityState={{ selected: prompt === value }} onPress={() => { setPrompt(value); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [styles.journalPromptChip, prompt === value && styles.journalPromptChipSelected, pressed && styles.pressed]}><Text style={styles.journalPromptText}>{value}</Text></Pressable>)}</ScrollView>
-      <TextInput accessibilityLabel="Journal title (optional)" value={title} onChangeText={setTitle} maxLength={160} placeholder="Title (optional)" placeholderTextColor={C.muted} style={styles.journalTextInput} editable={!saving} />
-      <TextInput accessibilityLabel="Journal entry" accessibilityHint="Your entry is stored locally and is not sent to the AI unless you choose to discuss it and then send the prepared chat message." value={body} onChangeText={value => { setBody(value); setActionError(null); setActionNotice(null); }} maxLength={30000} multiline placeholder="Start wherever you are…" placeholderTextColor={C.muted} style={[styles.journalTextInput, styles.journalBodyInput]} editable={!saving} textAlignVertical="top" />
-      <View style={styles.journalEditorActions}>
-        <Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Save journal changes' : 'Save privately'} disabled={saving} onPress={save} style={({ pressed }) => [styles.journalSaveButton, saving && styles.buttonDisabled, pressed && styles.pressed]}>
-          <Text style={styles.journalSaveButtonText}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Save privately'}</Text>
-        </Pressable>
-        {editing && <Pressable accessibilityRole="button" disabled={saving} onPress={cancelEdit} style={({ pressed }) => [styles.journalCancelButton, pressed && styles.pressed]}><Text style={styles.journalCancelButtonText}>Cancel edit</Text></Pressable>}
-      </View>
-    </View>
-    <Pressable accessibilityRole="button" disabled={exporting} onPress={exportJournal} style={({ pressed }) => [styles.journalExportButton, exporting && styles.buttonDisabled, pressed && styles.pressed]}>
-      <Text style={styles.journalExportButtonText}>{exporting ? 'Preparing export…' : 'Export journal text'}</Text>
-    </Pressable>
-    <TextInput accessibilityLabel="Search journal entries" value={search} onChangeText={setSearch} placeholder="Search journal entries" placeholderTextColor={C.muted} style={styles.journalSearchInput} />
-    {visible.map(entry => <View key={entry.id} style={styles.journalEntryCard}>
-      <Text style={styles.journalEntryTitle}>{entry.title}</Text>
-      <Text style={styles.journalEntryMeta}>{new Date(entry.createdAt).toLocaleString()} · {entry.prompt}</Text>
-      <View style={styles.journalEntryActions}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Edit journal entry ${entry.title}`} disabled={saving || deletingId !== null} onPress={() => { setTitle(entry.title); setBody(entry.body); setPrompt(entry.prompt); setEditing(entry.id); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [styles.journalInlineButton, pressed && styles.pressed]}>
-          <Text style={styles.journalInlineButtonText}>Edit entry</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Discuss journal entry ${entry.title} with Teddy`} onPress={() => {
-          confirmAction('Share this entry with Teddy?', 'The entry will be copied into your chat draft. It will not be sent until you review it and tap Send.', () => onShare(entry));
-        }} style={({ pressed }) => [styles.journalInlineButton, pressed && styles.pressed]}>
-          <Text style={styles.journalInlineButtonText}>Discuss with Teddy</Text>
-        </Pressable>
-      </View>
-      <Text selectable style={styles.journalEntryBody}>{entry.body}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Delete journal entry ${entry.title}`} disabled={deletingId !== null} onPress={() => beginDelete(entry)} style={({ pressed }) => [styles.journalDeleteButton, deletingId === entry.id && styles.buttonDisabled, pressed && styles.pressed]}>
-        <Text style={styles.journalDeleteButtonText}>{deletingId === entry.id ? 'Deleting…' : 'Delete'}</Text>
-      </Pressable>
-    </View>)}
-    {visible.length === 0 && <Text style={styles.journalEmptyText}>{search ? 'No entries match your search.' : 'Your journal is empty. Write a little whenever you are ready.'}</Text>}
-  </ScrollView>;
-}
-export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolean; entries: EmotionCheckIn[]; onSave: (entry: EmotionCheckIn) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
-  const __teddyBudExtractedStyles14 = StyleSheet.create({
-    style0: ({maxWidth:760,width:'100%',alignSelf:'center'}) as const,
-    style1: ({fontSize:wide?30:25,fontWeight:'700',color:C.cocoaDark}) as const,
-    style2: ({fontSize:14,lineHeight:21,color:C.muted,marginTop:8}) as const,
-    style3: ({backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:24,padding:16,marginTop:20}) as const,
-    style4: ({fontSize:17,fontWeight:'700',color:C.cocoaDark}) as const,
-    style5: ({textAlign:'center',fontSize:13,lineHeight:19,color:C.muted,marginTop:2}) as const,
-    style6: ({fontSize:11,lineHeight:16,color:C.muted,textAlign:'center',marginTop:5}) as const,
-    style7: ({fontSize:13,lineHeight:20,color:C.cocoaDark,marginTop:8}) as const,
-    style8: ({color:'#FFFFFF',fontWeight:'700'}) as const,
-    style9: ({backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:22,padding:16,marginTop:14}) as const,
-    style10: ({fontSize:19,fontWeight:'700',color:C.cocoaDark,marginBottom:6}) as const,
-    style11: ({fontSize:13,color:C.muted,marginBottom:12}) as const,
-    style12: ({color:C.cocoaDark,fontWeight:'600',marginTop:14}) as const,
-    style13: ({flexDirection:'row',gap:8,marginTop:8}) as const,
-    style14: ({color:C.cocoaDark,fontWeight:'600',marginTop:14,marginBottom:8}) as const,
-    style15: ({flexDirection:'row',flexWrap:'wrap',gap:8}) as const,
-    style16: ({fontSize:12,color:C.muted,marginTop:12}) as const,
-    style17: ({minHeight:76,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,color:C.cocoaDark,marginTop:7,textAlignVertical:'top'}) as const,
-    style18: ({color:'#FFFFFF',fontWeight:'700'}) as const,
-    style19: ({backgroundColor:C.paper,borderColor:C.line,borderWidth:1,borderRadius:18,padding:15,marginTop:18}) as const,
-    style20: ({fontSize:16,fontWeight:'700',color:C.cocoaDark}) as const,
-    style21: ({fontSize:13,color:C.muted,lineHeight:20,marginTop:6}) as const,
-    style22: ({fontSize:14,color:C.cocoaDark,marginTop:10}) as const,
-    style23: ({fontSize:14,color:C.cocoaDark,marginTop:6}) as const,
-    style24: ({fontSize:13,color:C.muted,marginTop:6}) as const,
-    style25: ({fontSize:13,color:C.muted,lineHeight:20,marginTop:6}) as const,
-    style26: ({backgroundColor:'#F4ECE6',borderRadius:18,padding:15,marginTop:18}) as const,
-    style27: ({fontSize:16,fontWeight:'700',color:C.cocoaDark}) as const,
-    style28: ({fontSize:13,color:C.muted,lineHeight:20,marginTop:6}) as const,
-    style29: ({fontSize:19,fontWeight:'700',color:C.cocoaDark,marginTop:24,marginBottom:10}) as const,
-    style30: ({color:C.muted,paddingVertical:14}) as const,
-    style31: ({fontSize:12,color:C.muted,lineHeight:18,marginTop:10}) as const,
-  });
-  const [ratings, setRatings] = useState<Record<string, number>>({});
-  const [energy, setEnergy] = useState(3);
-  const [support, setSupport] = useState<EmotionCheckIn['support']>('listen');
-  const [note, setNote] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const latest = entries[0];
-
-  const resetForm = () => {
-    setRatings({});
-    setEnergy(3);
-    setSupport('listen');
-    setNote('');
-    setShowForm(false);
-  };
-
-  const hasUnsavedCheckIn = Object.keys(ratings).length > 0 || Boolean(note.trim()) || energy !== 3 || support !== 'listen';
-
-  const toggleForm = () => {
-    if (!showForm) {
-      setShowForm(true);
-      setActionError(null);
-      setActionNotice(null);
-      return;
-    }
-    if (hasUnsavedCheckIn) {
-      confirmAction('Discard this check-in?', 'Your unfinished ratings and note will be discarded.', resetForm);
-    } else {
-      setShowForm(false);
-    }
-  };
-
-  const saveCheckIn = async () => {
-    if (saving) return;
-    const entry: EmotionCheckIn = {
-      id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2),
-      createdAt: new Date().toISOString(),
-      emotions: ratings,
-      energy,
-      support,
-      origin: 'self',
-      ...(note.trim() ? { note: note.trim().slice(0, 2000) } : {}),
-    };
-    setSaving(true);
-    setActionError(null);
-    setActionNotice(null);
-    try {
-      await onSave(entry);
-      resetForm();
-      setActionNotice('Check-in saved privately on this device.');
-    } catch {
-      setActionError('This check-in could not be saved. Your ratings and note are still here; retry saving before leaving this screen.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const deleteCheckIn = (entry: EmotionCheckIn) => {
-    confirmAction('Delete check-in?', 'This removes this entry from this device.', () => {
-      setDeletingId(entry.id);
-      setActionError(null);
-      setActionNotice(null);
-      onDelete(entry.id).then(() => {
-        setActionNotice('Check-in deleted from this device.');
-      }).catch(() => {
-        setActionError('This check-in could not be deleted from saved data. The entry is still available; try again.');
-      }).finally(() => setDeletingId(null));
-    });
-  };
-  const weekEntries = entries.filter(entry => { const age = Date.now() - new Date(entry.createdAt).getTime(); return age >= 0 && age <= 7 * 24 * 60 * 60 * 1000; });
-  const weekEnergy = weekEntries.length ? weekEntries.reduce((sum, entry) => sum + entry.energy, 0) / weekEntries.length : 0;
-  const weekEmotionAverages = EMOTION_AXES.map(axis => {
-    const rated = weekEntries.filter(entry => typeof entry.emotions[axis.id] === 'number');
-    return { label: axis.label, average: rated.length ? rated.reduce((sum, entry) => sum + (entry.emotions[axis.id] ?? 0), 0) / rated.length : null, count: rated.length };
-  }).filter(item => item.average !== null).sort((a, b) => (b.average ?? 0) - (a.average ?? 0));
-  const axisCount = EMOTION_AXES.length;
-  const size = wide ? 340 : 290;
-  const center = size / 2;
-  const radius = size * 0.34;
-  const point = (axis: number, value: number) => {
-    const angle = -Math.PI / 2 + axis * Math.PI * 2 / axisCount;
-    return { x: center + Math.cos(angle) * radius * value / 5, y: center + Math.sin(angle) * radius * value / 5 };
-  };
-  const line = (a: {x:number;y:number}, b: {x:number;y:number}, color: string, width = 1) => {
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const __teddyBudExtractedStyles10 = StyleSheet.create({
-      style0: ({ position: 'absolute', left: (a.x+b.x)/2-Math.sqrt(dx*dx+dy*dy)/2, top: (a.y+b.y)/2-width/2, width: Math.sqrt(dx*dx+dy*dy), height: width, backgroundColor: color, transform: [{ rotate: Math.atan2(dy,dx)+'rad' }] }) as const,
-    });
-    return <View key={color + a.x + a.y + b.x + b.y} pointerEvents="none" style={__teddyBudExtractedStyles10.style0} />;
-  };
-  const webBounce = useRef(new Animated.Value(1)).current;
-  const curvedRing = (level: number, color: string, strokeWidth: number) => {
-    const ringPoints = EMOTION_AXES.map((_, i) => point(i, level));
-    return ringPoints.map((a, i) => {
-      const b = ringPoints[(i + 1) % axisCount]!;
-      const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      const control = { x: midpoint.x + (center - midpoint.x) * 0.34, y: midpoint.y + (center - midpoint.y) * 0.34 };
-      const samples = [0.25, 0.5, 0.75, 1].map(t => ({
-        x: (1-t)*(1-t)*a.x + 2*(1-t)*t*control.x + t*t*b.x,
-        y: (1-t)*(1-t)*a.y + 2*(1-t)*t*control.y + t*t*b.y,
-      }));
-      const chain = [a, ...samples];
-      return chain.slice(0, -1).map((from, segment) => line(from, chain[segment + 1]!, color, strokeWidth));
-    });
-  };
-  const renderWeb = (data?: Record<string, number>) => {
-    const __teddyBudExtractedStyles11 = StyleSheet.create({
-      style0: ({ width: size, height: size, alignSelf: 'center' }) as const,
-      style1: ({ width: size, height: size, position: 'relative', transform: [{ scale: webBounce }] }) as const,
-      style2: ({ position: 'absolute', left: center-radius*0.86, top: center-radius*0.86, width: radius*1.72, height: radius*1.72, borderRadius: radius, backgroundColor: 'rgba(150, 108, 78, 0.10)', borderWidth: 1, borderColor: 'rgba(150, 108, 78, 0.10)' }) as const,
-      style3: ({position:'absolute',left:center-4,top:center-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D'}) as const,
-    });
-    const values = EMOTION_AXES.map(axis => data?.[axis.id] ?? 0);
-    return <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Emotion web. Touch to feel the web gently bounce."
-      accessibilityHint="The connected emotion web responds with a soft elastic movement."
-      onPressIn={() => Animated.spring(webBounce, { toValue: 0.965, useNativeDriver: true, speed: 1.1, bounciness: 8 }).start()}
-      onPressOut={() => Animated.sequence([
-        Animated.spring(webBounce, { toValue: 1.035, useNativeDriver: true, speed: 0.45, bounciness: 10 }),
-        Animated.spring(webBounce, { toValue: 1, useNativeDriver: true, speed: 0.65, bounciness: 5 }),
-      ]).start()}
-      style={__teddyBudExtractedStyles11.style0}
-    >
-      <Animated.View style={__teddyBudExtractedStyles11.style1}>
-        <View pointerEvents="none" style={__teddyBudExtractedStyles11.style2} />
-        {[1,2,3,4,5].map(level => <React.Fragment key={'ring-'+level}>{curvedRing(level, level===5?'#D5C1B2':'#E5D8CE', level===5?1.4:1)}</React.Fragment>)}
-        {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D5C5B8', 1))}
-        {EMOTION_AXES.map((axis,i) => {
-          const label = point(i,5.75);
-          const dot = point(i,5);
-          const __teddyBudExtractedStyles12 = StyleSheet.create({
-            style0: ({position:'absolute',left:label.x-37,top:label.y-9,width:74,textAlign:'center',fontSize:10,fontWeight:'600',color:C.cocoaDark}) as const,
-            style1: ({position:'absolute',left:dot.x-4,top:dot.y-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D',borderWidth:1.5,borderColor:'#FFF9F4'}) as const,
-          });
-          return <React.Fragment key={axis.id}>
-            <Text style={__teddyBudExtractedStyles12.style0}>{axis.label}</Text>
-            <View pointerEvents="none" style={__teddyBudExtractedStyles12.style1} />
-          </React.Fragment>;
-        })}
-        {data ? values.map((value,i) => {
-          const a = point(i,value);
-          const b = point((i+1)%axisCount,values[(i+1)%axisCount]!);
-          const midpoint = {x:(a.x+b.x)/2,y:(a.y+b.y)/2};
-          const control = {x:midpoint.x+(center-midpoint.x)*0.28,y:midpoint.y+(center-midpoint.y)*0.28};
-          const samples = [0.2,0.4,0.6,0.8,1].map(t=>({x:(1-t)*(1-t)*a.x+2*(1-t)*t*control.x+t*t*b.x,y:(1-t)*(1-t)*a.y+2*(1-t)*t*control.y+t*t*b.y}));          return <React.Fragment key={'data-'+i}>{[a,...samples].slice(0,-1).map((from,j)=>line(from,samples[j]!, '#A86F52', 2.6))}</React.Fragment>;
-        }) : null}
-        {data ? values.map((value,i) => {
-          const __teddyBudExtractedStyles13 = StyleSheet.create({
-            style0: ({position:'absolute',left:point(i,value).x-5,top:point(i,value).y-5,width:10,height:10,borderRadius:5,backgroundColor:'#A86F52',borderWidth:2,borderColor:'#FFF9F4'}) as const,
-          });
-          return value>0 ? <View key={'value-'+i} pointerEvents="none" style={__teddyBudExtractedStyles13.style0} /> : null;
-        }) : null}
-        <View pointerEvents="none" style={__teddyBudExtractedStyles11.style3} />
-      </Animated.View>
-    </Pressable>;
-  };
-  return <ScrollView contentContainerStyle={[styles.emotionsPageScroll, wide && styles.emotionsPageScrollWide]}>
-    <View style={__teddyBudExtractedStyles14.style0}>
-      <Text style={__teddyBudExtractedStyles14.style1}>Your emotional landscape</Text>
-      <Text style={__teddyBudExtractedStyles14.style2}>A private snapshot of how you feel. Rate only what feels relevant; there is no good or bad shape.</Text>
-      {(actionError || actionNotice) && <View accessibilityRole={actionError ? 'alert' : 'summary'} style={actionError ? styles.authError : styles.journalNotice}>
-        <Text accessibilityLiveRegion="polite" style={actionError ? styles.authErrorText : styles.journalNoticeText}>{actionError || actionNotice}</Text>
-        {actionError && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss check-in notice" onPress={() => setActionError(null)} style={styles.journalDismiss}><Text style={styles.journalDismissText}>Dismiss</Text></Pressable>}
-      </View>}
-      <View style={__teddyBudExtractedStyles14.style3}>
-        <Text style={__teddyBudExtractedStyles14.style4}>{latest?.origin === 'survey-ai' ? 'Your starting emotion web' : latest ? 'Latest check-in' : 'Your emotion web'}</Text>
-        {renderWeb(latest?.emotions)}
-        <Text accessibilityRole="text" style={__teddyBudExtractedStyles14.style5}>{latest ? (latest.origin === 'survey-ai' ? 'AI-estimated from your onboarding answers · '+new Date(latest.createdAt).toLocaleString() : 'Self-rated snapshot · '+new Date(latest.createdAt).toLocaleString()) : 'Your web appears after your first check-in.'}</Text>
-        {latest?.origin === 'survey-ai' ? <Text style={__teddyBudExtractedStyles14.style6}>A gentle estimate from your answers, not a clinical assessment. You can replace it with your own check-in at any time.</Text> : null}
-        {latest ? <Text style={__teddyBudExtractedStyles14.style7}>Highest ratings: {EMOTION_AXES.filter(a=>(latest.emotions[a.id]??0)>0).sort((a,b)=>(latest.emotions[b.id]??0)-(latest.emotions[a.id]??0)).slice(0,3).map(a=>a.label+' '+latest.emotions[a.id]+'/5').join(' · ') || 'No emotions rated'} · Energy {latest.energy}/5</Text> : null}
-        <Pressable accessibilityRole="button" accessibilityLabel={showForm ? 'Close check-in form' : 'Add a check-in'} onPress={toggleForm} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:16 }, pressed && styles.pressed]}><Text style={__teddyBudExtractedStyles14.style8}>{showForm?'Close check-in':'Add a check-in'}</Text></Pressable>
-      </View>
-      {showForm ? <View style={__teddyBudExtractedStyles14.style9}>
-        <Text style={__teddyBudExtractedStyles14.style10}>How are you feeling?</Text>
-        <Text style={__teddyBudExtractedStyles14.style11}>Tap a number from 0 (not present) to 5 (very strong). You can leave any emotion unrated.</Text>
-        {EMOTION_AXES.map(axis=>{
-          const __teddyBudExtractedStyles15 = StyleSheet.create({
-            style0: ({paddingVertical:9,borderBottomWidth:1,borderBottomColor:C.line}) as const,
-            style1: ({color:C.cocoaDark,fontWeight:'600',marginBottom:8}) as const,
-            style2: ({flexDirection:'row',gap:8}) as const,
-          });
-          return <View key={axis.id} style={__teddyBudExtractedStyles15.style0}>
-          <Text style={__teddyBudExtractedStyles15.style1}>{axis.label}</Text>
-          <View style={__teddyBudExtractedStyles15.style2}>{[0,1,2,3,4,5].map(n=>{
-            const __teddyBudExtractedStyles16 = StyleSheet.create({
-              style0: ({flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:ratings[axis.id]===n?'#B87862':'#F5ECE5',borderWidth:ratings[axis.id]===n?2:0,borderColor:C.cocoaDark}) as const,
-              style1: ({color:C.cocoaDark,fontWeight:'600'}) as const,
-            });
-            return <Pressable key={n} accessibilityRole="button" accessibilityLabel={axis.label+' '+n+' out of 5'} accessibilityState={{ selected: ratings[axis.id] === n }} onPress={()=>{ setRatings(current=>({...current,[axis.id]:n})); setActionError(null); setActionNotice(null); }} style={__teddyBudExtractedStyles16.style0}><Text style={__teddyBudExtractedStyles16.style1}>{n}</Text></Pressable>;
-          })}</View>
-        </View>;
-        })}
-        <Text style={__teddyBudExtractedStyles14.style12}>Energy: {energy}/5</Text>
-        <View style={__teddyBudExtractedStyles14.style13}>{[0,1,2,3,4,5].map(n=>{
-          const __teddyBudExtractedStyles17 = StyleSheet.create({
-            style0: ({flex:1,minWidth:30,height:48,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:energy===n?'#B87862':'#F5ECE5'}) as const,
-            style1: ({color:C.cocoaDark}) as const,
-          });
-          return <Pressable key={n} accessibilityRole="button" accessibilityLabel={`Energy ${n} out of 5`} accessibilityState={{ selected: energy === n }} onPress={()=>{ setEnergy(n); setActionError(null); setActionNotice(null); }} style={__teddyBudExtractedStyles17.style0}><Text style={__teddyBudExtractedStyles17.style1}>{n}</Text></Pressable>;
-        })}</View>
-        <Text style={__teddyBudExtractedStyles14.style14}>What would help right now?</Text>
-        <View style={__teddyBudExtractedStyles14.style15}>{([{id:'listen',label:'Just listen'},{id:'advice',label:'Practical advice'},{id:'encouragement',label:'Encouragement'},{id:'unsure',label:'Not sure'}] as const).map(option=>{
-          const __teddyBudExtractedStyles18 = StyleSheet.create({
-            style0: ({color:C.cocoaDark}) as const,
-          });
-          return <Pressable key={option.id} accessibilityRole="button" accessibilityState={{ selected: support === option.id }} onPress={()=>{ setSupport(option.id); setActionError(null); setActionNotice(null); }} style={({ pressed }) => [{ minHeight:48, paddingVertical:9, paddingHorizontal:12, borderRadius:14, backgroundColor:support===option.id?'#E7D0C2':'#F5ECE5', borderWidth:support===option.id?1:0, borderColor:'#B87862' }, pressed && styles.pressed, pressed && styles.squeezePressed]}><Text style={__teddyBudExtractedStyles18.style0}>{option.label}</Text></Pressable>;
-        })}</View>
-        <Text style={__teddyBudExtractedStyles14.style16}>Optional note (saved only on this device)</Text>
-        <TextInput accessibilityLabel="Emotion check-in note (optional)" value={note} onChangeText={value => { setNote(value.slice(0, 2000)); setActionError(null); setActionNotice(null); }} multiline maxLength={2000} placeholder="Anything you want to remember about this moment…" placeholderTextColor={C.muted} style={__teddyBudExtractedStyles14.style17} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Save emotion check-in" disabled={saving} onPress={saveCheckIn} style={({ pressed }) => [{ minHeight:48, backgroundColor:C.cocoaDark, borderRadius:15, padding:14, alignItems:'center', justifyContent:'center', marginTop:14 }, saving && styles.buttonDisabled, pressed && styles.pressed]}><Text style={__teddyBudExtractedStyles14.style18}>{saving ? 'Saving check-in…' : 'Save privately on this device'}</Text></Pressable>
-      </View> : null}
-      <View style={__teddyBudExtractedStyles14.style19}>
-        <Text style={__teddyBudExtractedStyles14.style20}>Your week in reflection</Text>
-        {weekEntries.length >= 2 ? <>
-          <Text style={__teddyBudExtractedStyles14.style21}>A local summary of {weekEntries.length} check-ins from the last seven days. This uses only ratings you entered and is not a diagnosis or prediction.</Text>
-          <Text style={__teddyBudExtractedStyles14.style22}>Average energy: {weekEnergy.toFixed(1)}/5</Text>
-          {weekEmotionAverages.length ? <Text style={__teddyBudExtractedStyles14.style23}>Most frequently highest-rated emotion: {weekEmotionAverages[0].label} ({weekEmotionAverages[0].average?.toFixed(1)}/5 across {weekEmotionAverages[0].count} rated check-ins).</Text> : <Text style={__teddyBudExtractedStyles14.style24}>No emotion ratings were recorded in these check-ins.</Text>}
-        </> : <Text style={__teddyBudExtractedStyles14.style25}>Add at least two check-ins within seven days to see a summary. It stays on this device and never labels or scores your mental health.</Text>}
-      </View>
-      {entries.length >= 2 ? <View style={__teddyBudExtractedStyles14.style26}>
-        <Text style={__teddyBudExtractedStyles14.style27}>Your recent pattern</Text>
-        <Text style={__teddyBudExtractedStyles14.style28}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
-        {EMOTION_AXES.map(axis=>{const sample=entries.slice(0,7).filter(entry=>typeof entry.emotions[axis.id]==='number');if(!sample.length)return null;const avg=sample.reduce((sum,entry)=>sum+(entry.emotions[axis.id]??0),0)/sample.length;const __teddyBudExtractedStyles19 = StyleSheet.create({
-          style0: ({marginTop:9}) as const,
-          style1: ({flexDirection:'row',justifyContent:'space-between'}) as const,
-          style2: ({fontSize:12,color:C.cocoaDark}) as const,
-          style3: ({fontSize:12,color:C.cocoaDark}) as const,
-          style4: ({height:6,backgroundColor:'#E1D5CC',borderRadius:4,marginTop:4,overflow:'hidden'}) as const,
-          style5: ({height:6,width:`${(avg/5*100)}%` as `${number}%`,backgroundColor:'#B87862',borderRadius:4}) as const,
-        });
-        return <View key={axis.id} style={__teddyBudExtractedStyles19.style0}><View style={__teddyBudExtractedStyles19.style1}><Text style={__teddyBudExtractedStyles19.style2}>{axis.label}</Text><Text style={__teddyBudExtractedStyles19.style3}>{avg.toFixed(1)}/5</Text></View><View style={__teddyBudExtractedStyles19.style4}><View style={__teddyBudExtractedStyles19.style5} /></View></View>;})}
-      </View> : null}
-      <Text style={__teddyBudExtractedStyles14.style29}>Past check-ins</Text>
-      {entries.length===0 ? <Text style={__teddyBudExtractedStyles14.style30}>Nothing recorded yet. Your check-ins are optional and stay in local app storage.</Text> : entries.map(entry=>{
-        const __teddyBudExtractedStyles20 = StyleSheet.create({
-          style0: ({backgroundColor:C.paper,borderWidth:1,borderColor:C.line,borderRadius:16,padding:14,marginBottom:9}) as const,
-          style1: ({color:C.cocoaDark,fontWeight:'700'}) as const,
-          style2: ({color:C.muted,fontSize:13,marginTop:5}) as const,
-          style3: ({color:C.cocoaDark,marginTop:6}) as const,
-          style4: ({color:'#98594B',fontWeight:'600'}) as const,
-        });
-        return <View key={entry.id} style={__teddyBudExtractedStyles20.style0}>
-        <Text style={__teddyBudExtractedStyles20.style1}>{new Date(entry.createdAt).toLocaleString()}</Text>
-        <Text style={__teddyBudExtractedStyles20.style2}>{EMOTION_AXES.filter(a=>entry.emotions[a.id]!==undefined).sort((a,b)=>(entry.emotions[b.id]??0)-(entry.emotions[a.id]??0)).slice(0,4).map(a=>a.label+' '+entry.emotions[a.id]+'/5').join(' · ') || 'No emotion ratings'} · Energy {entry.energy}/5</Text>
-        {entry.note ? <Text style={__teddyBudExtractedStyles20.style3}>{entry.note}</Text> : null}
-        <Pressable accessibilityRole="button" accessibilityLabel={`Delete check-in from ${new Date(entry.createdAt).toLocaleString()}`} disabled={deletingId !== null} onPress={()=>deleteCheckIn(entry)} style={({ pressed }) => [{ minHeight:48, alignSelf:'flex-end', justifyContent:'center', paddingHorizontal:12 }, deletingId === entry.id && styles.buttonDisabled, pressed && styles.pressed]}><Text style={__teddyBudExtractedStyles20.style4}>{deletingId === entry.id ? 'Deleting…' : 'Delete'}</Text></Pressable>
-      </View>;
-      })}
-      <Text style={__teddyBudExtractedStyles14.style31}>These ratings are self-reported reflections, not a clinical assessment. No emotions are inferred from your chats.</Text>
-    </View>
-  </ScrollView>;
-}
 
 function PrivacyPage({ wide, onBack, rememberInSession, shareMemories, shareChatHistory, shareAboutMe, onRememberChange, onShareMemoriesChange, onShareChatHistoryChange, onShareAboutMeChange, shareOnboardingSurvey, onShareOnboardingSurveyChange, onClear }: { wide: boolean; onBack: () => void; rememberInSession: boolean; shareMemories: boolean; shareChatHistory: boolean; shareAboutMe: boolean; shareOnboardingSurvey: boolean; onRememberChange: (value: boolean) => void; onShareMemoriesChange: (value: boolean) => void; onShareChatHistoryChange: (value: boolean) => void; onShareAboutMeChange: (value: boolean) => void; onShareOnboardingSurveyChange: (value: boolean) => void; onClear: () => void }) {
   const [policyLinkError, setPolicyLinkError] = useState('');
@@ -3327,173 +2572,8 @@ function Button({ label, onPress, tone = 'primary', disabled = false }: { label:
   ]}><Text style={[styles.buttonText, tone === 'quiet' && styles.buttonTextQuiet]}>{label}</Text></Pressable>;
 }
 
-const styles = StyleSheet.create({
-  sidebarCollapseButtonBottom: { alignSelf: 'flex-end' },
-  policyLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 10 },
-  policyLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 11, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper },
-  policyLinkText: { color: C.cocoaDark, fontSize: 12, fontWeight: '600' },
-  teddyAvatarTile: { width: 52, height: 52, flexShrink: 0, borderRadius: 30, overflow: 'hidden', backgroundColor: '#FAF6ED', borderWidth: 1, borderColor: '#E8E0D5', alignItems: 'center', justifyContent: 'center' },
-  teddyAvatarMessageLogo: { width: 54, height: 54, borderRadius: 30 },
-  fatalFallback: { flex: 1, minHeight: '100%', alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: C.canvas },
-  fatalTitle: { color: C.ink, fontSize: 22, lineHeight: 28, fontWeight: '700', textAlign: 'center' },
-  fatalBody: { maxWidth: 360, color: C.muted, fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: 10 },
-  fatalButton: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 18, borderRadius: 12, backgroundColor: C.cocoa, marginTop: 20 },
-  fatalButtonText: { color: C.white, fontSize: 12, fontWeight: '700' },
-  saveWarning: { flexDirection: 'row', alignItems: 'center', gap: 12, margin: 16, padding: 12, backgroundColor: '#FFF3E8', borderWidth: 1, borderColor: '#E9D2BB', borderRadius: 12 },
-  saveWarningText: { flex: 1, color: '#704F39', fontSize: 11, lineHeight: 16 },
-  saveWarningButton: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 9, backgroundColor: C.paper },
-  saveWarningButtonText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
-  authInput: { height: 50, borderWidth: 1, borderColor: C.line, borderRadius: 17, backgroundColor: C.paper, paddingHorizontal: 14, color: C.ink, fontSize: 13, marginBottom: 10 },
-  authKeyLabel: { color: '#6F6256', fontSize: 10, letterSpacing: 1.2, fontWeight: '700', marginTop: 5, marginBottom: 7 },
-  authRecoveryKey: { color: C.ink, backgroundColor: '#F5F2ED', borderRadius: 12, padding: 12, fontSize: 12, lineHeight: 19, letterSpacing: 0.5, overflow: 'hidden' },
-  authLink: { alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
-  authLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' },
-  authNotice: { backgroundColor: '#E8EFE5', borderRadius: 12, padding: 11, marginBottom: 14 },
-  authNoticeText: { color: '#435943', fontSize: 12, lineHeight: 16, textAlign: 'center' },
-  authInputInvalid: { borderColor: C.rose, borderWidth: 1.5 },
-  authFieldError: { color: C.rose, fontSize: 12, lineHeight: 17, marginTop: -9, marginBottom: 10 },
-  authPasswordRow: { height: 50, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.line, borderRadius: 17, backgroundColor: C.paper, marginBottom: 14 },
-  authPasswordInput: { flex: 1, height: '100%', paddingHorizontal: 14, color: C.ink, fontSize: 13 },
-  showPasswordButton: { width: 48, height: '100%', alignItems: 'center', justifyContent: 'center' },
-  googleAuthButton: { minHeight: 50, borderRadius: 16, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
-  googleAuthButtonText: { color: C.ink, fontSize: 13, fontWeight: '700' },
-  authDivider: { color: C.muted, fontSize: 9, letterSpacing: 1.2, textAlign: 'center', marginVertical: 16 },
-  authToggle: { alignSelf: 'center', minHeight: 38, justifyContent: 'center', marginTop: 8 },
-  authToggleText: { color: C.cocoa, fontSize: 11, fontWeight: '700' },
-  authScreen: { flex: 1, minHeight: 0, width: '100%', backgroundColor: C.canvas }, authLoadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, backgroundColor: C.canvas }, authLoadingMark: { width: 76, height: 76, borderRadius: 30, overflow: 'hidden', backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLoadingLogo: { width: 76, height: 76, borderRadius: 30 }, authLoadingTitle: { color: C.ink, fontFamily: 'sans-serif-rounded', fontSize: 20, lineHeight: 27, fontWeight: '600', textAlign: 'center', letterSpacing: -0.4 }, authLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 8 }, authLoadingHourglass: { width: 42, height: 64, marginTop: 22, alignItems: 'center', justifyContent: 'center', position: 'relative' }, authLoadingGlassTop: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderTopWidth: 3, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidTop: { width: '100%', backgroundColor: '#D8AD83', borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }, authLoadingGlassNeck: { width: 5, height: 5, backgroundColor: C.cocoa }, authLoadingGlassBottom: { width: 30, height: 25, borderWidth: 2, borderColor: C.cocoa, borderBottomWidth: 3, borderTopLeftRadius: 11, borderTopRightRadius: 11, overflow: 'hidden', justifyContent: 'flex-end' }, authLoadingLiquidBottom: { width: '100%', backgroundColor: '#D8AD83', borderTopLeftRadius: 8, borderTopRightRadius: 8 }, authLoadingShimmer: { position: 'absolute', width: 42, height: 1, backgroundColor: '#E8C6A7', opacity: 0.55 }, authScrollContent: { flexGrow: 1, width: '100%', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 20 }, authScrollContentCompact: { paddingHorizontal: 16, paddingVertical: 16, justifyContent: 'flex-start' }, authScrollContentShort: { justifyContent: 'flex-start', paddingTop: 12, paddingBottom: 18 }, authCard: { width: '100%', maxWidth: 440, backgroundColor: C.paper, borderRadius: 28, padding: 30, borderWidth: 1, borderColor: C.line }, authCardCompact: { borderRadius: 22, padding: 20 }, authCardShort: { paddingTop: 18, paddingBottom: 18 }, authMark: { width: 56, height: 56, borderRadius: 30, overflow: 'hidden', backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }, authLogo: { width: 56, height: 56, borderRadius: 30 }, authEyebrow: { color: C.cocoa, fontSize: 10, letterSpacing: 2, fontWeight: '800', marginBottom: 10 }, authTitle: { color: C.ink, fontFamily: 'sans-serif-rounded', fontSize: 30, lineHeight: 37, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, authBody: { color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 12, marginBottom: 24 }, authButton: { minHeight: 52, borderRadius: 16, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, authBiometricButton: { minHeight: 46, width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 15, borderWidth: 1, borderColor: '#DCCBBB', backgroundColor: '#F4E8DE', marginTop: 10 }, authBiometricText: { color: C.cocoaDark, fontFamily: 'sans-serif-rounded', fontSize: 13, fontWeight: '700' },
-  authButtonText: { color: C.white, fontFamily: 'sans-serif-rounded', fontSize: 13, fontWeight: '700' }, authFootnote: { color: '#706458', fontSize: 11, lineHeight: 15, textAlign: 'center', marginTop: 14 }, authError: { backgroundColor: '#FCE9E3', borderRadius: 12, padding: 11, marginBottom: 14 }, authErrorText: { color: '#8D473F', fontSize: 12, lineHeight: 16, textAlign: 'center' },
-  root: { flex: 1, flexDirection: 'row', backgroundColor: C.canvas }, main: { flex: 1, minWidth: 0 },
-  pagerFrame: { flex: 1, width: '100%', minWidth: 0, height: '100%' },
-  newChatButton: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#D8D7D1', backgroundColor: '#FFFFFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 30, shadowColor: '#302821', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, newChatButtonCollapsed: { paddingHorizontal: 0, justifyContent: 'center' }, newChatGlyph: { color: C.cocoa, fontSize: 20, lineHeight: 23 }, newChatLabel: { color: C.ink, fontSize: 13, fontWeight: '600' },
-  headerPinnedButton: { backgroundColor: '#EEE5DB' }, headerPinnedButtonLabel: { color: C.cocoaDark },
-  accountCard: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, borderRadius: 14 }, accountCardCollapsed: { justifyContent: 'center', paddingHorizontal: 0 }, accountAvatar: { width: 34, height: 34, borderRadius: 30, backgroundColor: '#E4DDD4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, accountAvatarImage: { width: 34, height: 34, borderRadius: 30 }, accountAvatarText: { color: C.cocoaDark, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 }, accountCopy: { flex: 1 }, accountTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, accountSubtitle: { color: C.muted, fontSize: 11, marginTop: 3 }, accountArrow: { color: '#938A80', fontSize: 22 },
-  sidebar: { width: 258, minWidth: 0, flexShrink: 0, overflow: 'hidden', backgroundColor: '#F3F2EF', borderRightWidth: 1, borderRightColor: '#E9E8E4', paddingHorizontal: 18, paddingTop: 24, paddingBottom: 16 }, sidebarCollapseButton: { width: 34, height: 34, borderRadius: 11, marginLeft: 'auto', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAE8E3' }, sidebarCollapseButtonCollapsed: { marginLeft: 0 }, sidebarCollapseGlyph: { color: C.cocoa, fontSize: 23, lineHeight: 25, fontWeight: '500' },
-  sidebarBrand: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 24, minWidth: 0 }, sidebarBrandCollapsed: { flexDirection: 'column', gap: 10, marginBottom: 20, width: '100%' }, sidebarIdentity: { flexDirection: 'row', alignItems: 'center', gap: 11, flex: 1, minWidth: 0 }, sidebarIdentityCollapsed: { flex: 0 }, brandMark: { width: 42, height: 42, borderRadius: 30, overflow: 'hidden', backgroundColor: C.canvas, justifyContent: 'center', alignItems: 'center' }, brandLogo: { width: 42, height: 42, borderRadius: 30 }, brandCopy: { justifyContent: 'center' }, brandName: { color: C.ink, fontFamily: 'sans-serif-rounded', fontSize: 17, letterSpacing: -0.4, fontWeight: '700' }, sidebarCaption: { color: C.muted, fontSize: 12, marginTop: 2 }, sidebarLabel: { color: '#69675F', fontSize: 10, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginLeft: 12 },
-  navButton: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 11, minWidth: 0 }, navButtonCollapsed: { justifyContent: 'center', paddingHorizontal: 0 }, navButtonSelected: { backgroundColor: '#E7E5E0' }, navIcon: { width: 22, textAlign: 'center', fontSize: 19, color: '#887C71' }, navIconSelected: { color: C.cocoa }, navLabel: { color: '#756A60', fontSize: 13, fontWeight: '500', flex: 1 }, navLabelCollapsed: { position: 'absolute' }, navLabelSelected: { color: C.cocoaDark, fontWeight: '700' }, navDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.cocoa },
-  sidebarBottom: { marginTop: 'auto' }, sidebarRule: { height: 1, backgroundColor: '#E2D9CD', marginBottom: 20 }, localNoteIcon: { width: 32, height: 32, backgroundColor: '#E7E5E0', borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }, localNoteGlyph: { color: C.cocoa, fontSize: 17 }, localNoteTitle: { color: C.ink, fontSize: 12, fontWeight: '700', marginBottom: 5 }, localNoteBody: { color: C.muted, fontSize: 11, lineHeight: 17 },
-  topbar: { height: 66, borderBottomWidth: 1, borderBottomColor: '#ECEBE7', paddingHorizontal: 28, flexDirection: 'row', alignItems: 'center', backgroundColor: C.paper }, mobileTopbar: { height: 64, paddingHorizontal: 18 }, topbarContext: { marginLeft: 28, paddingLeft: 28, borderLeftWidth: 1, borderLeftColor: C.line, color: C.muted, fontSize: 13, flex: 1 }, accountHandle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginLeft: 'auto', marginRight: 0 }, brandSub: { color: C.cocoaDark, fontFamily: 'sans-serif-rounded', fontSize: 13, fontWeight: '700', marginTop: 3 },
-  contentArea: { flex: 1, minHeight: 0 }, chatPage: { flex: 1 }, chatHeader: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, chatHeaderWide: { paddingHorizontal: 48, paddingTop: 20, paddingBottom: 14 }, chatHeaderCopy: { flex: 1 }, chatSubtitle: { color: C.muted, fontSize: 12, marginTop: 6 }, privatePill: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: '#E6E5E1', borderRadius: 20, paddingHorizontal: 11, paddingVertical: 7, backgroundColor: C.paper }, privateDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#7A9875' }, privateLabel: { color: C.green, fontSize: 10, fontWeight: '600' }, eyebrow: { color: C.cocoa, fontSize: 9, letterSpacing: 1.7, fontWeight: '700', marginBottom: 7 }, pageTitle: { color: C.ink, fontFamily: 'sans-serif-rounded', fontSize: 23, fontWeight: '700', letterSpacing: -0.45 }, headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },   servicePill: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 }, serviceDot: { width: 6, height: 6, backgroundColor: '#BC9E79', borderRadius: 4 }, serviceText: { color: C.muted, fontSize: 10, fontWeight: '600' }, moreButton: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.line }, moreGlyph: { color: C.muted, fontSize: 20, lineHeight: 23, marginTop: -10 }, historyGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 },
-  chatActionsMenuButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 13, paddingHorizontal: 8 }, chatActionsMenuGlyph: { color: C.cocoaDark, fontSize: 24, lineHeight: 27, fontWeight: '700' }, chatActionsModalRoot: { flex: 1, justifyContent: 'flex-end' }, chatActionsScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(35, 29, 24, 0.28)' }, chatActionsSheet: { paddingHorizontal: 20, paddingTop: 18, backgroundColor: C.paper, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderColor: C.line, gap: 8 }, chatActionsSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }, chatActionsSheetTitle: { fontSize: 16, fontWeight: '700', color: C.cocoaDark }, chatActionsDismiss: { minHeight: 40, paddingHorizontal: 10, justifyContent: 'center' }, chatActionsDismissText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, chatActionsSheetItem: { minHeight: 48, justifyContent: 'center', borderRadius: 13, backgroundColor: C.paperAlt, paddingHorizontal: 14 }, chatActionsSheetItemText: { fontSize: 13, fontWeight: '600', color: C.cocoaDark }, chatScrollWrap: { flex: 1, minHeight: 0, position: 'relative' }, chatScroll: { flex: 1 }, jumpToLatestButton: { position: 'absolute', alignSelf: 'center', bottom: 10, minHeight: 40, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: '#DDD4C9', backgroundColor: C.paper, shadowColor: '#302821', shadowOpacity: 0.1, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 3 }, jumpToLatestText: { color: C.cocoaDark, fontSize: 12, fontWeight: '700' }, chatContent: { paddingHorizontal: 20, paddingBottom: 26, flexGrow: 1 }, chatContentWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64 }, emptyContent: { justifyContent: 'center' }, emptyState: { width: '100%', maxWidth: 720, alignSelf: 'center', alignItems: 'center', paddingTop: 14, paddingBottom: 20 }, emptyHeroMark: { width: 60, height: 60, borderRadius: 30, overflow: 'hidden', backgroundColor: '#FAF6ED', alignItems: 'center', justifyContent: 'center', marginBottom: 20, shadowColor: C.cocoa, shadowOpacity: 0.15, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 }, emptyHeroLogo: { width: 90, height: 90, borderRadius: 30 }, emptyGreeting: { color: C.ink, fontSize: 30, lineHeight: 38, fontWeight: '600', letterSpacing: -0.9, textAlign: 'center' }, emptyDescription: { maxWidth: 440, color: C.muted, fontSize: 14, lineHeight: 22, textAlign: 'center', marginTop: 9, marginBottom: 28 }, starterGrid: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }, starterCard: { width: '31.8%', minWidth: 175, minHeight: 92, borderRadius: 18, borderWidth: 1, borderColor: '#E7E4DE', backgroundColor: '#FFFFFF', padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10, shadowColor: '#302821', shadowOpacity: 0.025, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, starterCardMobile: { width: '48%', minWidth: 120, minHeight: 78, padding: 10, gap: 7 }, starterCardPressed: { backgroundColor: '#F8F6F2', borderColor: '#D4C8BA' }, starterIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F3F0EB', alignItems: 'center', justifyContent: 'center' }, starterIconText: { color: C.cocoa, fontSize: 17 }, starterCopy: { flex: 1 }, starterTitle: { color: C.ink, fontSize: 11, fontWeight: '700' }, starterDescription: { color: C.muted, fontSize: 10, lineHeight: 14, marginTop: 4 }, starterArrow: { color: '#6F6256', fontSize: 13, alignSelf: 'flex-start' }, conversationColumn: { width: '100%', maxWidth: 760, alignSelf: 'center' }, dayDivider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 10, marginBottom: 24 }, dividerLine: { height: 1, backgroundColor: C.line, flex: 1 }, dayText: { color: '#75665A', fontSize: 9, letterSpacing: 1.5, fontWeight: '700' },
-  connectCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F2ECE3', borderRadius: 16, padding: 14, marginTop: 22, marginLeft: 44, gap: 12, maxWidth: 555 }, connectIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: C.paper, alignItems: 'center', justifyContent: 'center' }, connectIconText: { color: C.cocoa, fontSize: 17 }, connectCopy: { flex: 1 }, connectTitle: { fontSize: 12, fontWeight: '700', color: C.ink, marginBottom: 4 }, connectBody: { fontSize: 11, color: C.muted, lineHeight: 16 }, connectArrow: { color: C.cocoa, fontSize: 24 }, promptWrap: { marginTop: 22, marginLeft: 44 }, promptHeading: { color: '#796D62', fontSize: 11, fontWeight: '600', marginBottom: 10, marginLeft: 2 }, promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, promptChip: { borderWidth: 1, borderColor: '#E3D9CD', backgroundColor: '#FBF8F3', borderRadius: 18, paddingHorizontal: 14, minHeight: 38, justifyContent: 'center' }, promptChipText: { color: C.cocoaDark, fontSize: 11, fontWeight: '500' },
-  messageRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginTop: 14 }, messageRowYou: { justifyContent: 'flex-end' }, messageBubble: { maxWidth: '82%', paddingHorizontal: 15, paddingVertical: 11, borderRadius: 19, shadowColor: '#75513D', shadowOpacity: 0.045, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, chatMessageImage: { width: 280, height: 280, maxWidth: '100%', borderRadius: 14, marginBottom: 8, backgroundColor: C.paperAlt }, stickerMessageRow: { alignSelf: 'flex-start', marginLeft: 48, marginTop: 3, marginBottom: 9, alignItems: 'flex-start' }, chatStickerStandalone: { width: 104, height: 104 }, stickerMessageTime: { color: C.muted, fontSize: 9, marginTop: 2, marginLeft: 4 },
-  chatSticker: { width: 88, height: 88, marginTop: 6, marginBottom: 2, alignSelf: 'flex-start' }, teddyBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderTopLeftRadius: 4 }, userBubble: { backgroundColor: C.cocoa, borderBottomRightRadius: 4 }, messageText: { color: C.ink, fontFamily: 'sans-serif-rounded', fontSize: 14, lineHeight: 21 }, markdownReply: { gap: 2 }, markdownStrong: { color: C.ink, fontWeight: '700' }, markdownItalic: { fontStyle: 'italic' }, markdownStrike: { textDecorationLine: 'line-through' }, markdownInlineCode: { color: '#61492F', backgroundColor: '#F2EDE4', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }, markdownLink: { color: '#76552F', textDecorationLine: 'underline' }, markdownHeading: { fontWeight: '700', marginTop: 5, marginBottom: 5 }, markdownHeadingLarge: { fontSize: 19 }, markdownListRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 }, markdownListText: { flex: 1 }, markdownFence: { color: C.ink, backgroundColor: '#F5F2ED', borderRadius: 8, padding: 10, marginVertical: 5, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, lineHeight: 18 }, markdownQuote: { borderLeftColor: '#D9B879', borderLeftWidth: 3, paddingLeft: 10, marginLeft: 0, marginVertical: 4 }, markdownRule: { height: 1, backgroundColor: C.line, marginVertical: 7 }, userMessageText: { color: C.white }, messageTime: { color: C.muted, fontSize: 9, textAlign: 'right', marginTop: 5 }, userMessageTime: { color: '#E8D9CC' }, sendingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10, marginBottom: 8 }, typingBubble: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 10 }, typingText: { color: C.muted, fontSize: 12, fontWeight: '600' }, errorBanner: { backgroundColor: '#FCE9E3', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 }, errorText: { color: '#8D473F', fontSize: 11, lineHeight: 16 }, retryButton: { alignSelf: 'flex-start', marginTop: 8, minHeight: 30, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#FFFFFF' }, retryButtonText: { color: '#8D473F', fontSize: 11, fontWeight: '700' },
-  composerWrap: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, backgroundColor: C.canvas }, composerWrapWide: { maxWidth: 900, width: '100%', alignSelf: 'center', paddingHorizontal: 64, paddingTop: 12, paddingBottom: 18 }, composerCard: { minHeight: 62, maxWidth: 760, alignSelf: 'center', width: '100%', flexDirection: 'row', alignItems: 'flex-end', gap: 9, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 22, paddingHorizontal: 10, paddingVertical: 6, shadowColor: '#302821', shadowOpacity: 0.065, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 2 }, composerCardFocused: { borderColor: '#B49A83', shadowColor: C.cocoa, shadowOpacity: 0.14, shadowRadius: 17, shadowOffset: { width: 0, height: 0 }, elevation: 3 }, voiceButton: { width: 40, height: 40, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }, voiceButtonActive: { backgroundColor: '#F8E9DF', borderColor: '#D5A98F' }, voiceMicIcon: { width: 20, height: 24, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 1 }, voiceMicHead: { width: 7, height: 11, borderWidth: 1.6, borderColor: C.cocoa, borderRadius: 5, marginBottom: 1 }, voiceMicArc: { position: 'absolute', top: 6, width: 14, height: 9, borderWidth: 1.6, borderColor: C.cocoa, borderTopColor: 'transparent', borderRadius: 8 }, voiceMicStem: { width: 2, height: 4, backgroundColor: C.cocoa, marginTop: -1 }, voiceMicBase: { width: 9, height: 2, borderRadius: 1, backgroundColor: C.cocoa, marginTop: 1 }, voiceStopIndicator: { width: 8, height: 8, borderRadius: 2, backgroundColor: C.rose }, speechStatus: { maxWidth: 760, alignSelf: 'center', width: '100%', color: C.cocoaDark, fontSize: 11, marginTop: 6, paddingHorizontal: 4 }, speechError: { maxWidth: 760, alignSelf: 'center', width: '100%', color: C.rose, fontSize: 11, marginTop: 6, paddingHorizontal: 4 }, chatTools: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap', gap: 6, maxWidth: 760, alignSelf: 'center', width: '100%', marginBottom: 7 }, chatToolButton: { flex: 1, minWidth: 0, minHeight: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 14, borderWidth: 1, borderColor: '#E7DED3', backgroundColor: '#FDFBF8', paddingHorizontal: 5 }, chatToolIcon: { color: C.cocoa, fontSize: 13 }, chatToolLabel: { color: C.cocoaDark, fontFamily: 'sans-serif-rounded', fontSize: 9, fontWeight: '700' }, toolIconButton: { width: 31, height: 31, borderRadius: 13, borderWidth: 1, borderColor: '#E7E5E0', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' }, toolIconGlyph: { color: C.cocoa, fontSize: 18, lineHeight: 22 }, attachmentRow: { minHeight: 28, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', borderRadius: 13, backgroundColor: '#F3F0EB', paddingLeft: 9, marginBottom: 6 }, attachmentRemove: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, attachmentRemoveText: { color: C.muted, fontSize: 18 }, attachmentText: { color: C.green, fontSize: 10, fontWeight: '600' }, composer: { minHeight: 56, maxHeight: 140, borderRadius: 20, borderWidth: 1, borderColor: '#DED4C8', backgroundColor: C.paper, flexDirection: 'row', alignItems: 'flex-end', padding: 7, paddingLeft: 16, shadowColor: '#60432F', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1 }, composerDisabled: { opacity: 0.76 }, composerInput: { flex: 1, minWidth: 0, color: C.ink, fontSize: 13, paddingTop: 8, paddingBottom: 6, paddingHorizontal: 7, maxHeight: 88, minHeight: 40 }, sendButton: { flexShrink: 0, width: 42, height: 42, borderRadius: 15, backgroundColor: '#B9A797', justifyContent: 'center', alignItems: 'center' }, sendButtonActive: { backgroundColor: C.cocoa }, sendButtonDisabled: { opacity: 0.72 }, sendArrowIcon: { width: 20, height: 20, position: 'relative' }, sendArrowShaft: { position: 'absolute', left: 2, top: 9, width: 15, height: 1.7, borderRadius: 1, backgroundColor: C.white, transform: [{ rotate: '-45deg' }] }, sendArrowTop: { position: 'absolute', left: 9, top: 3, width: 8, height: 1.7, borderRadius: 1, backgroundColor: C.white }, sendArrowRight: { position: 'absolute', right: 3, top: 3, width: 1.7, height: 8, borderRadius: 1, backgroundColor: C.white }, composerFootnote: { color: '#706458', fontSize: 11, textAlign: 'center', marginTop: 8, lineHeight: 14 },
-  bottomNav: { minHeight: 70, borderTopWidth: 1, borderTopColor: 'rgba(232, 217, 202, 0.75)', backgroundColor: 'rgba(247, 240, 231, 0.96)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingTop: 5, paddingHorizontal: 3 }, bottomNavItem: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 2, borderRadius: 13, paddingHorizontal: 1, paddingVertical: 3 }, bottomNavItemActive: { backgroundColor: 'rgba(255, 255, 255, 0.62)', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.92)', shadowColor: '#75513D', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 }, bottomIcon: { fontSize: 19, color: '#75685C', lineHeight: 23 }, bottomIconActive: { color: C.cocoaDark }, bottomLabel: { fontSize: 10, color: '#6F6256', fontWeight: '500' }, bottomLabelActive: { color: C.cocoaDark, fontWeight: '700' }, bottomNavPlusAction: { flex: 1, minWidth: 0, minHeight: 50, alignItems: 'center', justifyContent: 'center' }, bottomNavPlusBox: { width: 46, height: 46, borderRadius: 14, backgroundColor: C.cocoa, alignItems: 'center', justifyContent: 'center', shadowColor: '#302821', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3 }, bottomNavPlusGlyph: { color: C.white, fontSize: 29, lineHeight: 32, fontWeight: '400', includeFontPadding: false }, squeezePressed: { transform: [{ scale: 0.965 }] },
-  pageScroll: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 32 }, pageScrollWide: { width: '100%', maxWidth: 900, alignSelf: 'center', paddingHorizontal: 48, paddingTop: 38 },
-  emotionsPageScroll: { padding: 18, paddingBottom: 36, alignItems: 'stretch' }, emotionsPageScrollWide: { padding: 28 }, pageIntro: { marginBottom: 22 }, pageDescription: { color: C.muted, fontFamily: 'sans-serif-rounded', fontSize: 13, lineHeight: 20, marginTop: 9, maxWidth: 580 }, memoryNotice: { flexDirection: 'row', gap: 12, padding: 15, borderRadius: 16, backgroundColor: '#F1E9DE', marginBottom: 27 }, noticeIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#E7DDD1', alignItems: 'center', justifyContent: 'center' }, noticeGlyph: { fontSize: 17, color: C.cocoa }, noticeCopy: { flex: 1 }, noticeTitle: { color: C.cocoaDark, fontSize: 12, fontWeight: '700', marginBottom: 4 }, noticeBody: { color: '#796D62', fontSize: 11, lineHeight: 17 }, sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: '#6F6256', fontSize: 10, letterSpacing: 1.3, fontWeight: '700' }, countText: { color: C.cocoa }, addLink: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 6 }, addLinkText: { color: C.cocoa, fontSize: 12, fontWeight: '700' }, memoryCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 15, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 16, marginBottom: 10 }, memoryMark: { width: 32, height: 32, backgroundColor: C.peachLight, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryMarkText: { color: C.cocoa, fontSize: 16 }, memoryCopy: { flex: 1, paddingTop: 2 }, memoryText: { color: C.ink, fontSize: 13, lineHeight: 20 }, memoryDate: { color: '#75685C', fontSize: 10, marginTop: 7 }, memoryActions: { flexDirection: 'row', gap: 3 }, memoryAction: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, memoryActionGlyph: { color: '#6E6054', fontSize: 17 }, deleteGlyph: { color: '#855748', fontSize: 22 }, memoriesFootnote: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 10 }, emptyCard: { alignItems: 'center', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 28, marginTop: 4 }, emptyMark: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyGlyph: { color: C.cocoa, fontSize: 21 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700' }, emptyBody: { color: C.muted, fontSize: 12, lineHeight: 18, textAlign: 'center', maxWidth: 280, marginTop: 7, marginBottom: 17 },
-  privacyBackButton: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12, alignSelf: 'flex-start' }, privacyBackText: { color: C.cocoa, fontFamily: 'sans-serif-rounded', fontSize: 12, fontWeight: '700' },
-  privacyBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: C.greenLight, borderRadius: 16, marginBottom: 27 }, privacyShield: { width: 35, height: 35, backgroundColor: '#D7E3D4', borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, shieldGlyph: { color: C.green, fontSize: 19 }, privacyCopy: { flex: 1 }, privacyTitle: { color: '#435943', fontSize: 13, fontWeight: '700', marginBottom: 5 }, privacyBody: { color: '#65745F', fontSize: 12, lineHeight: 17 }, settingsSectionLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.3, fontWeight: '700', marginBottom: 10, marginTop: 3 }, settingsCard: { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, paddingHorizontal: 15, marginBottom: 23 }, settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 }, settingIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' }, settingGlyph: { color: C.cocoa, fontSize: 15 }, settingText: { flex: 1 }, settingTitle: { color: C.ink, fontFamily: 'sans-serif-rounded', fontSize: 12, fontWeight: '700', lineHeight: 17 }, settingDescription: { color: C.muted, fontSize: 12, lineHeight: 15, marginTop: 3 }, switchHitArea: { padding: 2 }, switchTrack: { width: 42, height: 25, borderRadius: 14, padding: 3, justifyContent: 'center' }, switchThumb: { width: 19, height: 19, borderRadius: 10, backgroundColor: C.white }, settingSeparator: { height: 1, backgroundColor: C.line, marginLeft: 44 }, gatewaySection: { borderRadius: 18 }, gatewaySectionFocused: { borderWidth: 1, borderColor: '#D6BAA5', padding: 10, marginHorizontal: -10, marginBottom: 14, backgroundColor: '#F8F0E8' }, gatewayIntro: { flexDirection: 'row', gap: 11, paddingTop: 16, paddingBottom: 14 }, gatewayIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, gatewayGlyph: { color: C.cocoa, fontSize: 16 }, inputLabel: { color: '#6F6256', fontSize: 11, letterSpacing: 1.1, fontWeight: '700', marginBottom: 7 }, gatewayInput: { height: 45, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 12 }, gatewayActions: { paddingTop: 11, paddingBottom: 15, gap: 9 }, connectionStatus: { color: C.muted, fontSize: 11, lineHeight: 15 }, connectionReady: { color: C.green }, connectionError: { color: C.rose }, clearRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 15 }, clearIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#F8EAE5', alignItems: 'center', justifyContent: 'center' }, clearGlyph: { color: C.rose, fontSize: 16 }, clearButton: { minHeight: 36, minWidth: 54, borderRadius: 11, borderWidth: 1, borderColor: '#E7D8D2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 }, clearButtonText: { color: C.rose, fontSize: 11, fontWeight: '700' }, versionText: { textAlign: 'center', color: '#6E6258', fontSize: 10, letterSpacing: 1.4, marginTop: 2, marginBottom: 16 },
-  button: { minHeight: 48, backgroundColor: C.cocoa, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 }, buttonQuiet: { backgroundColor: '#F2ECE4' }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: C.white, fontSize: 12, fontWeight: '700' }, buttonTextQuiet: { color: C.cocoaDark }, pressed: { opacity: 0.88 }, disabledText: { color: '#6E6258' },
-  localLoadingScreen: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: C.canvas },
-  localLoadingTitle: { color: C.ink, fontSize: 21, lineHeight: 28, fontWeight: '600', textAlign: 'center' },
-  localLoadingBody: { color: C.muted, fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: 8 },
-  localLoadingColumn: { width: '100%', maxWidth: 560, marginTop: 28, gap: 12 },
-  skeletonHeading: { width: 110, height: 11, borderRadius: 6, backgroundColor: '#EAE8E3', marginBottom: 4 },
-  skeletonBubble: { height: 42, borderRadius: 15, backgroundColor: '#EEECE7' },
-  skeletonBubbleWide: { width: '72%' },
-  skeletonBubbleShort: { width: '54%' },
-  skeletonBubbleRight: { width: '60%', alignSelf: 'flex-end', backgroundColor: '#E9E3DC' },
-  skeletonComposer: { height: 54, borderRadius: 18, borderWidth: 1, borderColor: '#E8E5DF', backgroundColor: C.paper, marginTop: 16 },
-  profilePhotoButton: { backgroundColor: 'transparent', borderRadius: 20, overflow: 'hidden' },
-  sidebarChatList: { flex: 1, flexShrink: 1, minWidth: 0, width: '100%', minHeight: 80, marginHorizontal: -5 }, sidebarChatListCollapsed: { marginHorizontal: 0 },
-  crisisSupport: { backgroundColor: '#F8EAE5', borderColor: '#E6C6B9', borderWidth: 1, borderRadius: 15, padding: 15, marginTop: 14 }, widgetDismiss: { alignSelf: 'flex-end', minHeight: 30, justifyContent: 'center', paddingHorizontal: 8 }, widgetDismissText: { color: '#70483F', fontSize: 10, fontWeight: '700' },
-  crisisSupportTitle: { color: '#70483F', fontSize: 13, fontWeight: '700', marginBottom: 7 },
-  crisisSupportBody: { color: '#5D3F38', fontSize: 12, lineHeight: 17 },
-  crisisCallLink: { alignSelf: 'flex-start', minHeight: 42, justifyContent: 'center', marginTop: 7, paddingHorizontal: 13, borderRadius: 12, backgroundColor: '#70483F' },
-  crisisCallLinkText: { color: C.white, fontSize: 12, fontWeight: '700' },
-  crisisHelplineTitle: { color: '#70483F', fontSize: 11, fontWeight: '700', marginTop: 11 },
-  crisisHelplineActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  crisisSupportLink: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', marginTop: 6, paddingVertical: 4 },
-  crisisSupportLinkText: { color: '#70483F', fontSize: 11, fontWeight: '700', textDecorationLine: 'underline' },
-  crisisSupportFootnote: { color: '#655149', fontSize: 10, lineHeight: 14, marginTop: 2 },
-  memorySuggestionCard: { alignSelf: 'flex-start', maxWidth: '82%', backgroundColor: '#F1E9DE', borderColor: '#E5D8C6', borderWidth: 1, borderRadius: 15, padding: 13, marginTop: 9, marginLeft: 35 }, occasionWidget: { alignSelf: 'center', width: '100%', maxWidth: 650, backgroundColor: '#F1E9DE', borderColor: '#E5D8C6', borderWidth: 1, borderRadius: 16, padding: 14, marginTop: 12 }, occasionTitle: { color: C.cocoaDark, fontSize: 13, fontWeight: '700' }, occasionDescription: { color: C.muted, fontSize: 11, lineHeight: 15, marginTop: 5 }, occasionInput: { minHeight: 76, maxHeight: 140, borderWidth: 1, borderColor: '#E4D8C9', borderRadius: 12, backgroundColor: C.paper, color: C.ink, fontSize: 12, lineHeight: 17, padding: 10, marginTop: 10 }, occasionPrivacy: { color: C.muted, fontSize: 11, lineHeight: 14, marginTop: 6 },
-  memorySuggestionTitle: { color: C.cocoaDark, fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  memorySuggestionFact: { color: C.ink, fontSize: 13, lineHeight: 19, fontWeight: '600', marginTop: 7 },
-  memorySuggestionBody: { color: C.muted, fontSize: 11, lineHeight: 15, marginTop: 7 },
-  memorySuggestionActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 11 },
-  mobileHistoryPage: { flex: 1, paddingHorizontal: 20, paddingTop: 26, paddingBottom: 20 },
-  historyPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 20 },
-  historyPageHeaderCopy: { flex: 1, minWidth: 0 },
-  mobileHistorySearch: { minHeight: 48, marginTop: 12, marginBottom: 4, borderWidth: 1, borderColor: C.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, backgroundColor: C.paper, color: C.ink, fontSize: 14 },
-  mobileHistoryList: { flex: 1, marginTop: 12 },
-  mobileHistoryListContent: { paddingBottom: 18 },
-  profileTextButton: { width: 'auto', minWidth: 66, paddingHorizontal: 10 },
-  settingsCardForm: { width: '100%', backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 17, padding: 16, marginBottom: 20, gap: 10 },
-  settingDivider: { height: 1, backgroundColor: C.line, marginVertical: 4 },
-  characterChoices: { gap: 8, marginVertical: 4 },
-  characterChoice: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: C.line, backgroundColor: '#FDFCFA', borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9 },
-  characterChoiceSelected: { borderColor: '#B89668', backgroundColor: '#F8F0E5' },
-  characterChoiceIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#F2E9DC', alignItems: 'center', justifyContent: 'center' },
-  characterChoiceCopy: { flex: 1, gap: 3 },
-  characterChoiceName: { color: C.ink, fontSize: 13, fontWeight: '700' },
-  characterChoiceTagline: { color: C.muted, fontSize: 11 },
-  characterChoiceCheck: { color: C.cocoa, fontSize: 17, fontWeight: '700', paddingHorizontal: 4 },
-  formLabel: { color: C.ink, fontSize: 12, fontWeight: '700' },
-  aboutMeInput: { width: '100%', minHeight: 128, maxHeight: 240, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', padding: 12, color: C.ink, fontSize: 13, lineHeight: 19 },
-  settingsTextInput: { width: '100%', minHeight: 44, borderWidth: 1, borderColor: C.line, borderRadius: 12, backgroundColor: '#FDFCFA', paddingHorizontal: 12, color: C.ink, fontSize: 13 },
-  backupPassphraseInput: { marginTop: 6 },
-  backupActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  backupStatus: { color: C.green, fontSize: 11, lineHeight: 16 },
-  backupFootnote: { color: C.muted, fontSize: 10, lineHeight: 15 },
-  chatPinnedIcon: { fontSize: 11 },
-  headerTextButton: { minHeight: 38, borderRadius: 13, backgroundColor: '#F1F1EE', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
-  headerActionLabel: { color: C.ink, fontSize: 11, fontWeight: '600' },
-  memoryActionTextButton: { minHeight: 32, minWidth: 42, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
-  memoryActionText: { color: '#76695E', fontSize: 10, fontWeight: '600' },
-  typingIndicator: { minWidth: 48, height: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 16, borderTopLeftRadius: 4, paddingHorizontal: 12 },
-  typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.muted },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(45, 36, 29, 0.35)', alignItems: 'center', justifyContent: 'center', padding: 20 }, modalCard: { width: '100%', maxWidth: 460, backgroundColor: C.paper, borderRadius: 22, padding: 22 }, modalTopline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }, modalIcon: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' }, modalIconText: { color: C.cocoa, fontSize: 18 }, closeButton: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.paperAlt }, closeText: { color: C.muted, fontSize: 22, lineHeight: 24 }, modalTitle: { color: C.ink, fontFamily: 'sans-serif-rounded', fontWeight: '700', fontSize: 20, letterSpacing: -0.4 }, modalBody: { color: C.muted, fontSize: 12, lineHeight: 18, marginTop: 7, marginBottom: 16 }, memoryInput: { minHeight: 100, maxHeight: 180, backgroundColor: '#F9F6F1', borderColor: C.line, borderWidth: 1, borderRadius: 14, padding: 13, color: C.ink, fontSize: 13, lineHeight: 19 }, modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 17 }, suggestedFact: { color: C.ink, fontSize: 15, lineHeight: 22, fontWeight: '600', backgroundColor: '#F9F6F1', borderRadius: 14, padding: 13, marginTop: 12 }, historyCard: { width: '100%', maxWidth: 560, maxHeight: '85%', backgroundColor: C.paper, borderRadius: 22, padding: 22 }, historyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 }, historyList: { maxHeight: 430, marginTop: 14 }, historyItemWrap: { position: 'relative', width: '100%', minWidth: 0, marginBottom: 6 }, historyItem: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 3, paddingHorizontal: 4, paddingVertical: 4, borderRadius: 13, borderWidth: 1, borderColor: 'transparent' }, historyItemOpen: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, borderRadius: 10 }, historyItemSelected: { backgroundColor: '#F2E5C9', borderColor: '#D9B879' }, chatMenuTrigger: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, chatMenuDots: { color: C.muted, fontSize: 16, fontWeight: '700', letterSpacing: 1 }, chatActionMenu: { backgroundColor: C.paper, borderColor: C.line, borderWidth: 1, borderRadius: 12, padding: 5, marginHorizontal: 5, marginTop: -1, shadowColor: '#302821', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, chatActionItem: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 11, borderRadius: 8 }, chatActionText: { color: C.ink, fontSize: 12, fontWeight: '500' }, chatActionDelete: { backgroundColor: '#FCF5F2' }, chatActionDeleteText: { color: C.rose }, historyItemCopy: { flex: 1, minWidth: 0 }, historyItemTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, historyItemTitleSelected: { color: '#5A422C' }, historyItemPreview: { color: C.muted, fontSize: 11, marginTop: 5 }, historyEmpty: { textAlign: 'center', color: C.muted, fontSize: 12, lineHeight: 19, padding: 20 }, memorySuggestionError: { color: C.rose, fontSize: 11, lineHeight: 16, paddingHorizontal: 8, paddingVertical: 8 },
-  journalNotice: { backgroundColor: C.greenLight, borderRadius: 12, padding: 12, marginBottom: 12 },
-  journalNoticeText: { color: C.green, fontSize: 12, lineHeight: 17 },
-  journalDismiss: { alignSelf: 'flex-end', paddingVertical: 4, paddingHorizontal: 8 },
-  journalDismissText: { color: C.cocoaDark, fontSize: 11, fontWeight: '700' },
-  journalEditorCard: { borderWidth: 1, borderColor: C.line, borderRadius: 22, padding: 16, marginTop: 4, backgroundColor: C.paper },
-  journalPrompts: { marginVertical: 10 },
-  journalPromptChip: { paddingVertical: 10, paddingHorizontal: 11, borderRadius: 12, marginRight: 7, borderWidth: 1, borderColor: C.line, backgroundColor: '#F5ECE5' },
-  journalPromptChipSelected: { backgroundColor: '#E7D0C2', borderColor: '#D6BBA9' },
-  journalPromptText: { fontSize: 12, color: C.cocoaDark },
-  journalTextInput: { minHeight: 48, borderWidth: 1, borderColor: C.line, borderRadius: 13, padding: 12, color: C.cocoaDark, marginBottom: 10, backgroundColor: '#FDFCFA', fontSize: 14 },
-  journalBodyInput: { minHeight: 160, lineHeight: 21 },
-  journalEditorActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 2 },
-  journalSaveButton: { minHeight: 48, borderRadius: 14, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: C.cocoaDark },
-  journalSaveButtonText: { color: C.white, fontSize: 12, fontWeight: '700' },
-  journalCancelButton: { minHeight: 44, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center' },
-  journalCancelButtonText: { color: C.cocoaDark, fontSize: 12, fontWeight: '600' },
-  journalExportButton: { alignSelf: 'flex-start', minHeight: 46, justifyContent: 'center', paddingVertical: 11, paddingHorizontal: 14, backgroundColor: '#E7D0C2', borderRadius: 13, marginTop: 12 },
-  journalExportButtonText: { color: C.cocoaDark, fontWeight: '700', fontSize: 12 },
-  journalSearchInput: { minHeight: 48, borderWidth: 1, borderColor: C.line, borderRadius: 14, padding: 12, color: C.cocoaDark, marginTop: 18, backgroundColor: C.paper, fontSize: 14 },
-  journalEntryCard: { padding: 15, borderWidth: 1, borderColor: C.line, borderRadius: 17, marginTop: 10, backgroundColor: C.paper },
-  journalEntryTitle: { fontWeight: '700', color: C.cocoaDark, fontSize: 16 },
-  journalEntryMeta: { fontSize: 12, color: C.muted, marginTop: 4 },
-  journalEntryActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
-  journalInlineButton: { minHeight: 42, justifyContent: 'center', paddingVertical: 8 },
-  journalInlineButtonText: { color: '#895B43', fontWeight: '700', fontSize: 12 },
-  journalEntryBody: { color: C.cocoaDark, lineHeight: 21, marginTop: 9, fontSize: 14 },
-  journalDeleteButton: { minHeight: 42, alignSelf: 'flex-end', justifyContent: 'center', paddingHorizontal: 12 },
-  journalDeleteButtonText: { color: '#98594B', fontWeight: '600', fontSize: 12 },
-  journalEmptyText: { color: C.muted, marginTop: 18, lineHeight: 21 },
-  memoryErrorActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6, marginTop: 4 },
-  moreList: { gap: 10 },
-  discoverItemMain: { flex: 1, minWidth: 0, minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingLeft: 13 },
-  discoverInfoButton: { width: 42, height: 58, alignItems: 'center', justifyContent: 'center', marginRight: 5 },
-  discoverInfoGlyph: { width: 21, height: 21, borderRadius: 11, borderWidth: 1.4, borderColor: '#A99A8B', color: '#806D5C', textAlign: 'center', textAlignVertical: 'center', fontSize: 13, lineHeight: 19, fontWeight: '700', overflow: 'hidden' },
-  discoverInfoBackdrop: { flex: 1, backgroundColor: 'rgba(39, 36, 32, 0.28)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  discoverInfoCard: { width: '100%', maxWidth: 360, borderRadius: 22, backgroundColor: C.paper, padding: 21, borderWidth: 1, borderColor: C.line, shadowColor: '#302821', shadowOpacity: 0.12, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
-  discoverInfoTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 },
-  discoverInfoBadge: { width: 36, height: 36, borderRadius: 13, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center' },
-  discoverInfoClose: { width: 34, height: 34, borderRadius: 11, backgroundColor: C.paperAlt, alignItems: 'center', justifyContent: 'center' },
-  discoverInfoCloseText: { color: C.muted, fontSize: 23, lineHeight: 26 },
-  discoverInfoTitle: { color: C.ink, fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
-  discoverInfoDescription: { color: C.muted, fontSize: 13, lineHeight: 20, marginTop: 8 },
-  moreItem: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 17, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper },
-  moreItemIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.peachLight, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  moreItemIcon: { color: C.cocoaDark, fontSize: 21, lineHeight: 25 },
-  moreItemCopy: { flex: 1, minWidth: 0, gap: 3 },
-  moreItemTitle: { color: C.ink, fontSize: 14, fontWeight: '700' },
-  moreItemDescription: { color: C.muted, fontSize: 12, lineHeight: 17 },
-  moreItemChevron: { color: C.muted, fontSize: 25, lineHeight: 29, paddingHorizontal: 4 },
-  stopButton: { backgroundColor: '#7B453E' },
-  stopIcon: { width: 15, height: 15, borderRadius: 3, backgroundColor: C.white },
-});
+
+
+
 
 export default App;

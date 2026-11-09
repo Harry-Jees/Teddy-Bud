@@ -1,10 +1,11 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { AppIcon } from './AppIcon';
-import { RoundedText as Text } from './RoundedText';
+import { teddyTheme } from '../theme';
+import { RoundedText as Text, RoundedTextInput as TextInput } from './RoundedText';
 import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 export type WellbeingSurveyAnswer = { question: string; answer: string };
-type Question = { prompt: string; options: string[] };
+type Question = { prompt: string; options?: string[]; freeText?: boolean };
 
 const QUESTIONS: Question[] = [
   { prompt: 'How has your sleep been lately?', options: ['Very restful', 'Mostly okay', 'A little disrupted', 'Very difficult', 'Prefer not to say'] },
@@ -31,7 +32,7 @@ const QUESTIONS: Question[] = [
   { prompt: 'What tone feels most comfortable?', options: ['Warm and gentle', 'Light and playful', 'Calm and direct', 'Thoughtful and reflective'] },
   { prompt: 'Are there topics you would prefer Teddy Bud not to bring up?', options: ['No particular topics', 'Family', 'Relationships', 'Health', 'Work or studies', 'I will mention them when ready'] },
   { prompt: 'What is one small thing you hope to improve?', options: ['Sleep', 'Stress', 'Balance', 'Connection', 'Confidence', 'Consistency', 'I am not sure yet'] },
-  { prompt: 'Anything else you would like Teddy Bud to know?', options: ['No, that is enough for now', 'I would rather share naturally in chat'] },
+  { prompt: 'Anything else you would like Teddy Bud to know?', freeText: true },
 ];
 
 export function OnboardingSurvey({ onComplete }: { onComplete: (answers: WellbeingSurveyAnswer[], createInitialMap: boolean) => Promise<void> }) {
@@ -100,14 +101,23 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
       <Text style={styles.count}>{index + 1} / {QUESTIONS.length}</Text>
       <Animated.View style={{ transform: [{ translateX: slideX }] }} {...panResponder.panHandlers}>
         <Text style={styles.question}>{question.prompt}</Text>
-        <View style={styles.options}>
-          {question.options.map(option => <Pressable key={option} accessibilityRole="radio" accessibilityState={{ selected: answers[index] === option }} onPress={() => chooseOption(option)} style={[styles.option, answers[index] === option && styles.optionSelected]}>
+        {question.freeText ? <TextInput
+          accessibilityLabel="Anything else you would like Teddy Bud to know?"
+          value={answers[index] ?? ''}
+          onChangeText={value => setAnswers(current => ({ ...current, [index]: value.slice(0, 1200) }))}
+          multiline
+          maxLength={1200}
+          placeholder="Share anything you would like us to know…"
+          placeholderTextColor="#9A8878"
+          style={styles.freeTextInput}
+        /> : <View style={styles.options}>
+          {(question.options ?? []).map(option => <Pressable key={option} accessibilityRole="radio" accessibilityState={{ selected: answers[index] === option }} onPress={() => chooseOption(option)} style={[styles.option, answers[index] === option && styles.optionSelected]}>
             <Text style={[styles.optionText, answers[index] === option && styles.optionTextSelected]}>{option}</Text>
             {answers[index] === option && <AppIcon name="check" color="#75513D" size={17} />}
           </Pressable>)}
-        </View>
+        </View>}
       </Animated.View>
-      {index === QUESTIONS.length - 1 && Object.keys(answers).length > 0 ? <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: createInitialMap }} onPress={() => setCreateInitialMap(value => !value)} style={styles.aiConsent}>
+      {index === QUESTIONS.length - 1 ? <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: createInitialMap }} onPress={() => setCreateInitialMap(value => !value)} style={styles.aiConsent}>
         <View style={[styles.aiConsentBox, createInitialMap && styles.aiConsentBoxChecked]}>{createInitialMap ? <AppIcon name="check" color="#FFFCF7" size={13} /> : null}</View>
         <View style={styles.aiConsentCopy}>
           <Text style={styles.aiConsentTitle}>Create a starting emotion map</Text>
@@ -129,41 +139,42 @@ export function OnboardingSurvey({ onComplete }: { onComplete: (answers: Wellbei
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F7F0E7' },
-  content: { flexGrow: 1, width: '100%', maxWidth: 680, alignSelf: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingTop: 22, paddingBottom: 32 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 },
-  skipTop: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 8 },
-  eyebrow: { color: '#8A735F', fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 12 },
-  title: { color: '#3B3029', fontFamily: 'sans-serif-rounded', fontSize: 25, lineHeight: 32, fontWeight: '700', flex: 1 },
+  screen: { flex: 1, backgroundColor: teddyTheme.colors.canvas },
+  content: { flexGrow: 1, width: '100%', maxWidth: 680, alignSelf: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 32 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }, 
+  skipTop: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 8 },
+  eyebrow: { color: teddyTheme.colors.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1.5, marginBottom: 12 },
+  title: { color: teddyTheme.colors.text, fontFamily: 'sans-serif-rounded', fontSize: 25, lineHeight: 32, fontWeight: '700', flex: 1 },
 
-  progressTrack: { height: 5, backgroundColor: '#E8D9CA', borderRadius: 8, overflow: 'hidden', marginBottom: 12 },
-  progressFill: { height: 5, backgroundColor: '#75513D', borderRadius: 8 },
-  count: { color: '#8A735F', fontSize: 11, fontWeight: '700', letterSpacing: 1.4, marginBottom: 12 },
-  question: { color: '#3B3029', fontFamily: 'sans-serif-rounded', fontSize: 22, lineHeight: 29, fontWeight: '600', marginBottom: 18 },
-  options: { gap: 10 },
-  option: { borderWidth: 1, borderColor: '#E8D9CA', backgroundColor: '#FFFCF7', borderRadius: 14, paddingHorizontal: 15, paddingVertical: 13, minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  optionSelected: { borderColor: '#75513D', backgroundColor: '#F4EEE8' },
-  optionText: { color: '#4C4B46', fontFamily: 'sans-serif-rounded', fontSize: 15 },
-  optionTextSelected: { color: '#514234', fontWeight: '700' },
-  actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 24 },
-  backButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: '#D8D5CE' },
+  progressTrack: { height: 5, backgroundColor: teddyTheme.colors.border, borderRadius: 8, overflow: 'hidden', marginBottom: 12 },
+  progressFill: { height: 5, backgroundColor: teddyTheme.colors.primary, borderRadius: 8 },
+  count: { color: teddyTheme.colors.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1.2, marginBottom: 12 },
+  question: { color: teddyTheme.colors.text, fontFamily: 'sans-serif-rounded', fontSize: 22, lineHeight: 29, fontWeight: '600', marginBottom: 16 },
+  options: { gap: 8 },
+  freeTextInput: { minHeight: 132, borderWidth: 1, borderColor: teddyTheme.colors.border, backgroundColor: teddyTheme.colors.surface, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 16, color: teddyTheme.colors.text, fontSize: 15, lineHeight: 22, textAlignVertical: 'top' },
+  option: { borderWidth: 1, borderColor: teddyTheme.colors.border, backgroundColor: teddyTheme.colors.surface, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 16, minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  optionSelected: { borderColor: teddyTheme.colors.primary, backgroundColor: teddyTheme.colors.primaryContainer },
+  optionText: { color: teddyTheme.colors.textSecondary, fontFamily: 'sans-serif-rounded', fontSize: 15 },
+  optionTextSelected: { color: teddyTheme.colors.onPrimaryContainer, fontWeight: '700' },
+  actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginTop: 24 },
+  backButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1, borderColor: teddyTheme.colors.borderStrong },
   backButtonDisabled: { opacity: 0.5 },
-  disabledText: { color: '#B8B1A8' },
-  swipeHint: { color: '#85837D', fontSize: 12, marginLeft: 'auto' },
-  primary: { minHeight: 48, backgroundColor: '#75513D', borderRadius: 15, paddingVertical: 13, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, flex: 1 },
+  disabledText: { color: teddyTheme.colors.textDisabled },
+  swipeHint: { color: teddyTheme.colors.textSecondary, fontSize: 12, marginLeft: 'auto' },
+  primary: { minHeight: 48, backgroundColor: teddyTheme.colors.primary, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, flex: 1 },
   primaryDisabled: { opacity: 0.42 },
-  primaryText: { color: '#FFFCF7', fontFamily: 'sans-serif-rounded', fontWeight: '700', fontSize: 15 },
+  primaryText: { color: teddyTheme.colors.surface, fontFamily: 'sans-serif-rounded', fontWeight: '700', fontSize: 15 },
 
-  secondaryText: { color: '#514234', fontWeight: '600', fontSize: 15 },
+  secondaryText: { color: teddyTheme.colors.onPrimaryContainer, fontWeight: '600', fontSize: 15 },
   skip: { alignItems: 'center', padding: 16, marginTop: 4 },
-  skipText: { color: '#75513D', fontSize: 14, fontWeight: '600' },
+  skipText: { color: teddyTheme.colors.primary, fontSize: 14, fontWeight: '600' },
 
-  aiConsent: { flexDirection: 'row', alignItems: 'flex-start', gap: 11, padding: 14, borderRadius: 15, borderWidth: 1, borderColor: '#E2D5C9', backgroundColor: '#FBF6F1', marginTop: 20 },
-  aiConsentBox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, borderColor: '#A88D78', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  aiConsentBoxChecked: { backgroundColor: '#75513D', borderColor: '#75513D' },
-  aiConsentTick: { color: '#FFFCF7', fontSize: 14, fontWeight: '700', lineHeight: 17 },
+  aiConsent: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: teddyTheme.colors.border, backgroundColor: teddyTheme.colors.surfaceSoft, marginTop: 24 },
+  aiConsentBox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, borderColor: teddyTheme.colors.borderStrong, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  aiConsentBoxChecked: { backgroundColor: teddyTheme.colors.primary, borderColor: teddyTheme.colors.primary },
+  aiConsentTick: { color: teddyTheme.colors.surface, fontSize: 14, fontWeight: '700', lineHeight: 17 },
   aiConsentCopy: { flex: 1, gap: 5 },
-  aiConsentTitle: { color: '#514234', fontSize: 13, fontWeight: '700' },
-  aiConsentBody: { color: '#857568', fontSize: 11, lineHeight: 16 },
-  error: { color: '#8D473F', marginTop: 12 },
+  aiConsentTitle: { color: teddyTheme.colors.onPrimaryContainer, fontSize: 13, fontWeight: '700' },
+  aiConsentBody: { color: teddyTheme.colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  error: { color: teddyTheme.colors.danger, marginTop: 12 },
 });

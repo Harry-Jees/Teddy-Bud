@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Text } from 'react-native';
-import { BrowserLoginScreen } from '../App';
+import { BrowserLoginScreen } from '../src/components/BrowserLoginScreen';
 
 jest.mock('react-native-safe-area-context', () => ({
   ...jest.requireActual('react-native-safe-area-context'),

@@ -5,7 +5,8 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Animated, Image, Modal, ScrollView, Text } from 'react-native';
-import { ChatPage, EmotionsPage, JournalPage } from '../App';
+import { ChatPage } from '../App';
+import { EmotionsPage, JournalPage } from '../src/screens/WellbeingScreens';
 
 jest.mock('@react-native-documents/picker', () => ({
   errorCodes: { OPERATION_CANCELED: 'OPERATION_CANCELED' },

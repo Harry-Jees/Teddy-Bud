@@ -61,7 +61,6 @@ jobs:
       - run: npm test
 
   android-build:
-    if: ${{ github.event_name != 'pull_request' }}
     name: Android release APK
     runs-on: ubuntu-24.04
     steps:
@@ -111,7 +110,7 @@ jobs:
           if-no-files-found: error
 
   desktop-packages:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     name: Desktop package (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -161,10 +160,25 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: npm ci --prefix client
-      - name: Package desktop application
-        run: npm run ${{ matrix.command }} --prefix client
+      - name: Package desktop application (retry transient download failures)
+        shell: bash
         env:
           DEBUG: electron-builder
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "Desktop packaging attempt ${attempt}/3"
+            if npm run "${{ matrix.command }}" --prefix client; then
+              exit 0
+            fi
+            if (( attempt < 3 )); then
+              delay=$((attempt * 20))
+              echo "Packaging failed; retrying in ${delay}s in case an upstream binary download timed out."
+              sleep "${delay}"
+            fi
+          done
+          echo "Desktop packaging failed after three attempts." >&2
+          exit 1
       - name: Normalize Linux package filenames
         if: matrix.name == 'Linux Debian and AppImage'
         shell: bash

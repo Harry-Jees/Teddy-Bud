@@ -1,4 +1,5 @@
 import React from 'react';
+import { teddyTheme } from '../theme';
 import {
   ArrowRight, BookOpen, Check, ChevronRight, Cloud, Ellipsis, Eye, EyeOff,
   Heart, History, Image, Info, Pencil, Plus, Search, Share2, ShieldCheck,
@@ -36,7 +37,7 @@ const ICONS = {
   eyeOff: EyeOff,
 } as const;
 
-export function AppIcon({ name, color = '#685443', size = 18 }: Props) {
+export function AppIcon({ name, color = teddyTheme.colors.primary, size = 18 }: Props) {
   const Icon = ICONS[name];
   return <Icon color={color} size={size} strokeWidth={1.8} />;
 }
