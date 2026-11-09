@@ -1,85 +1,34 @@
-html,
-body,
-#root {
-  width: 100%;
-  min-width: 320px;
-  min-height: 100%;
-  height: 100%;
-  margin: 0;
-  display: flex;
+:root {
+  color-scheme: light;
+  --tb-canvas:#F7F0E7; --tb-surface:#FFFCF7; --tb-surface-alt:#F1E6DA; --tb-surface-soft:#F8F1EA;
+  --tb-text:#302821; --tb-text-secondary:#6F6256; --tb-primary:#75513D; --tb-primary-dark:#503728;
+  --tb-primary-container:#F0E1D4; --tb-border:#D8C8B8; --tb-focus:#75513D;
+  --tb-space-1:4px; --tb-space-2:8px; --tb-space-3:16px; --tb-space-4:24px;
+  --tb-space-5:32px; --tb-space-6:40px; --tb-space-7:48px; --tb-space-8:64px;
+  --tb-radius-sm:8px; --tb-radius-md:12px; --tb-radius-lg:16px; --tb-radius-xl:24px;
 }
-
-#root {
-  flex: 1 1 auto;
-  width: 100%;
-  min-width: 0;
-  min-height: 0;
-  height: 100dvh;
+html, body, #root { width:100%; min-width:320px; min-height:100%; height:100%; margin:0; display:flex; }
+#root { flex:1 1 auto; width:100%; min-width:0; min-height:0; height:100dvh; }
+body { overflow:hidden; background:var(--tb-canvas); color:var(--tb-text); font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+* { box-sizing:border-box; }
+button, input, textarea, select { font:inherit; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible,
+[role="button"]:focus-visible, [role="radio"]:focus-visible, [role="checkbox"]:focus-visible {
+  outline:3px solid var(--tb-focus); outline-offset:3px;
 }
-
-body {
-  overflow: hidden;
-  background: #f8f8f6;
-  color: #272724;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-button,
-input,
-textarea {
-  font: inherit;
-}
-
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid #b49a83;
-  outline-offset: 2px;
-  border-radius: 14px;
-}
-
-textarea[aria-label="Write a message"]:focus-visible {
-  outline: none;
-}
-
-[data-typing-dot] {
-  animation: teddy-bud-typing 900ms ease-in-out infinite;
-}
-
-[data-typing-dot]:nth-child(2) {
-  animation-delay: 150ms;
-}
-
-[data-typing-dot]:nth-child(3) {
-  animation-delay: 300ms;
-}
-
+textarea[aria-label="Write a message"]:focus-visible { outline:3px solid var(--tb-focus); outline-offset:2px; }
+::selection { background:#E7D0C2; color:var(--tb-primary-dark); }
+a { color:var(--tb-primary-dark); }
+[data-typing-dot] { animation:teddy-bud-typing 900ms ease-in-out infinite; }
+[data-typing-dot]:nth-child(2) { animation-delay:150ms; }
+[data-typing-dot]:nth-child(3) { animation-delay:300ms; }
 @keyframes teddy-bud-typing {
-  0%,
-  60%,
-  100% {
-    opacity: 0.55;
-    transform: translateY(0);
-  }
-
-  30% {
-    opacity: 1;
-    transform: translateY(-4px);
-  }
+  0%,60%,100% { opacity:.55; transform:translateY(0); }
+  30% { opacity:1; transform:translateY(-4px); }
 }
-
 @media (prefers-reduced-motion: reduce) {
-  [data-typing-dot] {
-    animation: none;
-  }
+  *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
 }
-
 /* Small, restrained icon feedback on mouse and keyboard focus. */
 [role="button"][aria-label="Start a new chat"] > div:first-child,
 [role="button"][aria-label^="Collapse sidebar"] > div:first-child,

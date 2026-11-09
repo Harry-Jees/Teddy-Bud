@@ -27,6 +27,7 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GATEWAY_BASE_URL } from './src/config/gateway';
+import { teddyTheme } from './src/theme';
 import { ASSISTANT_CHARACTERS, DEFAULT_ASSISTANT_CHARACTER_ID } from './src/characters';
 import type { AssistantCharacterId, AssistantCharacterNames } from './src/characters';
 import { GatewayService } from './src/services/gateway';
@@ -75,10 +76,10 @@ type SpeechRecognitionLike = {
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 const C = {
-  canvas: '#F7F0E7', paper: '#FFFCF7', paperAlt: '#F1E6DA', ink: '#3B3029',
-  muted: '#857568', line: '#E8D9CA', cocoa: '#75513D', cocoaDark: '#503728',
-  peach: '#D9B49C', peachLight: '#F4E3D7', green: '#8A6A51', greenLight: '#F1E6DA',
-  rose: '#A56D55', white: '#FFFFFF',
+  canvas: teddyTheme.colors.canvas, paper: teddyTheme.colors.surface, paperAlt: teddyTheme.colors.surfaceAlt, ink: teddyTheme.colors.text,
+  muted: teddyTheme.colors.textSecondary, line: teddyTheme.colors.border, cocoa: teddyTheme.colors.primary, cocoaDark: teddyTheme.colors.onPrimaryContainer,
+  peach: teddyTheme.colors.clay, peachLight: teddyTheme.colors.claySoft, green: teddyTheme.colors.success, greenLight: teddyTheme.colors.successContainer,
+  rose: teddyTheme.colors.accentText, white: teddyTheme.colors.white,
 };
 
 type PrimaryNavPage = 'chat' | 'discover' | 'memories' | 'settings';
