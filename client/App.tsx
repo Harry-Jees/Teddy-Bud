@@ -28,6 +28,8 @@ import {
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GATEWAY_BASE_URL } from './src/config/gateway';
 import { C } from './src/theme/palette';
+import { openExternalUrl } from './src/services/externalNavigation';
+import { confirmAction } from './src/services/confirmAction';
 import { styles } from './src/theme/appStyles';
 import { MarkdownReply, TypingIndicator } from './src/components/ChatPresentation';
 import { BrowserLoginScreen } from './src/components/BrowserLoginScreen';
@@ -90,12 +92,8 @@ const navItems: { id: PrimaryNavPage; label: string }[] = [
   { id: 'memories', label: 'Memories' },
   { id: 'settings', label: 'Settings' },
 ];
-const mobileNavItems: { id: PrimaryNavPage; label: string }[] = [
-  { id: 'chat', label: 'Chats' },
-  { id: 'discover', label: 'Discover' },
-  { id: 'memories', label: 'Memories' },
-  { id: 'settings', label: 'Settings' },
-];
+// Both layouts share the same destinations and labels.
+const mobileNavItems = navItems;
 const discoverPages: Page[] = ['discover', 'journal', 'emotions', 'studio'];
 
 const gatewayService = new GatewayService(GATEWAY_BASE_URL);
@@ -105,11 +103,6 @@ const teddyBudLogo: ImageSourcePropType = typeof teddyBudLogoAsset === 'string'
 const assistantIcon: ImageSourcePropType = typeof assistantIconAsset === 'string'
   ? { uri: assistantIconAsset }
   : assistantIconAsset;
-
-function openExternalUrl(url: string): Promise<void> {
-  const desktop = typeof window !== 'undefined' ? window.teddyBudDesktop : undefined;
-  return desktop ? desktop.openExternal(url) : Linking.openURL(url);
-}
 
 function runInBackground(task: Promise<unknown>): void {
   task.then(undefined, error => {
@@ -1625,18 +1618,6 @@ function LocalDataSaveWarning({ error, onRetry }: { error: string; onRetry: () =
 
 function LocalDataError({ error, onRetry, onClear }: { error: string; onRetry: () => void; onClear: () => void }) {
   return <View style={styles.authScreen}><View style={styles.authCard}><Text style={styles.authTitle}>Your saved space needs attention.</Text><Text style={styles.authBody}>{localDataErrorMessage(error, 'load')}</Text><Pressable accessibilityRole="button" onPress={onRetry} style={({ pressed }) => [styles.authButton, pressed && styles.pressed]}><Text style={styles.authButtonText}>Retry local storage</Text></Pressable><Pressable accessibilityRole="button" onPress={onClear} style={styles.authToggle}><Text style={styles.authToggleText}>Clear local data and start over</Text></Pressable><Text style={styles.authFootnote}>Your messages are paused until local storage is available.</Text></View></View>;
-}
-
-function confirmAction(title: string, message: string, onConfirm: () => void) {
-  if (Platform.OS === 'web') {
-    // eslint-disable-next-line no-alert -- native browser confirmation protects destructive local-data deletion.
-    if (typeof window !== 'undefined' && window.confirm(`${title}\n\n${message}`)) onConfirm();
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Confirm', style: 'destructive', onPress: onConfirm },
-  ]);
 }
 
 const Sidebar = React.memo(function SidebarView({ collapsed, onToggleCollapsed, page, onNavigate, onNewConversation, conversations, activeConversationId, busyConversationId, onSelectConversation, onPinConversation, onDeleteConversation, onRenameConversation }: {
