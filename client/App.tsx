@@ -39,14 +39,13 @@ import { browserAuthService } from './src/services/browserAuth';
 import type { StoredSession } from './src/services/session';
 import { findRelevantChatHistory, localDataService, ownerFromToken } from './src/services/localData';
 import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
-import { EMOTION_AXES } from './src/services/localData';
 import { RoundedText as Text, RoundedTextInput as TextInput } from './src/components/RoundedText';
 
 import { AnimatedNavIcon } from './src/components/AnimatedNavIcon';
 import { AppIcon } from './src/components/AppIcon';
 import type { AppIconName } from './src/components/AppIcon';
 import { createEncryptedBackup, MAX_BACKUP_BYTES, mergeLocalAppData, readEncryptedBackup } from './src/services/backup';
-import { pickBackupFile, saveBackupFile, savePlainTextFile } from './src/services/backupFiles';
+import { pickBackupFile, saveBackupFile } from './src/services/backupFiles';
 import { pickChatImage } from './src/services/imagePicker';
 import { crisisHelplineOptionForLocale, emergencyCallOptionForLocale, hasCrisisSignal } from './src/services/conversationSafety';
 import { extractTeddyStickerResponse, getTeddySticker, inferTeddySticker, stripTeddyStickerMarker } from './src/services/stickers';
