@@ -230,7 +230,8 @@ function AccessGate() {
           }
         }
       } finally {
-        const remaining = Math.max(0, 2000 - (Date.now() - loadingStartedAt));
+        // Avoid an artificial multi-second delay while retaining a brief, polished loading transition.
+        const remaining = Math.max(0, 450 - (Date.now() - loadingStartedAt));
         setTimeout(() => {
           if (!mounted) return;
           Animated.timing(loadingOpacity, { toValue: 0, duration: 320, easing: Easing.out(Easing.quad), useNativeDriver: true }).start(() => {
