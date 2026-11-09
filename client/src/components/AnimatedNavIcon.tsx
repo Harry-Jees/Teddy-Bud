@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { teddyTheme } from '../theme';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { BookHeart, Compass, MessageSquare, Settings } from 'lucide-react-native';
 
@@ -58,13 +59,13 @@ export function AnimatedNavIcon({ name, active, pulseKey, reduceMotion }: Props)
   return <View accessible={false} style={styles.container}>
     <Animated.View pointerEvents="none" style={[styles.activeBackground, { opacity: selected, transform: [{ scale: activeScale }] }]} />
     <Animated.View style={[styles.iconMotion, { transform: [{ scale: pulseScale }, { translateY: lift }, { rotate }] }]}>
-      <Icon size={21} color={active ? '#684D3B' : '#82766C'} strokeWidth={1.85} />
+      <Icon size={21} color={active ? teddyTheme.colors.primary : teddyTheme.colors.textSecondary} strokeWidth={1.85} />
     </Animated.View>
   </View>;
 }
 
 const styles = StyleSheet.create({
   container: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  activeBackground: { position: 'absolute', width: 36, height: 36, borderRadius: 13, backgroundColor: '#F0E1D4' },
+  activeBackground: { position: 'absolute', width: 36, height: 36, borderRadius: 13, backgroundColor: teddyTheme.colors.primaryContainer },
   iconMotion: {},
 });
