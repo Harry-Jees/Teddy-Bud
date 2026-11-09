@@ -3,7 +3,7 @@
  * Keep component styles here so screens share one consistent design language.
  */
 import { Platform, StyleSheet } from 'react-native';
-import { teddyTheme } from './index';
+import { teddyTheme } from '../theme';
 
 const C = {
   canvas: teddyTheme.colors.canvas, paper: teddyTheme.colors.surface, paperAlt: teddyTheme.colors.surfaceAlt, ink: teddyTheme.colors.text,
