@@ -8,14 +8,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RoundedText as Text, RoundedTextInput as TextInput } from './RoundedText';
 import { AppIcon } from './AppIcon';
 import { styles } from '../theme/appStyles';
-import { teddyTheme } from '../theme';
+import { C } from '../theme/palette';
 import { browserAuthService } from '../services/browserAuth';
 import { authErrorMessage, AuthValidationError } from '../services/authErrors';
 import type { AuthField } from '../services/authErrors';
 import type { StoredSession } from '../services/session';
 import teddyBudLogoAsset from '../../assets/teddy-bud-logo.png';
 
-const C = { cocoa: teddyTheme.colors.primary, cocoaDark: teddyTheme.colors.onPrimaryContainer };
 const teddyBudLogo = typeof teddyBudLogoAsset === 'string' ? { uri: teddyBudLogoAsset } : teddyBudLogoAsset;
 
 function runInBackground(task: Promise<unknown>): void {
