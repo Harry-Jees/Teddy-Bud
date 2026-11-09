@@ -3,14 +3,7 @@
  * Keep component styles here so screens share one consistent design language.
  */
 import { Platform, StyleSheet } from 'react-native';
-import { teddyTheme } from '../theme';
-
-const C = {
-  canvas: teddyTheme.colors.canvas, paper: teddyTheme.colors.surface, paperAlt: teddyTheme.colors.surfaceAlt, ink: teddyTheme.colors.text,
-  muted: teddyTheme.colors.textSecondary, line: teddyTheme.colors.border, cocoa: teddyTheme.colors.primary, cocoaDark: teddyTheme.colors.onPrimaryContainer,
-  peach: teddyTheme.colors.clay, peachLight: teddyTheme.colors.claySoft, green: teddyTheme.colors.success, greenLight: teddyTheme.colors.successContainer,
-  rose: teddyTheme.colors.accentText, white: teddyTheme.colors.white,
-};
+import { C } from './palette';
 
 export const styles = StyleSheet.create({
   sidebarCollapseButtonBottom: { alignSelf: 'flex-end' },
