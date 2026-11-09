@@ -27,7 +27,6 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GATEWAY_BASE_URL } from './src/config/gateway';
-import { teddyTheme } from './src/theme';
 import { C } from './src/theme/palette';
 import { styles } from './src/theme/appStyles';
 import { MarkdownReply, TypingIndicator } from './src/components/ChatPresentation';
