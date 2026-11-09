@@ -1,12 +1,20 @@
 /**
- * Semantic color aliases used by the application shell and screen styles.
- * Change the design system in theme.ts; keep feature code on these semantic names.
+ * Semantic color aliases shared by the application shell and feature screens.
+ * Keep the warm clay palette in one place so visual updates stay consistent.
  */
-import { teddyTheme } from './theme';
-
 export const C = {
-  canvas: teddyTheme.colors.canvas, paper: teddyTheme.colors.surface, paperAlt: teddyTheme.colors.surfaceAlt, ink: teddyTheme.colors.text,
-  muted: teddyTheme.colors.textSecondary, line: teddyTheme.colors.border, cocoa: teddyTheme.colors.primary, cocoaDark: teddyTheme.colors.onPrimaryContainer,
-  peach: teddyTheme.colors.clay, peachLight: teddyTheme.colors.claySoft, green: teddyTheme.colors.success, greenLight: teddyTheme.colors.successContainer,
-  rose: teddyTheme.colors.accentText, white: teddyTheme.colors.white,
+  canvas: '#F7F0E7',
+  paper: '#FFFCF7',
+  paperAlt: '#F1E6DA',
+  ink: '#3B3029',
+  muted: '#857568',
+  line: '#E8D9CA',
+  cocoa: '#75513D',
+  cocoaDark: '#503728',
+  peach: '#D9B49C',
+  peachLight: '#F4E3D7',
+  green: '#8A6A51',
+  greenLight: '#F1E6DA',
+  rose: '#A56D55',
+  white: '#FFFFFF',
 } as const;
