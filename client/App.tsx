@@ -38,7 +38,7 @@ import { findRelevantChatHistory, localDataService, ownerFromToken } from './src
 import type { EmotionCheckIn, JournalEntry, LocalAppData, LocalConversation, LocalMemory, LocalMessage } from './src/services/localData';
 import { EMOTION_AXES } from './src/services/localData';
 import { RoundedText as Text, RoundedTextInput as TextInput } from './src/components/RoundedText';
-import { OnboardingSurvey } from './src/components/OnboardingSurvey';
+
 import { AnimatedNavIcon } from './src/components/AnimatedNavIcon';
 import { AppIcon } from './src/components/AppIcon';
 import type { AppIconName } from './src/components/AppIcon';
@@ -54,6 +54,7 @@ import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/c
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
 
+const LazyOnboardingSurvey = React.lazy(() => import('./src/components/OnboardingSurvey').then(({ OnboardingSurvey }) => ({ default: OnboardingSurvey })));
 const LazyWellbeingStudio = React.lazy(() => import('./src/components/WellbeingStudio').then(({ WellbeingStudio }) => ({ default: WellbeingStudio })));
 
 type Page = 'chat' | 'history' | 'memories' | 'privacy' | 'settings' | 'emotions' | 'journal' | 'studio' | 'discover';
@@ -1331,7 +1332,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
 
   const rootInsetsStyle = { paddingTop: insets.top, paddingBottom: wide ? insets.bottom : 0 };
   if (localDataReady && localDataOwner === owner && onboardingSurveyAnswers === undefined) {
-    return <OnboardingSurvey onComplete={async (answers, createInitialMap) => {
+    return <React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Preparing your welcome…</Text></View>}><LazyOnboardingSurvey onComplete={async (answers, createInitialMap) => {
       await persistLocalSnapshot({ onboardingSurveyAnswers: answers });
       if (createInitialMap && answers.length) {
         try {
@@ -1366,7 +1367,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
           ],
         );
       }
-    }} />;
+    }} /></React.Suspense>;
   }
 
   const discoverFramePage = discoverPages.includes(page) ? page : lastDiscoverPage;
