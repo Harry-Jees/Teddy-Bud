@@ -5,7 +5,6 @@
 import React, { useRef, useState } from 'react';
 import { Animated, Platform, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { RoundedText as Text, RoundedTextInput as TextInput } from '../components/RoundedText';
-import { AppIcon } from '../components/AppIcon';
 import { styles } from '../theme/appStyles';
 import { confirmAction } from '../services/confirmAction';
 import { EMOTION_AXES } from '../services/localData';
