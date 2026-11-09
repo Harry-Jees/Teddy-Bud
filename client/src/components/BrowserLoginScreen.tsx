@@ -2,7 +2,7 @@
  * Username/password, recovery, migration, and biometric sign-in UI.
  * Authentication policy lives in browserAuthService; this module only coordinates the form.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RoundedText as Text, RoundedTextInput as TextInput } from './RoundedText';
