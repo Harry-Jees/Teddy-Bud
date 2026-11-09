@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
   progressTrack: { height: 5, backgroundColor: teddyTheme.colors.border, borderRadius: 8, overflow: 'hidden', marginBottom: 12 },
   progressFill: { height: 5, backgroundColor: teddyTheme.colors.primary, borderRadius: 8 },
   count: { color: teddyTheme.colors.textSecondary, fontSize: 12, fontWeight: '700', letterSpacing: 1.2, marginBottom: 12 },
-  question: { color: teddyTheme.colors.text, fontFamily: 'sans-serif-rounded', fontSize: 22, lineHeight: 29, fontWeight: '600', marginBottom: 18 },
+  question: { color: teddyTheme.colors.text, fontFamily: 'sans-serif-rounded', fontSize: 22, lineHeight: 29, fontWeight: '600', marginBottom: 16 },
   options: { gap: 8 },
   freeTextInput: { minHeight: 132, borderWidth: 1, borderColor: teddyTheme.colors.border, backgroundColor: teddyTheme.colors.surface, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 16, color: teddyTheme.colors.text, fontSize: 15, lineHeight: 22, textAlignVertical: 'top' },
   option: { borderWidth: 1, borderColor: teddyTheme.colors.border, backgroundColor: teddyTheme.colors.surface, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 16, minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
