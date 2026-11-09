@@ -3053,7 +3053,7 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
       </View>
       <View style={__teddyBudExtractedStyles14.style26}>
         <Text style={__teddyBudExtractedStyles14.style27}>Your recent pattern</Text>
-        <Text style={__teddyBudExtractedStyles14.style28}>Based on your {Math.min(entries.length,7)} latest check-ins only. These are simple averages, not a diagnosis or prediction.</Text>
+        <Text style={__teddyBudExtractedStyles14.style28}>Based on your latest {Math.min(entries.length,7)} check-ins. Unrated emotions remain visible as “Not rated”; these averages are not a diagnosis or prediction.</Text>
         {EMOTION_AXES.map(axis=>{const sample=entries.slice(0,7).filter(entry=>typeof entry.emotions[axis.id]==='number');const avg=sample.length ? sample.reduce((sum,entry)=>sum+(entry.emotions[axis.id]??0),0)/sample.length : 0;const __teddyBudExtractedStyles19 = StyleSheet.create({
           style0: ({marginTop:9}) as const,
           style1: ({flexDirection:'row',justifyContent:'space-between'}) as const,
