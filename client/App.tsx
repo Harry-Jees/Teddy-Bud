@@ -17,7 +17,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StatusBar,
   Vibration,
   StyleSheet,
