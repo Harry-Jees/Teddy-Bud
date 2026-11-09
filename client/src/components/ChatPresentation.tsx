@@ -3,14 +3,10 @@
  * Keep message formatting and response feedback separate from app orchestration.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Animated, Linking, Platform, View } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, Platform, View } from 'react-native';
 import { RoundedText as Text } from './RoundedText';
 import { styles } from '../theme/appStyles';
-
-function openExternalUrl(url: string): Promise<void> {
-  const desktop = typeof window !== 'undefined' ? window.teddyBudDesktop : undefined;
-  return desktop ? desktop.openExternal(url) : Linking.openURL(url);
-}
+import { openExternalUrl } from '../services/externalNavigation';
 
 export function MarkdownReply({ content }: { content: string }) {
   const lines = content.split(/\r?\n/);
