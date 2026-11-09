@@ -10,7 +10,6 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   NativeEventEmitter,
   PanResponder,
