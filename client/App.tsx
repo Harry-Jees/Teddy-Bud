@@ -126,6 +126,7 @@ function mayContainDurableMemory(text: string): boolean {
   return /\b(?:my (?:long[- ]term )?(?:goal|dream|plan)|long[- ]term goal|i (?:plan|hope|want) to|i(?:'m| am) (?:a|an) [a-z-]+|i work as|i live in|i care for|i(?:'ve| have) been (?:working toward|studying))\b/i.test(text);
 }
 
+/** Application root: installs error recovery and safe-area providers once. */
 function App() {
   return (
     <AppErrorBoundary>
@@ -137,6 +138,7 @@ function App() {
   );
 }
 
+/** Prevents an isolated render failure from crashing the entire application shell. */
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
 
@@ -165,6 +167,7 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
+/** Restores the device session before mounting any private application data. */
 function AccessGate() {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [busy, setBusy] = useState(true);
@@ -307,6 +310,7 @@ function AuthLoading() {
     </View>
   </View>;
 }
+/** Coordinates navigation, local data, and feature screens for an authenticated device. */
 function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; username: string; onLogout: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
