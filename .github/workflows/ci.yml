@@ -1,0 +1,251 @@
+name: CI and platform builds
+
+on:
+  push:
+    branches: [main, overhaul/stability-cozy-ux]
+    paths-ignore:
+      - 'dist/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'dist/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client-checks:
+    name: Client tests and type checks
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - name: Extract dynamic inline styles into reusable StyleSheet definitions
+        run: node ../scripts/extract-inline-styles.cjs
+      - run: npm run lint -- --max-warnings=0
+      - run: npm test -- --runInBand
+      - run: npx tsc --noEmit
+      - run: npm run build:web
+
+  worker-tests:
+    name: Gateway Worker tests
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: gateway-worker
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: gateway-worker/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  android-build:
+    name: Android release APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+          cache-dependency-path: client/android/**/*.gradle*
+      - run: npm ci --prefix client
+      - name: Build installable Android release
+        run: bash client/android/gradlew -p client/android assembleRelease -PreactNativeArchitectures=arm64-v8a
+      - name: Stage Android release
+        run: |
+          set -euo pipefail
+          source=client/android/app/build/outputs/apk/release/app-release.apk
+          target=dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          test -s "$source"
+          mkdir -p "$(dirname "$target")"
+          cp "$source" "$target"
+          test -s "$target"
+      - name: Verify APK signature, alignment, and application ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -x "$build_tools/apksigner"
+          test -x "$build_tools/zipalign"
+          test -x "$build_tools/aapt"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk"
+          "$build_tools/zipalign" -c -v 4 "$apk"
+          "$build_tools/aapt" dump badging "$apk" | grep -F "package: name='com.teddybud'"
+          sha256sum "$apk"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: teddy-bud-android
+          path: dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          if-no-files-found: error
+
+  desktop-packages:
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    name: Desktop package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64 installer
+            os: windows-latest
+            command: desktop:windows
+            artifact: teddy-bud-windows-x64
+            files: |
+              dist/desktop/TeddyBud.v.1.0-win-x64.exe
+              dist/desktop/TeddyBud.v.1.0-win-x64.exe.blockmap
+          - name: Windows ARM64 installer
+            os: windows-11-arm
+            command: desktop:windows
+            artifact: teddy-bud-windows-arm64
+            files: |
+              dist/desktop/TeddyBud.v.1.0-win-arm64.exe
+              dist/desktop/TeddyBud.v.1.0-win-arm64.exe.blockmap
+          - name: macOS Apple Silicon DMG
+            os: macos-15
+            command: desktop:macos
+            artifact: teddy-bud-macos-arm64
+            files: |
+              dist/desktop/TeddyBud.v.1.0-mac-arm64.dmg
+          - name: macOS Intel DMG
+            os: macos-15-intel
+            command: desktop:macos
+            artifact: teddy-bud-macos-x64
+            files: |
+              dist/desktop/TeddyBud.v.1.0-mac-x64.dmg
+          - name: Linux Debian and AppImage
+            os: ubuntu-24.04
+            command: desktop:linux
+            artifact: teddy-bud-linux
+            files: |
+              dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+              dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci --prefix client
+      - name: Package desktop application
+        run: npm run ${{ matrix.command }} --prefix client
+        env:
+          DEBUG: electron-builder
+      - name: Normalize Linux package filenames
+        if: matrix.name == 'Linux Debian and AppImage'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/desktop
+          shopt -s nullglob
+          debs=(dist/desktop/TeddyBud.v.1.0-linux-*.deb)
+          apps=(dist/desktop/TeddyBud.v.1.0-linux-*.AppImage)
+          if (( ${#debs[@]} != 1 )); then
+            printf 'Expected exactly one Linux DEB, found %s: %s\n' "${#debs[@]}" "${debs[*]:-none}" >&2
+            exit 1
+          fi
+          if (( ${#apps[@]} != 1 )); then
+            printf 'Expected exactly one Linux AppImage, found %s: %s\n' "${#apps[@]}" "${apps[*]:-none}" >&2
+            exit 1
+          fi
+          deb_target=dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          app_target=dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          if [[ "${debs[0]}" != "$deb_target" ]]; then mv -f "${debs[0]}" "$deb_target"; fi
+          if [[ "${apps[0]}" != "$app_target" ]]; then mv -f "${apps[0]}" "$app_target"; fi
+          chmod +x "$app_target"
+          file dist/desktop/TeddyBud.v.1.0-linux-amd64.deb dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+      - name: Remove unpacked Electron staging files
+        shell: bash
+        run: |
+          for name in win-unpacked linux-unpacked mac mac-arm64; do
+            rm -rf "dist/desktop/$name"
+          done
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  collect-dist:
+    if: ${{ always() && github.event_name != 'pull_request' && needs.client-checks.result == 'success' && needs.worker-tests.result == 'success' && needs.android-build.result == 'success' && needs.desktop-packages.result == 'success' }}
+    name: Collect and verify downloadable platform artifacts
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    needs:
+      - client-checks
+      - worker-tests
+      - android-build
+      - desktop-packages
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Download artifacts from this successful build run
+        uses: actions/download-artifact@v5
+        with:
+          pattern: teddy-bud-*
+          path: source-artifacts
+          merge-multiple: false
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+      - name: Assemble fresh platform distributions
+        run: |
+          set -euo pipefail
+          python scripts/collect_distributions.py source-artifacts dist
+      - name: Verify collected distributions
+        run: python scripts/verify_distributions.py
+      - name: Confirm replacement set is complete
+        run: |
+          set -euo pipefail
+          test -s dist/android/TeddyBud.v.1.0-Android-arm64.apk
+          test -s dist/desktop/TeddyBud.v.1.0-win-x64.exe
+          test -s dist/desktop/TeddyBud.v.1.0-win-x64.exe.blockmap
+          test -s dist/desktop/TeddyBud.v.1.0-win-arm64.exe
+          test -s dist/desktop/TeddyBud.v.1.0-win-arm64.exe.blockmap
+          test -s dist/desktop/TeddyBud.v.1.0-mac-arm64.dmg
+          test -s dist/desktop/TeddyBud.v.1.0-mac-x64.dmg
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.deb
+          test -s dist/desktop/TeddyBud.v.1.0-linux-amd64.AppImage
+          find dist -type f -printf '%P %s bytes\n' | sort
+      - uses: actions/upload-artifact@v5
+        with:
+          name: teddy-bud-dist
+          path: dist/
+          if-no-files-found: error

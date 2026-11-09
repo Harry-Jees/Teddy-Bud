@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible defect in Teddy Bud.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include passwords, recovery phrases, API keys, session tokens, private conversations, or other personal data."
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and version
+      description: Include OS, app version or commit, and whether this is web, native, or desktop.
+      placeholder: "Android 15, app build/commit, native app"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the problem without including private user data.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open… 2. Select… 3. Observe…"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized logs
+      description: Remove tokens, emails, conversation text, and other sensitive values.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have removed secrets and personal/sensitive information.
+          required: true
+        - label: I checked existing issues for duplicates.
+          required: true

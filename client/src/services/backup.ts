@@ -1,0 +1,250 @@
+import { normalizeLocalAppData } from './localData';
+import type { LocalAppData } from './localData';
+
+const BACKUP_FORMAT = 'teddybud-backup';
+const BACKUP_VERSION = 1;
+const PBKDF2_ITERATIONS = 310_000;
+const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+export const MAX_BACKUP_BYTES = 25 * 1024 * 1024;
+
+type BackupEnvelope = {
+  format: typeof BACKUP_FORMAT;
+  version: typeof BACKUP_VERSION;
+  encryption: 'PBKDF2-SHA-256/AES-256-GCM';
+  iterations: number;
+  salt: string;
+  iv: string;
+  ciphertext: string;
+};
+
+function cryptoApi(): Crypto {
+  if (!globalThis.crypto?.subtle || !globalThis.crypto.getRandomValues) {
+    throw new Error('Secure backup encryption is unavailable in this browser.');
+  }
+  return globalThis.crypto;
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let encoded = '';
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index];
+    const hasSecond = index + 1 < bytes.length;
+    const hasThird = index + 2 < bytes.length;
+    const second = hasSecond ? bytes[index + 1] : 0;
+    const third = hasThird ? bytes[index + 2] : 0;
+    encoded += BASE64[Math.floor(first / 4)]
+      + BASE64[(first % 4) * 16 + Math.floor(second / 16)]
+      + (hasSecond ? BASE64[(second % 16) * 4 + Math.floor(third / 64)] : '=')
+      + (hasThird ? BASE64[third % 64] : '=');
+  }
+  return encoded;
+}
+
+function decodeBase64(value: string): Uint8Array {
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    throw new Error('Backup encoding is invalid.');
+  }
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  const decoded = new Uint8Array((value.length / 4) * 3 - padding);
+  let outputIndex = 0;
+  for (let index = 0; index < value.length; index += 4) {
+    const first = BASE64.indexOf(value[index]);
+    const second = BASE64.indexOf(value[index + 1]);
+    const third = value[index + 2] === '=' ? 0 : BASE64.indexOf(value[index + 2]);
+    const fourth = value[index + 3] === '=' ? 0 : BASE64.indexOf(value[index + 3]);
+    decoded[outputIndex++] = first * 4 + Math.floor(second / 16);
+    if (value[index + 2] !== '=') decoded[outputIndex++] = (second % 16) * 16 + Math.floor(third / 4);
+    if (value[index + 3] !== '=') decoded[outputIndex++] = (third % 4) * 64 + fourth;
+  }
+  return decoded;
+}
+
+function validateBackupData(value: unknown): LocalAppData {
+  if (!value || typeof value !== 'object') throw new Error('Backup data is incomplete.');
+  const data = value as Partial<LocalAppData>;
+  if (!Array.isArray(data.conversations) || !Array.isArray(data.memories)) throw new Error('Backup data is incomplete.');
+  if (data.activeConversationId !== null && typeof data.activeConversationId !== 'string') throw new Error('Backup chat selection is invalid.');
+  for (const conversation of data.conversations) {
+    if (!conversation || typeof conversation !== 'object'
+      || typeof conversation.id !== 'string' || !conversation.id
+      || typeof conversation.title !== 'string' || !conversation.title.trim()
+      || typeof conversation.createdAt !== 'string' || typeof conversation.updatedAt !== 'string'
+      || !Array.isArray(conversation.messages)
+      || !conversation.messages.every(message => message && typeof message === 'object'
+        && Number.isFinite(message.id) && typeof message.text === 'string'
+        && (message.author === 'you' || message.author === 'teddy') && typeof message.time === 'string'
+        && (message.imageDataUrl === undefined || (typeof message.imageDataUrl === 'string'
+          && message.imageDataUrl.length <= 11_200_000
+          && /^data:image\/(?:jpeg|png|webp|gif);base64,/i.test(message.imageDataUrl))))) {
+      throw new Error('A saved chat in this backup is invalid.');
+    }
+  }
+  for (const memory of data.memories) {
+    if (!memory || typeof memory !== 'object' || !Number.isFinite(memory.id)
+      || typeof memory.text !== 'string' || !memory.text.trim() || memory.text.length > 500
+      || typeof memory.date !== 'string') throw new Error('A saved memory in this backup is invalid.');
+  }
+  if (typeof data.rememberInSession !== 'boolean' || typeof data.shareMemories !== 'boolean'
+    || typeof data.shareChatHistory !== 'boolean' || typeof data.shareAboutMe !== 'boolean'
+    || (data.shareOnboardingSurvey !== undefined && typeof data.shareOnboardingSurvey !== 'boolean')
+    || typeof data.aboutMe !== 'string' || data.aboutMe.length > 2_000
+    || typeof data.assistantName !== 'string' || !data.assistantName.trim() || data.assistantName.length > 32) {
+    throw new Error('Backup settings are invalid.');
+  }
+  if (data.activeConversationId && !data.conversations.some(conversation => conversation.id === data.activeConversationId)) {
+    throw new Error('The selected chat in this backup is missing.');
+  }
+  return normalizeLocalAppData(data);
+}
+
+async function deriveKey(passphrase: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
+  const crypto = cryptoApi();
+  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  const saltBuffer = Uint8Array.from(salt).buffer;
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: saltBuffer, iterations, hash: 'SHA-256' },
+    material,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+export async function createEncryptedBackup(data: LocalAppData, owner: string, passphrase: string): Promise<string> {
+  if (!owner) throw new Error('A signed-in account is required to create a backup.');
+  if (passphrase.trim().length < 12) throw new Error('Choose a backup passphrase with at least 12 characters.');
+  const crypto = cryptoApi();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const payload = JSON.stringify({ owner, data: normalizeLocalAppData(data) });
+  if (new TextEncoder().encode(payload).byteLength > 18 * 1024 * 1024) {
+    throw new Error('This device data is too large to export as one backup. Remove older chats and try again.');
+  }
+  const key = await deriveKey(passphrase, salt, PBKDF2_ITERATIONS);
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(payload));
+  const envelope: BackupEnvelope = {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    encryption: 'PBKDF2-SHA-256/AES-256-GCM',
+    iterations: PBKDF2_ITERATIONS,
+    salt: encodeBase64(salt),
+    iv: encodeBase64(iv),
+    ciphertext: encodeBase64(new Uint8Array(encrypted)),
+  };
+  const result = JSON.stringify(envelope);
+  if (result.length > MAX_BACKUP_BYTES) throw new Error('This backup is larger than the supported 25 MB limit.');
+  return result;
+}
+
+export async function readEncryptedBackup(text: string, owner: string, passphrase: string): Promise<LocalAppData> {
+  if (!owner) throw new Error('Sign in to the account that owns this backup before importing it.');
+  if (text.length > MAX_BACKUP_BYTES) throw new Error('This backup is larger than the supported 25 MB limit.');
+  if (passphrase.trim().length < 12) throw new Error('Enter the 12-character-or-longer passphrase used for this backup.');
+  let envelope: BackupEnvelope;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object') throw new Error();
+    envelope = parsed as BackupEnvelope;
+    if (
+      envelope.format !== BACKUP_FORMAT
+      || envelope.version !== BACKUP_VERSION
+      || envelope.encryption !== 'PBKDF2-SHA-256/AES-256-GCM'
+      || !Number.isInteger(envelope.iterations)
+      || envelope.iterations !== PBKDF2_ITERATIONS
+      || typeof envelope.salt !== 'string'
+      || typeof envelope.iv !== 'string'
+      || typeof envelope.ciphertext !== 'string'
+      || envelope.ciphertext.length > MAX_BACKUP_BYTES * 2
+    ) throw new Error();
+  } catch {
+    throw new Error('That file is not a supported Teddy Bud backup.');
+  }
+
+  try {
+    const salt = decodeBase64(envelope.salt);
+    const decodedIv = decodeBase64(envelope.iv);
+    const decodedCiphertext = decodeBase64(envelope.ciphertext);
+    if (salt.byteLength !== 16 || decodedIv.byteLength !== 12 || decodedCiphertext.byteLength < 16) {
+      throw new Error('The backup cryptographic fields have invalid lengths.');
+    }
+    const key = await deriveKey(passphrase, salt, envelope.iterations);
+    const iv = Uint8Array.from(decodedIv).buffer;
+    const ciphertext = Uint8Array.from(decodedCiphertext).buffer;
+    const plaintext = await cryptoApi().subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    const payload: unknown = JSON.parse(new TextDecoder().decode(plaintext));
+    if (!payload || typeof payload !== 'object' || !('owner' in payload) || payload.owner !== owner || !('data' in payload)) {
+      throw new Error('This backup belongs to a different account. Sign in with the account that created it.');
+    }
+    return validateBackupData(payload.data);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('This backup belongs')) throw error;
+    if (error instanceof Error && /^(Backup data|A saved chat|A saved memory|Backup settings|The selected chat)/.test(error.message)) throw error;
+    throw new Error('The backup could not be unlocked. Check your passphrase and try again.');
+  }
+}
+
+
+/**
+ * Merge a validated backup into existing local data without replacing the
+ * user's current preferences. Records with stable IDs are deduplicated;
+ * conflicting memory IDs are reassigned so separate memories remain editable.
+ * When the same conversation exists in both sources, keep the newer snapshot.
+ */
+export function mergeLocalAppData(current: LocalAppData, imported: LocalAppData): LocalAppData {
+  const conversationsById = new Map(current.conversations.map(item => [item.id, item]));
+  for (const incoming of imported.conversations) {
+    const existing = conversationsById.get(incoming.id);
+    if (!existing || incoming.updatedAt > existing.updatedAt) {
+      conversationsById.set(incoming.id, incoming);
+    }
+  }
+  const conversations = [...conversationsById.values()]
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const activeConversationId = current.activeConversationId && conversationsById.has(current.activeConversationId)
+    ? current.activeConversationId
+    : imported.activeConversationId && conversationsById.has(imported.activeConversationId)
+      ? imported.activeConversationId
+      : conversations[0]?.id ?? null;
+
+  const memories = [...current.memories];
+  const memoryKeys = new Set(memories.map(item => `${item.text.trim().toLocaleLowerCase()}\u0000${item.date}`));
+  let nextMemoryId = memories.reduce((maximum, item) => Math.max(maximum, item.id), 0) + 1;
+  for (const incoming of imported.memories) {
+    const identity = `${incoming.text.trim().toLocaleLowerCase()}\u0000${incoming.date}`;
+    if (memoryKeys.has(identity)) continue;
+    const idInUse = memories.some(item => item.id === incoming.id);
+    if (idInUse) {
+      while (memories.some(item => item.id === nextMemoryId)) nextMemoryId += 1;
+      memories.push({ ...incoming, id: nextMemoryId });
+      nextMemoryId += 1;
+    } else {
+      memories.push(incoming);
+    }
+    memoryKeys.add(identity);
+  }
+
+  const currentCheckIns = current.emotionCheckIns ?? [];
+  const checkInIds = new Set(currentCheckIns.map(item => item.id));
+  const emotionCheckIns = [...currentCheckIns, ...(imported.emotionCheckIns ?? []).filter(item => {
+    if (checkInIds.has(item.id)) return false;
+    checkInIds.add(item.id);
+    return true;
+  })];
+
+  const currentJournal = current.journalEntries ?? [];
+  const journalIds = new Set(currentJournal.map(item => item.id));
+  const journalEntries = [...currentJournal, ...(imported.journalEntries ?? []).filter(item => {
+    if (journalIds.has(item.id)) return false;
+    journalIds.add(item.id);
+    return true;
+  })];
+
+  return normalizeLocalAppData({
+    ...current,
+    conversations,
+    activeConversationId,
+    memories,
+    emotionCheckIns,
+    journalEntries,
+  });
+}

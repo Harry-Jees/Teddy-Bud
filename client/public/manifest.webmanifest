@@ -1,0 +1,29 @@
+{
+  "name": "Teddy Bud",
+  "short_name": "Teddy Bud",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F8F8F6",
+  "theme_color": "#F8F8F6",
+  "icons": [
+    {
+      "src": "icons/teddy-bud-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/teddy-bud-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/teddy-bud-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
