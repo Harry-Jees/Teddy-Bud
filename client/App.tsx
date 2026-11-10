@@ -254,7 +254,7 @@ function AccessGate() {
   // Do not re-prompt for biometrics on every foreground/resume.
   // A valid in-memory session remains unlocked until its normal expiry.
 
-  if (busy) return <Animated.View style={__teddyBudExtractedStyles0.style0}><AuthLoading /></Animated.View>;
+  if (busy) return <View style={{ flex: 1, backgroundColor: C.canvas }}><Animated.View style={__teddyBudExtractedStyles0.style0}><AuthLoading /></Animated.View></View>;
   if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} allowAccountCreation={canCreateAccount} onAuthenticated={next => { setError(null); setInitialMode('login'); setCanCreateAccount(false); setSession(next); }} />;
   return <TeddyBud sessionToken={session.accessToken} username={session.username ?? ''} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
