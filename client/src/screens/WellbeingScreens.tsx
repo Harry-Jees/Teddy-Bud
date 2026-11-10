@@ -11,6 +11,7 @@ import { EMOTION_AXES } from '../services/localData';
 import type { EmotionCheckIn, JournalEntry } from '../services/localData';
 import { savePlainTextFile } from '../services/backupFiles';
 import { C } from '../theme/palette';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 
 export function JournalPage({ wide, entries, onSave, onDelete, onShare }: {
   wide: boolean;
@@ -312,10 +313,18 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
     const __teddyBudExtractedStyles11 = StyleSheet.create({
       style0: ({ width: size, height: size, alignSelf: 'center' }) as const,
       style1: ({ width: size, height: size, position: 'relative', transform: [{ scale: webBounce }] }) as const,
-      style2: ({ position: 'absolute', left: center-radius*0.86, top: center-radius*0.86, width: radius*1.72, height: radius*1.72, borderRadius: radius, backgroundColor: 'rgba(150, 108, 78, 0.10)', borderWidth: 1, borderColor: 'rgba(150, 108, 78, 0.10)' }) as const,
-      style3: ({position:'absolute',left:center-4,top:center-4,width:8,height:8,borderRadius:4,backgroundColor:'#9A765D'}) as const,
+      style3: ({position:'absolute',left:center-3.5,top:center-3.5,width:7,height:7,borderRadius:4,backgroundColor:C.paper,borderWidth:1.5,borderColor:'#A86F52'}) as const,
     });
     const values = EMOTION_AXES.map(axis => data?.[axis.id] ?? 0);
+    const dataPath = data && values.some(value => value > 0)
+      ? values.map((value, i) => {
+        const a = point(i, value);
+        const b = point((i + 1) % axisCount, values[(i + 1) % axisCount]!);
+        const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const control = { x: midpoint.x + (center - midpoint.x) * 0.28, y: midpoint.y + (center - midpoint.y) * 0.28 };
+        return `${i === 0 ? `M ${a.x} ${a.y}` : ''} Q ${control.x} ${control.y} ${b.x} ${b.y}`;
+      }).join(' ') + ' Z'
+      : null;
     return <Pressable
       accessibilityRole="button"
       accessibilityLabel="Emotion web. Touch to feel the web gently bounce."
@@ -328,7 +337,9 @@ export function EmotionsPage({ wide, entries, onSave, onDelete }: { wide: boolea
       style={__teddyBudExtractedStyles11.style0}
     >
       <Animated.View style={__teddyBudExtractedStyles11.style1}>
-        <View pointerEvents="none" style={__teddyBudExtractedStyles11.style2} />
+        {dataPath ? <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={StyleSheet.absoluteFill}>
+          <SvgPath d={dataPath} fill="rgba(168, 111, 82, 0.30)" stroke="none" />
+        </Svg> : null}
         {[1,2,3,4,5].map(level => <React.Fragment key={'ring-'+level}>{curvedRing(level, level===5?'#D5C1B2':'#E5D8CE', level===5?1.4:1)}</React.Fragment>)}
         {EMOTION_AXES.map((_, i) => line({x:center,y:center}, point(i,5), '#D5C5B8', 1))}
         {EMOTION_AXES.map((axis,i) => {
