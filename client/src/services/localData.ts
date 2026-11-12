@@ -188,10 +188,10 @@ function normalize(value: unknown): LocalAppData {
       ? data.memories.filter(memory => memory && typeof memory.id === 'number' && typeof memory.text === 'string' && typeof memory.date === 'string').map(memory => ({ ...memory, text: memory.text.slice(0, MAX_MEMORY_LENGTH) }))
       : [],
     rememberInSession,
-    shareMemories: data.shareMemories === true,
-    shareChatHistory: data.shareChatHistory === true,
-    shareAboutMe: data.shareAboutMe === true,
-    shareOnboardingSurvey: data.shareOnboardingSurvey === true,
+    shareMemories: data.shareMemories !== false,
+    shareChatHistory: data.shareChatHistory !== false,
+    shareAboutMe: data.shareAboutMe !== false,
+    shareOnboardingSurvey: data.shareOnboardingSurvey !== false,
     aboutMe: typeof data.aboutMe === 'string' ? data.aboutMe.slice(0, MAX_ABOUT_ME_LENGTH) : '',
     assistantName: assistantCharacterNames[assistantCharacterId] ?? legacyAssistantName,
     assistantCharacterId,
@@ -329,7 +329,7 @@ export class LocalDataService {
     if (!owner) throw new Error('A signed-in account is required to load local data.');
     await this.writeQueue;
     const saved = await (await getStorage()).getItem(key(owner));
-    if (!saved) return normalize({ conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: DEFAULT_ASSISTANT_CHARACTER_ID, assistantCharacterNames: { 'teddy-bud': 'Teddy' } });
+    if (!saved) return normalize({ conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: true, shareChatHistory: true, shareAboutMe: true, shareOnboardingSurvey: true, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: DEFAULT_ASSISTANT_CHARACTER_ID, assistantCharacterNames: { 'teddy-bud': 'Teddy' } });
     try {
       return normalize(JSON.parse(saved));
     } catch {
