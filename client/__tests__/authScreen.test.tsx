@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
-import { Text } from 'react-native';
+import { Platform, Text } from 'react-native';
 import { BrowserLoginScreen } from '../src/components/BrowserLoginScreen';
 import { browserAuthService } from '../src/services/browserAuth';
 
@@ -50,6 +50,8 @@ test('sign-in validates username and password and has no account-creation path',
 
   await ReactTestRenderer.act(async () => {
     renderer.root.findByProps({ accessibilityLabel: 'Username' }).props.onChangeText('harry_jees');
+  });
+  await ReactTestRenderer.act(async () => {
     renderer.root.findByProps({ accessibilityLabel: 'Sign in' }).props.onPress();
   });
   expect(renderer.root.findByProps({ accessibilityRole: 'alert' }).findAllByType(Text).map(node => node.props.children))
@@ -58,6 +60,7 @@ test('sign-in validates username and password and has no account-creation path',
 }, 15000);
 
 test('enrolled biometric sign-in is offered on the login screen', async () => {
+  const platform = jest.spyOn(Platform, 'OS', 'get').mockReturnValue('android');
   const ready = jest.spyOn(browserAuthService, 'hasBiometricSignIn').mockResolvedValue(true);
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
@@ -65,8 +68,9 @@ test('enrolled biometric sign-in is offered on the login screen', async () => {
       <BrowserLoginScreen error={null} initialMode="login" canMigrateLegacy={false} onAuthenticated={jest.fn()} />,
     );
   });
-  await ReactTestRenderer.act(async () => { await Promise.resolve(); });
+  await ReactTestRenderer.act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
   expect(renderer.root.findByProps({ accessibilityLabel: 'Sign in with biometrics' })).toBeTruthy();
   await ReactTestRenderer.act(async () => renderer.unmount());
   ready.mockRestore();
+  platform.mockRestore();
 }, 15000);
