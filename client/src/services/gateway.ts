@@ -496,7 +496,7 @@ export class GatewayService {
       ...(options.imageDataUrl
         ? [{ role: 'user' as const, content: [
           ...(message.trim() ? [{ type: 'text' as const, text: message.trim() }] : []),
-          { type: 'image_url' as const, image_url: { url: options.imageDataUrl, detail: 'auto' as const } },
+          { type: 'image_url' as const, image_url: { url: options.imageDataUrl, detail: 'high' as const } },
         ] }]
         : (message.trim() ? [{ role: 'user' as const, content: message.trim() }] : [])),
     ].map(entry => ({ role: entry.role as GatewayMessageRole, content: typeof entry.content === 'string' ? entry.content.trim() : entry.content }));
