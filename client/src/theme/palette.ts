@@ -3,7 +3,7 @@
  * Keep the warm clay palette in one place so visual updates stay consistent.
  */
 export const C = {
-  canvas: '#F7F0E7',
+  canvas: '#FFFAF1',
   paper: '#FFFCF7',
   paperAlt: '#F1E6DA',
   ink: '#3B3029',
