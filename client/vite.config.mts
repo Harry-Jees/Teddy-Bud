@@ -25,6 +25,7 @@ export default defineConfig({
     alias: {
       'react-native': 'react-native-web',
       'react-native-svg': fileURLToPath(new URL('./node_modules/react-native-svg/lib/module/ReactNativeSVG.web.js', import.meta.url)),
+      '/react-native-svg\\/lib\\/module\\/fabric\\/NativeSvgSoundModule\\.js$/': fileURLToPath(new URL('./src/shims/NativeSvgSoundModule.web.ts', import.meta.url)),
       '@': fileURLToPath(new URL('.', import.meta.url)),
     },
     extensions: [
