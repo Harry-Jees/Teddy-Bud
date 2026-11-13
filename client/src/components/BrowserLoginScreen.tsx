@@ -21,20 +21,18 @@ function runInBackground(task: Promise<unknown>): void {
   task.then(undefined, error => console.error('A background Teddy Bud task failed.', error));
 }
 
-export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, allowAccountCreation = true, onAuthenticated }: { error: string | null; initialMode: 'login' | 'create'; canMigrateLegacy: boolean; allowAccountCreation?: boolean; onAuthenticated: (session: StoredSession) => void }) {
+export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compact = width < 600;
   const shortScreen = height < 760;
-  const [mode, setMode] = useState<'login' | 'create' | 'recover' | 'migrate'>(initialMode);
+  const [mode, setMode] = useState<'login' | 'recover' | 'migrate'>(initialMode);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [recoveryPassphrase, setRecoveryPassphrase] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [recoveryPassphraseVisible, setRecoveryPassphraseVisible] = useState(true);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
@@ -93,12 +91,6 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, allow
 
       if (mode === 'login') {
         onAuthenticated(await browserAuthService.signIn(username.trim().toLowerCase(), password));
-      } else if (mode === 'create') {
-        if (password.length < 15 || password.length > 128) throw new AuthValidationError('Choose a password with 15 to 128 characters.', 'password');
-        if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.', 'confirmPassword');
-        const phrase = recoveryPassphrase.trim();
-        if (phrase.length < 10 || phrase.length > 128) throw new AuthValidationError('Choose a recovery passphrase with 10 to 128 characters.', 'recoveryPassphrase');
-        onAuthenticated(await browserAuthService.createAccount(username.trim().toLowerCase(), password, phrase));
       } else if (mode === 'migrate') {
         if (password.length < 15 || password.length > 128) throw new AuthValidationError('Choose a password with 15 to 128 characters.');
         if (password !== confirmPassword) throw new AuthValidationError('The passwords do not match.');
@@ -113,10 +105,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, allow
         setNotice('Password changed. Sign in with your new password.');
       }
     } catch (authError) {
-      const context = mode === 'login' ? 'sign-in'
-        : mode === 'create' ? 'create-account'
-          : mode === 'recover' ? 'password-recovery'
-            : 'account-migration';
+      const context = mode === 'login' ? 'sign-in' : mode === 'recover' ? 'password-recovery' : 'account-migration';
       if (authError instanceof AuthValidationError && authError.field) {
         setFieldErrors({ [authError.field]: authError.message });
         setFormError(null);
@@ -128,12 +117,12 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, allow
     }
   };
 
-  const changeMode = (next: 'login' | 'create' | 'recover' | 'migrate') => {
-    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setConfirmPassword(''); setConfirmPasswordVisible(false); setRecoveryPassphrase(''); setRecoveryPassphraseVisible(true);
+  const changeMode = (next: 'login' | 'recover' | 'migrate') => {
+    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setRecoveryPassphrase(''); setRecoveryPassphraseVisible(true);
   };
 
-  const title = mode === 'create' ? 'Create account' : mode === 'recover' ? 'Reset password' : mode === 'migrate' ? 'Restore account' : 'Sign in';
-  const actionLabel = mode === 'create' ? 'Continue setup' : mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
+  const title = mode === 'recover' ? 'Reset password' : mode === 'migrate' ? 'Restore account' : 'Sign in';
+  const actionLabel = mode === 'recover' ? 'Change password' : mode === 'migrate' ? 'Move existing account' : 'Sign in';
 
   return <KeyboardAvoidingView style={[styles.authScreen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView ref={authScrollRef} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={[styles.authScrollContent, compact && styles.authScrollContentCompact, shortScreen && styles.authScrollContentShort]}>
@@ -160,26 +149,18 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, allow
         </Pressable>
       </View>
       {fieldErrors.password && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.password}</Text>}
-      {(mode === 'create' || mode === 'migrate') && <>
-        <View style={[styles.authPasswordRow, fieldErrors.confirmPassword && styles.authInputInvalid]}>
-          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Confirm password" accessibilityHint={fieldErrors.confirmPassword} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry={!confirmPasswordVisible} value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearFieldError('confirmPassword'); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
-          <Pressable accessibilityRole="button" accessibilityLabel={confirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'} onPress={() => setConfirmPasswordVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}><AppIcon name={confirmPasswordVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} /></Pressable>
-        </View>
-        {fieldErrors.confirmPassword && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.confirmPassword}</Text>}
+      {mode === 'migrate' && <>
         <View style={[styles.authPasswordRow, fieldErrors.recoveryPassphrase && styles.authInputInvalid]}>
-          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Choose recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry={!recoveryPassphraseVisible} value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="10–128 characters" placeholderTextColor="#938A80" maxLength={128} style={styles.authPasswordInput} editable={!submitting} />
-          <Pressable accessibilityRole="button" accessibilityLabel={recoveryPassphraseVisible ? 'Hide recovery passphrase' : 'Show recovery passphrase'} onPress={() => setRecoveryPassphraseVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}><AppIcon name={recoveryPassphraseVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} /></Pressable>
+          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry={!recoveryPassphraseVisible} value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={styles.authPasswordInput} editable={!submitting} />
         </View>
-        {fieldErrors.recoveryPassphrase && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.recoveryPassphrase}</Text>}
       </>}
       <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
       </Pressable>
       {mode === 'login' && biometricReady && <Pressable accessibilityRole="button" accessibilityLabel="Sign in with fingerprint" disabled={submitting} onPress={() => { runInBackground(signInWithBiometrics()); }} style={({ pressed }) => [styles.authBiometricButton, pressed && styles.pressed, submitting && styles.buttonDisabled]}><AppIcon name="fingerprint" color={C.cocoaDark} size={21} /><Text style={styles.authBiometricText}>Use fingerprint</Text></Pressable>}
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
-      {mode === 'login' && allowAccountCreation && <Pressable accessibilityRole="button" accessibilityLabel="Create a new account" onPress={() => changeMode('create')} style={styles.authLink}><Text style={styles.authLinkText}>Create a new account</Text></Pressable>}
       {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Restore existing chats</Text></Pressable>}
-      {(mode === 'recover' || mode === 'create') && <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>{mode === 'recover' ? 'Back to sign in' : 'Already set up? Sign in'}</Text></Pressable>}
+      {mode === 'recover' && <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>Back to sign in</Text></Pressable>}
     </View>
     </ScrollView>
   </KeyboardAvoidingView>;
