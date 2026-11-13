@@ -30,7 +30,7 @@ jest.mock('react-native-keychain', () => ({
 }));
 
 function emptyData(): LocalAppData {
-  return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, shareOnboardingSurvey: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' }, onboardingSurveyAnswers: undefined, reduceMotion: false, hapticsEnabled: true, careRemindersEnabled: false };
+  return { conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, shareOnboardingSurvey: false, privacyPolicyAccepted: false, termsAccepted: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: 'teddy-bud', assistantCharacterNames: { 'teddy-bud': 'Teddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' }, onboardingSurveyAnswers: undefined, reduceMotion: false, hapticsEnabled: true, careRemindersEnabled: false };
 }
 
 describe('LocalDataService', () => {
@@ -57,6 +57,8 @@ describe('LocalDataService', () => {
       shareChatHistory: true,
       shareAboutMe: false,
       shareOnboardingSurvey: false,
+      privacyPolicyAccepted: false,
+      termsAccepted: false,
       aboutMe: '',
       assistantName: 'Teddy',
       assistantCharacterId: 'teddy-bud',
@@ -96,8 +98,8 @@ describe('LocalDataService', () => {
     expect((await service.load('account-invalid-image')).conversations[0].messages).toHaveLength(0);
   });
 
-  test('keeps setup-answer sharing off by default and preserves explicit opt-in', async () => {
-    expect(await service.load('account-a')).toMatchObject({ shareOnboardingSurvey: false });
+  test('keeps all optional AI context sharing off by default and preserves explicit opt-in', async () => {
+    expect(await service.load('account-a')).toMatchObject({ shareMemories: false, shareChatHistory: false, shareAboutMe: false, shareOnboardingSurvey: false, privacyPolicyAccepted: false, termsAccepted: false });
     await service.save('account-a', { ...emptyData(), shareOnboardingSurvey: true });
     expect(await service.load('account-a')).toMatchObject({ shareOnboardingSurvey: true });
   });
