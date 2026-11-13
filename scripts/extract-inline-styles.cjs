@@ -12,7 +12,7 @@ const edits = [];
 const usedStyleIds = new Set();
 traverse(ast, {
   Identifier(identifierPath) {
-    const match = identifierPath.node.name.match(/^__teddyBudExtractedStyles(\\d+)$/);
+    const match = identifierPath.node.name.match(/^__teddyBudExtractedStyles(\d+)$/);
     if (match) usedStyleIds.add(Number(match[1]));
   },
 });
