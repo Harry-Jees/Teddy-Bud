@@ -22,12 +22,18 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      'react-native': 'react-native-web',
-      'react-native-svg': fileURLToPath(new URL('./node_modules/react-native-svg/lib/module/ReactNativeSVG.web.js', import.meta.url)),
-      '/react-native-svg\\/lib\\/module\\/fabric\\/NativeSvgSoundModule\\.js$/': fileURLToPath(new URL('./src/shims/NativeSvgSoundModule.web.ts', import.meta.url)),
-      '@': fileURLToPath(new URL('.', import.meta.url)),
-    },
+    alias: [
+      {
+        find: /react-native-svg\\/lib\\/module\\/fabric\\/NativeSvgSoundModule\\.js$/,
+        replacement: fileURLToPath(new URL('./src/shims/NativeSvgSoundModule.web.ts', import.meta.url)),
+      },
+      { find: 'react-native', replacement: 'react-native-web' },
+      {
+        find: 'react-native-svg',
+        replacement: fileURLToPath(new URL('./node_modules/react-native-svg/lib/module/ReactNativeSVG.web.js', import.meta.url)),
+      },
+      { find: '@', replacement: fileURLToPath(new URL('.', import.meta.url)) },
+    ],
     extensions: [
       '.web.tsx',
       '.web.ts',
