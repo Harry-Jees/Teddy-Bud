@@ -14,7 +14,7 @@ Teddy Bud uses a warm, calm **Material-inspired claymorphism** visual language. 
 
 | Role | Token | Value |
 |---|---|---|
-| Canvas | `canvas` | `#F7F0E7` |
+| Canvas | `canvas` | `#FFFAF1` |
 | Surface | `surface` | `#FFFCF7` |
 | Soft surface | `surfaceAlt` | `#F1E6DA` |
 | Main text | `text` | `#302821` |
@@ -35,9 +35,9 @@ Ratios are calculated from the defined sRGB tokens using the WCAG relative-lumin
 
 | Foreground / background | Contrast |
 |---|---:|
-| Main text on canvas | 12.80:1 |
+| Main text on canvas | 13.92:1 |
 | Main text on paper | 14.14:1 |
-| Secondary text on canvas | 5.22:1 |
+| Secondary text on canvas | 5.68:1 |
 | Secondary text on paper | 5.77:1 |
 | Primary text/action on paper | 6.84:1 |
 | On-primary-container on primary container | 8.56:1 |
