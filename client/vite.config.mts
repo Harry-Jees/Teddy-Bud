@@ -24,7 +24,7 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: /react-native-svg\\/lib\\/module\\/fabric\\/NativeSvgSoundModule\\.js$/,
+        find: /react-native-svg\/lib\/module\/fabric\/NativeSvgSoundModule\.js$/,
         replacement: fileURLToPath(new URL('./src/shims/NativeSvgSoundModule.web.ts', import.meta.url)),
       },
       { find: 'react-native', replacement: 'react-native-web' },
