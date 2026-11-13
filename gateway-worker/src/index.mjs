@@ -507,7 +507,7 @@ async function hash(value) {
 
 async function readJson(request) {
   const text = await request.text();
-  if (text.length > 1_048_576) return { error: json(413, { error: 'Request body is too large.' }) };
+  if (text.length > 18_000_000) return { error: json(413, { error: 'Request body is too large. Images must be 12 MB or smaller.' }) };
   try {
     return { value: JSON.parse(text) };
   } catch {
@@ -811,8 +811,8 @@ async function completions(request, env) {
       if (typeof imageUrl !== 'string' || !/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+=*$/.test(imageUrl)) {
         return json(400, { error: { message: 'Images must be uploaded as JPEG, PNG, WebP, or GIF files.' } });
       }
-      if (imageUrl.length > 11_200_000) {
-        return json(413, { error: { message: 'Images must be 8 MB or smaller.' } });
+      if (imageUrl.length > 16_800_000) {
+        return json(413, { error: { message: 'Images must be 12 MB or smaller.' } });
       }
     }
   }
