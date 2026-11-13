@@ -8,6 +8,15 @@ import { teddyTheme } from '../theme';
 const PRIVACY_URL = 'https://teddybud.vercel.app/application-privacy';
 const TERMS_URL = 'https://teddybud.vercel.app/application-terms';
 
+function CheckRow({ checked, onPress, title, description, disabled = false, busy = false }: {
+  checked: boolean; onPress: () => void; title: string; description: string; disabled?: boolean; busy?: boolean;
+}) {
+  return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked, disabled }} disabled={disabled || busy} onPress={onPress} style={[styles.checkRow, disabled && styles.disabled]}>
+    <View style={[styles.checkbox, checked && styles.checkboxChecked]}>{checked ? <AppIcon name="check" color="#FFFCF7" size={14} /> : null}</View>
+    <View style={styles.copy}><Text style={styles.checkTitle}>{title}</Text><Text style={styles.description}>{description}</Text></View>
+  </Pressable>;
+}
+
 export function OnboardingConsent({ onComplete }: { onComplete: (allowAiContext: boolean) => Promise<void> }) {
   const [privacyOpened, setPrivacyOpened] = useState(false);
   const [termsOpened, setTermsOpened] = useState(false);
@@ -39,13 +48,6 @@ export function OnboardingConsent({ onComplete }: { onComplete: (allowAiContext:
     }
   };
 
-  const CheckRow = ({ checked, onPress, title, description, disabled = false }: {
-    checked: boolean; onPress: () => void; title: string; description: string; disabled?: boolean;
-  }) => <Pressable accessibilityRole="checkbox" accessibilityState={{ checked, disabled }} disabled={disabled || busy} onPress={onPress} style={[styles.checkRow, disabled && styles.disabled]}>
-    <View style={[styles.checkbox, checked && styles.checkboxChecked]}>{checked ? <AppIcon name="check" color="#FFFCF7" size={14} /> : null}</View>
-    <View style={styles.copy}><Text style={styles.checkTitle}>{title}</Text><Text style={styles.description}>{description}</Text></View>
-  </Pressable>;
-
   return <View style={styles.screen}>
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.mark}><AppIcon name="shield" color={teddyTheme.colors.primary} size={24} /></View>
@@ -58,7 +60,7 @@ export function OnboardingConsent({ onComplete }: { onComplete: (allowAiContext:
         <Pressable accessibilityRole="link" onPress={() => openPolicy(PRIVACY_URL, setPrivacyOpened)} style={styles.openButton}>
           <Text style={styles.openButtonText}>{privacyOpened ? 'Open privacy policy again' : 'Read full Privacy Policy'}</Text><AppIcon name="arrow" color={teddyTheme.colors.primary} size={15} />
         </Pressable>
-        <CheckRow checked={privacyAccepted} disabled={!privacyOpened} onPress={() => setPrivacyAccepted(value => !value)} title="I have read and agree to the Privacy Policy" description="Required to continue. Open the full policy first." />
+        <CheckRow busy={busy} checked={privacyAccepted} disabled={!privacyOpened} onPress={() => setPrivacyAccepted(value => !value)} title="I have read and agree to the Privacy Policy" description="Required to continue. Open the full policy first." />
       </View>
 
       <View style={styles.documentCard}>
@@ -66,12 +68,12 @@ export function OnboardingConsent({ onComplete }: { onComplete: (allowAiContext:
         <Pressable accessibilityRole="link" onPress={() => openPolicy(TERMS_URL, setTermsOpened)} style={styles.openButton}>
           <Text style={styles.openButtonText}>{termsOpened ? 'Open Terms again' : 'Read full Terms & Conditions'}</Text><AppIcon name="arrow" color={teddyTheme.colors.primary} size={15} />
         </Pressable>
-        <CheckRow checked={termsAccepted} disabled={!termsOpened} onPress={() => setTermsAccepted(value => !value)} title="I have read and agree to the Terms & Conditions" description="Required to continue. Open the full terms first." />
+        <CheckRow busy={busy} checked={termsAccepted} disabled={!termsOpened} onPress={() => setTermsAccepted(value => !value)} title="I have read and agree to the Terms & Conditions" description="Required to continue. Open the full terms first." />
       </View>
 
       <View style={[styles.documentCard, styles.optionalCard]}>
         <View style={styles.optionalLabel}><Text style={styles.optionalLabelText}>OPTIONAL</Text></View>
-        <CheckRow checked={allowAiContext} onPress={() => setAllowAiContext(value => !value)} title="Allow AI to use my saved context" description="When enabled, Teddy Bud may include saved memories, relevant excerpts from other conversations, About me notes, and onboarding answers in AI requests. You can change these controls individually in Privacy settings at any time. If left unchecked, this context stays off." />
+        <CheckRow busy={busy} checked={allowAiContext} onPress={() => setAllowAiContext(value => !value)} title="Allow AI to use my saved context" description="When enabled, Teddy Bud may include saved memories, relevant excerpts from other conversations, About me notes, and onboarding answers in AI requests. You can change these controls individually in Privacy settings at any time. If left unchecked, this context stays off." />
       </View>
 
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
