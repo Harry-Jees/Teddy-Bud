@@ -56,7 +56,7 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           script: |
-            set -euo pipefail
+            bash -euo pipefail <<'TEDDY_BUD_SMOKE'
             bash client/android/gradlew -p client/android assembleDebug -PreactNativeArchitectures=x86_64
             apk=client/android/app/build/outputs/apk/debug/app-debug.apk
             test -s "$apk"
@@ -82,6 +82,7 @@ jobs:
 
             adb shell dumpsys activity activities | grep -F 'com.teddybud'
             echo "PASS: Teddy Bud installed and remained alive for 30 seconds on Android API 35 (x86_64)."
+            TEDDY_BUD_SMOKE
 
       - name: Collect emulator diagnostics on failure
         if: failure()
