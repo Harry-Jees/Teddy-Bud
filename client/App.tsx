@@ -972,7 +972,7 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   };
 
   const sendMessage = async (messageToRetry?: string, imageDataUrl?: string, regenerate = false, replaceFromMessageId?: number) => {
-    const text = messageToRetry ?? (draft.trim() || (imageDataUrl ? 'Please describe this image.' : ''));
+    const text = messageToRetry ?? draft.trim();
     if ((!text && !imageDataUrl) || isSending || !localDataReady) return;
     const conversationId = activeConversationId ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     const editIndex = replaceFromMessageId === undefined ? -1 : messages.findIndex(message => message.id === replaceFromMessageId);
