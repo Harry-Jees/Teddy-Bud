@@ -4,7 +4,23 @@ import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   base: process.env.GITHUB_PAGES === 'true' ? '/Teddy-Bud/' : '/',
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'stub-react-native-svg-touch-sound-on-web',
+      enforce: 'pre',
+      resolveId(id) {
+        if (id.endsWith('/NativeSvgSoundModule') || id.endsWith('/NativeSvgSoundModule.js')) {
+          return '\\0rnsvg-sound-stub';
+        }
+        return null;
+      },
+      load(id) {
+        if (id === '\\0rnsvg-sound-stub') return 'export default { playTouchSound() {} };';
+        return null;
+      },
+    },
+  ],
   build: {
     emptyOutDir: true,
     rolldownOptions: {
@@ -23,10 +39,6 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      {
-        find: /react-native-svg\/lib\/module\/fabric\/NativeSvgSoundModule\.js$/,
-        replacement: fileURLToPath(new URL('./src/shims/NativeSvgSoundModule.web.ts', import.meta.url)),
-      },
       { find: 'react-native', replacement: 'react-native-web' },
       {
         find: 'react-native-svg',
