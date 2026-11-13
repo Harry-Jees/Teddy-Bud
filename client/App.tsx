@@ -164,9 +164,8 @@ function AccessGate() {
     style0: ({ flex: 1, opacity: loadingOpacity }) as const,
   });
   const [error, setError] = useState<string | null>(null);
-  const [initialMode, setInitialMode] = useState<'login' | 'create'>('login');
+  const [initialMode, setInitialMode] = useState<'login'>('login');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
-  const [canCreateAccount, setCanCreateAccount] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -186,7 +185,6 @@ function AccessGate() {
           } catch {
             if (mounted) {
               setInitialMode('login');
-              setCanCreateAccount(await browserAuthService.shouldCreateAccount());
               setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
             }
           }
@@ -197,7 +195,6 @@ function AccessGate() {
             if (current) await browserAuthService.markSetupComplete(current.username);
             else {
               setInitialMode('login');
-              setCanCreateAccount(await browserAuthService.shouldCreateAccount());
               setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
             }
           }
@@ -208,7 +205,6 @@ function AccessGate() {
           // A failed restore on an already configured device must return to
           // sign-in, never expose account creation as the default recovery path.
           setInitialMode('login');
-          setCanCreateAccount(false);
           try {
             setCanMigrateLegacy(await browserAuthService.canMigrateLegacyAccount());
           } catch {
@@ -257,7 +253,7 @@ function AccessGate() {
   // A valid in-memory session remains unlocked until its normal expiry.
 
   if (busy) return <View style={{ flex: 1, backgroundColor: C.canvas }}><Animated.View style={__teddyBudExtractedStyles0.style0}><AuthLoading /></Animated.View></View>;
-  if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} allowAccountCreation={canCreateAccount} onAuthenticated={next => { setError(null); setInitialMode('login'); setCanCreateAccount(false); setSession(next); }} />;
+  if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
   return <TeddyBud sessionToken={session.accessToken} username={session.username ?? ''} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
       const message = authErrorMessage(logoutError, 'sign-out');

@@ -378,9 +378,8 @@ export class BrowserAuthService {
         });
       }
     } finally {
-      // Explicit sign-out must revoke biometric auto-entry as well as the active session.
-      // Otherwise a saved device credential could silently sign the user back in.
-      await this.disableBiometricSignIn();
+      // Keep the opt-in biometric credential on this device so the sign-in screen
+      // can offer biometrics after logout. Only the active session is cleared.
       await this.clear();
     }
   }

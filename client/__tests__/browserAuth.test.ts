@@ -81,3 +81,10 @@ describe('BrowserAuthService public error behavior', () => {
       });
   });
 });
+test('logout keeps the enrolled biometric credential available for the next sign-in', async () => {
+  const disable = jest.spyOn(browserAuthService, 'disableBiometricSignIn');
+  mockedFetch.mockResolvedValue(response(200, { success: true }));
+  await browserAuthService.logout();
+  expect(disable).not.toHaveBeenCalled();
+  disable.mockRestore();
+});
