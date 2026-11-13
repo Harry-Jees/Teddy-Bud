@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  --tb-canvas:#F7F0E7; --tb-surface:#FFFCF7; --tb-surface-alt:#F1E6DA; --tb-surface-soft:#F8F1EA;
+  --tb-canvas:#FFFAF1; --tb-surface:#FFFCF7; --tb-surface-alt:#F1E6DA; --tb-surface-soft:#F8F1EA;
   --tb-text:#302821; --tb-text-secondary:#6F6256; --tb-primary:#75513D; --tb-primary-dark:#503728;
   --tb-primary-container:#F0E1D4; --tb-border:#D8C8B8; --tb-focus:#75513D;
   --tb-space-1:4px; --tb-space-2:8px; --tb-space-3:16px; --tb-space-4:24px;
