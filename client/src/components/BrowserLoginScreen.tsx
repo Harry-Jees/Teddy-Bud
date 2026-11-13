@@ -29,10 +29,12 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   const [mode, setMode] = useState<'login' | 'recover' | 'migrate'>(initialMode);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [recoveryPassphrase, setRecoveryPassphrase] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [recoveryPassphraseVisible, setRecoveryPassphraseVisible] = useState(true);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthField, string>>>({});
   const [notice, setNotice] = useState<string | null>(null);
@@ -118,7 +120,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
   };
 
   const changeMode = (next: 'login' | 'recover' | 'migrate') => {
-    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setRecoveryPassphrase(''); setRecoveryPassphraseVisible(true);
+    setMode(next); setFormError(null); setFieldErrors({}); setNotice(null); setPassword(''); setPasswordVisible(false); setConfirmPassword(''); setConfirmPasswordVisible(false); setRecoveryPassphrase(''); setRecoveryPassphraseVisible(true);
   };
 
   const title = mode === 'recover' ? 'Reset password' : mode === 'migrate' ? 'Restore account' : 'Sign in';
@@ -150,6 +152,11 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       </View>
       {fieldErrors.password && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.password}</Text>}
       {mode === 'migrate' && <>
+        <View style={[styles.authPasswordRow, fieldErrors.confirmPassword && styles.authInputInvalid]}>
+          <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Confirm password" accessibilityHint={fieldErrors.confirmPassword} autoCapitalize="none" autoComplete="new-password" textContentType="newPassword" secureTextEntry={!confirmPasswordVisible} value={confirmPassword} onChangeText={value => { setConfirmPassword(value); clearFieldError('confirmPassword'); }} placeholder="Confirm password" placeholderTextColor="#938A80" style={styles.authPasswordInput} editable={!submitting} />
+          <Pressable accessibilityRole="button" accessibilityLabel={confirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'} onPress={() => setConfirmPasswordVisible(current => !current)} style={({ pressed }) => [styles.showPasswordButton, pressed && styles.pressed]}><AppIcon name={confirmPasswordVisible ? 'eyeOff' : 'eye'} color={C.cocoa} size={19} /></Pressable>
+        </View>
+        {fieldErrors.confirmPassword && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.authFieldError}>{fieldErrors.confirmPassword}</Text>}
         <View style={[styles.authPasswordRow, fieldErrors.recoveryPassphrase && styles.authInputInvalid]}>
           <TextInput onFocus={event => keepFocusedFieldVisible(event.nativeEvent.target)} accessibilityLabel="Recovery passphrase" accessibilityHint={fieldErrors.recoveryPassphrase} autoCapitalize="none" autoCorrect={false} autoComplete="off" secureTextEntry={!recoveryPassphraseVisible} value={recoveryPassphrase} onChangeText={value => { setRecoveryPassphrase(value); clearFieldError('recoveryPassphrase'); }} placeholder="Recovery passphrase" placeholderTextColor="#938A80" maxLength={128} style={styles.authPasswordInput} editable={!submitting} />
         </View>
@@ -157,7 +164,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} disabled={submitting} onPress={submit} style={({ pressed }) => [styles.authButton, submitting && styles.buttonDisabled, pressed && styles.pressed]}>
         <Text style={styles.authButtonText}>{submitting ? 'Please wait…' : actionLabel}</Text>
       </Pressable>
-      {mode === 'login' && biometricReady && <Pressable accessibilityRole="button" accessibilityLabel="Sign in with fingerprint" disabled={submitting} onPress={() => { runInBackground(signInWithBiometrics()); }} style={({ pressed }) => [styles.authBiometricButton, pressed && styles.pressed, submitting && styles.buttonDisabled]}><AppIcon name="fingerprint" color={C.cocoaDark} size={21} /><Text style={styles.authBiometricText}>Use fingerprint</Text></Pressable>}
+      {mode === 'login' && biometricReady && <Pressable accessibilityRole="button" accessibilityLabel="Sign in with biometrics" disabled={submitting} onPress={() => { runInBackground(signInWithBiometrics()); }} style={({ pressed }) => [styles.authBiometricButton, pressed && styles.pressed, submitting && styles.buttonDisabled]}><AppIcon name="fingerprint" color={C.cocoaDark} size={21} /><Text style={styles.authBiometricText}>Use biometrics</Text></Pressable>}
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
       {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Restore existing chats</Text></Pressable>}
       {mode === 'recover' && <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>Back to sign in</Text></Pressable>}
