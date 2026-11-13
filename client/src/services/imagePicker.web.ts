@@ -1,6 +1,6 @@
 export type PickedChatImage = { dataUrl: string; name: string };
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 export async function pickChatImage(): Promise<PickedChatImage | null> {
@@ -13,7 +13,7 @@ export async function pickChatImage(): Promise<PickedChatImage | null> {
       const file = input.files?.[0];
       if (!file) { resolve(null); return; }
       if (file.size > MAX_IMAGE_BYTES) {
-        reject(new Error('Choose an image smaller than 8 MB.'));
+        reject(new Error('Choose an image smaller than 12 MB.'));
         return;
       }
       if (!ALLOWED_TYPES.has(file.type.toLowerCase())) {
