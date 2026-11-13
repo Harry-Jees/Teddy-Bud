@@ -1,5 +1,6 @@
 import { createLocalStore } from './localStore';
 import type { LocalStore } from './localStore';
+import { isTeddyStickerId } from './stickers';
 import { ASSISTANT_CHARACTERS, DEFAULT_ASSISTANT_CHARACTER_ID, getAssistantCharacter } from '../characters';
 import type { AssistantCharacterId, AssistantCharacterNames } from '../characters';
 
@@ -313,7 +314,7 @@ function isLocalMessage(message: unknown): message is LocalMessage {
     && (candidate.author === 'you' || candidate.author === 'teddy')
     && typeof candidate.time === 'string'
     && (candidate.stickerId === undefined
-      || ['wave', 'giggle', 'hug', 'curious', 'sleepy', 'sad', 'celebrate', 'cozy', 'heart'].includes(candidate.stickerId))
+      || isTeddyStickerId(candidate.stickerId))
     && (candidate.imageDataUrl === undefined
       || (typeof candidate.imageDataUrl === 'string'
         && candidate.imageDataUrl.length <= 11_200_000

@@ -27,6 +27,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { GATEWAY_BASE_URL } from './src/config/gateway';
 import { C } from './src/theme/palette';
 import { openExternalUrl } from './src/services/externalNavigation';
+import { requestMicrophonePermission } from './src/services/microphonePermission';
 import { confirmAction } from './src/services/confirmAction';
 import { styles } from './src/theme/appStyles';
 import { MarkdownReply, TypingIndicator } from './src/components/ChatPresentation';
@@ -2079,10 +2080,8 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         return;
       }
       try {
-        const permissionModule = NativeModules.PermissionsAndroid as { requestPermission: (permission: string) => Promise<string> } | undefined;
-        if (!permissionModule) throw new Error('Microphone permissions are unavailable in this build.');
-        const permission = await permissionModule.requestPermission('android.permission.RECORD_AUDIO');
-        if (permission !== 'granted') {
+        const permissionGranted = await requestMicrophonePermission();
+        if (!permissionGranted) {
           setSpeechError('Microphone permission was not granted. You can continue typing your message.');
           return;
         }
