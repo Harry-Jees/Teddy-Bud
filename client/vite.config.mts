@@ -11,12 +11,12 @@ export default defineConfig({
       enforce: 'pre',
       resolveId(id) {
         if (id.endsWith('/NativeSvgSoundModule') || id.endsWith('/NativeSvgSoundModule.js')) {
-          return '\\0rnsvg-sound-stub';
+          return '\0rnsvg-sound-stub';
         }
         return null;
       },
       load(id) {
-        if (id === '\\0rnsvg-sound-stub') return 'export default { playTouchSound() {} };';
+        if (id === '\0rnsvg-sound-stub') return 'export default { playTouchSound() {} };';
         return null;
       },
     },
