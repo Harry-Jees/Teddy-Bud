@@ -45,6 +45,8 @@ const sampleData: LocalAppData = {
   assistantCharacterId: 'teddy-bud',
   assistantCharacterNames: { 'teddy-bud': 'Buddy', doodle: 'Doodle', sunny: 'Sunny', mellow: 'Mellow' },
   onboardingSurveyAnswers: undefined,
+  privacyPolicyAccepted: true,
+  termsAccepted: true,
   reduceMotion: false,
   hapticsEnabled: true,
   careRemindersEnabled: false,
