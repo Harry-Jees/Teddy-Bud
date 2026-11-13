@@ -63,6 +63,8 @@ export type LocalAppData = {
   shareChatHistory: boolean;
   shareAboutMe: boolean;
   shareOnboardingSurvey?: boolean;
+  privacyPolicyAccepted?: boolean;
+  termsAccepted?: boolean;
   aboutMe: string;
   assistantName: string;
   assistantCharacterId?: AssistantCharacterId;
@@ -192,6 +194,8 @@ function normalize(value: unknown): LocalAppData {
     shareChatHistory: data.shareChatHistory === true,
     shareAboutMe: data.shareAboutMe === true,
     shareOnboardingSurvey: data.shareOnboardingSurvey === true,
+    privacyPolicyAccepted: data.privacyPolicyAccepted === true,
+    termsAccepted: data.termsAccepted === true,
     aboutMe: typeof data.aboutMe === 'string' ? data.aboutMe.slice(0, MAX_ABOUT_ME_LENGTH) : '',
     assistantName: assistantCharacterNames[assistantCharacterId] ?? legacyAssistantName,
     assistantCharacterId,
@@ -329,7 +333,7 @@ export class LocalDataService {
     if (!owner) throw new Error('A signed-in account is required to load local data.');
     await this.writeQueue;
     const saved = await (await getStorage()).getItem(key(owner));
-    if (!saved) return normalize({ conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: DEFAULT_ASSISTANT_CHARACTER_ID, assistantCharacterNames: { 'teddy-bud': 'Teddy' } });
+    if (!saved) return normalize({ conversations: [], activeConversationId: null, memories: [], emotionCheckIns: [], journalEntries: [], rememberInSession: true, shareMemories: false, shareChatHistory: false, shareAboutMe: false, shareOnboardingSurvey: false, privacyPolicyAccepted: false, termsAccepted: false, aboutMe: '', assistantName: 'Teddy', assistantCharacterId: DEFAULT_ASSISTANT_CHARACTER_ID, assistantCharacterNames: { 'teddy-bud': 'Teddy' } });
     try {
       return normalize(JSON.parse(saved));
     } catch {

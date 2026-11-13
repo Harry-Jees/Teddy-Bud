@@ -9,7 +9,21 @@ let source = fs.readFileSync(filePath, 'utf8');
 const ast = parser.parse(source, { sourceType: 'module', plugins: ['typescript', 'jsx'] });
 const groups = new Map();
 const edits = [];
+const usedStyleIds = new Set();
+traverse(ast, {
+  Identifier(identifierPath) {
+    const match = identifierPath.node.name.match(/^__teddyBudExtractedStyles(\d+)$/);
+    if (match) usedStyleIds.add(Number(match[1]));
+  },
+});
 let groupNumber = 0;
+function allocateGroupId() {
+  while (usedStyleIds.has(groupNumber)) groupNumber += 1;
+  const id = groupNumber;
+  usedStyleIds.add(id);
+  groupNumber += 1;
+  return id;
+}
 
 traverse(ast, {
   JSXAttribute(attributePath) {
@@ -33,7 +47,7 @@ traverse(ast, {
       groupKey = 'arrow:' + functionPath.node.start;
       group = groups.get(groupKey);
       if (!group) {
-        group = { kind: 'arrow', functionPath, items: [], id: groupNumber++ };
+        group = { kind: 'arrow', functionPath, items: [], id: allocateGroupId() };
         groups.set(groupKey, group);
       }
     } else {
@@ -44,7 +58,7 @@ traverse(ast, {
       groupKey = 'block:' + blockPath.node.start;
       group = groups.get(groupKey);
       if (!group) {
-        group = { kind: 'block', blockPath, items: [], id: groupNumber++ };
+        group = { kind: 'block', blockPath, items: [], id: allocateGroupId() };
         groups.set(groupKey, group);
       }
     }
