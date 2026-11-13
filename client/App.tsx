@@ -14,6 +14,7 @@ import {
   NativeEventEmitter,
   PanResponder,
   NativeModules,
+  PermissionsAndroid,
   Platform,
   Pressable,
   ScrollView,
@@ -2079,9 +2080,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
         return;
       }
       try {
-        const permissionModule = NativeModules.PermissionsAndroid as { requestPermission: (permission: string) => Promise<string> } | undefined;
-        if (!permissionModule) throw new Error('Microphone permissions are unavailable in this build.');
-        const permission = await permissionModule.requestPermission('android.permission.RECORD_AUDIO');
+        const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
         if (permission !== 'granted') {
           setSpeechError('Microphone permission was not granted. You can continue typing your message.');
           return;
