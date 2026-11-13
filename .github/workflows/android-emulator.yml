@@ -1,0 +1,91 @@
+name: Android emulator smoke test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'client/**'
+      - '.github/workflows/android-emulator.yml'
+  push:
+    branches: [test/android-emulator-smoke]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-emulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-emulator-smoke:
+    name: Install and launch on Android emulator
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+          cache-dependency-path: client/android/**/*.gradle*
+
+      - name: Install client dependencies
+        run: npm ci --prefix client
+
+      - name: Boot Android emulator and run app smoke test
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-boot-timeout: 600
+          disable-animations: true
+          script: |
+            bash -euo pipefail <<'TEDDY_BUD_SMOKE'
+            bash client/android/gradlew -p client/android assembleDebug -PreactNativeArchitectures=x86_64
+            apk=client/android/app/build/outputs/apk/debug/app-debug.apk
+            test -s "$apk"
+
+            adb install -r "$apk"
+            adb shell pm clear com.teddybud
+            adb shell monkey -p com.teddybud -c android.intent.category.LAUNCHER 1
+            sleep 30
+
+            pid="$(adb shell pidof com.teddybud | tr -d '\r')"
+            if [[ -z "$pid" ]]; then
+              echo "Teddy Bud process exited after launch."
+              adb logcat -d -t 1500
+              exit 1
+            fi
+
+            app_log="$(adb logcat -d --pid="$pid")"
+            if printf '%s\n' "$app_log" | grep -Eiq 'FATAL EXCEPTION|Fatal signal [0-9]+|ReactNativeJS:.*(Unhandled|Invariant Violation)'; then
+              printf '%s\n' "$app_log"
+              echo "Fatal app error detected in emulator log."
+              exit 1
+            fi
+
+            adb shell dumpsys activity activities | grep -F 'com.teddybud'
+            echo "PASS: Teddy Bud installed and remained alive for 30 seconds on Android API 35 (x86_64)."
+            TEDDY_BUD_SMOKE
+
+      - name: Collect emulator diagnostics on failure
+        if: failure()
+        run: |
+          adb devices || true
+          adb logcat -d -t 3000 || true
