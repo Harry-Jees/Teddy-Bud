@@ -1,7 +1,7 @@
 /** Shared Teddy Bud design tokens: warm Material-inspired claymorphism and an 8pt rhythm. */
 export const teddyTheme = {
   colors: {
-    canvas: '#F7F0E7', surface: '#FFFCF7', surfaceAlt: '#F1E6DA', surfaceSoft: '#F8F1EA', surfacePressed: '#EDE0D4',
+    canvas: '#FFFAF1', surface: '#FFFCF7', surfaceAlt: '#F1E6DA', surfaceSoft: '#F8F1EA', surfacePressed: '#EDE0D4',
     text: '#302821', textSecondary: '#6F6256', textMuted: '#6F6256', textDisabled: '#8F8277',
     border: '#D8C8B8', borderStrong: '#BFA995',
     primary: '#75513D', primaryHover: '#68442F', onPrimary: '#FFFCF7', primaryContainer: '#F0E1D4', onPrimaryContainer: '#503728',
