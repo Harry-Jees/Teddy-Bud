@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import { FileSystem } from 'react-native-file-access';
 
-const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
 export type PickedChatImage = { dataUrl: string; name: string };
 
@@ -17,7 +17,7 @@ export async function pickChatImage(): Promise<PickedChatImage | null> {
         const file = input.files?.[0];
         if (!file) { resolve(null); return; }
         if (file.size > MAX_IMAGE_BYTES) {
-          reject(new Error('Choose an image smaller than 12 MB.'));
+          reject(new Error('Choose an image smaller than 20 MB.'));
           return;
         }
         if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.type)) {
@@ -40,7 +40,7 @@ export async function pickChatImage(): Promise<PickedChatImage | null> {
     const file = selected[0];
     if (!file?.uri) return null;
     if (typeof file.size === 'number' && file.size > MAX_IMAGE_BYTES) {
-      throw new Error('Choose an image smaller than 12 MB.');
+      throw new Error('Choose an image smaller than 20 MB.');
     }
     const extension = file.name?.split('.').pop()?.toLowerCase();
     const mimeByExtension: Record<string, string> = {
@@ -59,7 +59,7 @@ export async function pickChatImage(): Promise<PickedChatImage | null> {
     // decoded payload length before creating a large data URL or sending it.
     const estimatedBytes = Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
     if (estimatedBytes > MAX_IMAGE_BYTES) {
-      throw new Error('Choose an image smaller than 12 MB.');
+      throw new Error('Choose an image smaller than 20 MB.');
     }
     return { dataUrl: `data:${mime};base64,${base64}`, name: file.name || 'image' };
   } catch (error) {
