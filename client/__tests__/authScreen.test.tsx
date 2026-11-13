@@ -60,7 +60,7 @@ test('sign-in validates username and password and has no account-creation path',
 }, 15000);
 
 test('enrolled biometric sign-in is offered on the login screen', async () => {
-  const platform = jest.spyOn(Platform, 'OS', 'get').mockReturnValue('android');
+  const platform = jest.replaceProperty(Platform, 'OS', 'android');
   const ready = jest.spyOn(browserAuthService, 'hasBiometricSignIn').mockResolvedValue(true);
   let renderer!: ReactTestRenderer.ReactTestRenderer;
   await ReactTestRenderer.act(async () => {
@@ -72,5 +72,5 @@ test('enrolled biometric sign-in is offered on the login screen', async () => {
   expect(renderer.root.findByProps({ accessibilityLabel: 'Sign in with biometrics' })).toBeTruthy();
   await ReactTestRenderer.act(async () => renderer.unmount());
   ready.mockRestore();
-  platform.mockRestore();
+  platform.restore();
 }, 15000);
