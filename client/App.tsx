@@ -55,6 +55,7 @@ import type { CrisisHelplineOption, EmergencyCallOption } from './src/services/c
 import teddyBudLogoAsset from './assets/teddy-bud-logo.png';
 import assistantIconAsset from './assets/icon.png';
 
+const LazyOnboardingConsent = React.lazy(() => import('./src/components/OnboardingConsent').then(({ OnboardingConsent }) => ({ default: OnboardingConsent })));
 const LazyOnboardingSurvey = React.lazy(() => import('./src/components/OnboardingSurvey').then(({ OnboardingSurvey }) => ({ default: OnboardingSurvey })));
 const LazyWellbeingStudio = React.lazy(() => import('./src/components/WellbeingStudio').then(({ WellbeingStudio }) => ({ default: WellbeingStudio })));
 // Keep optional wellbeing features out of the initial application bundle.
@@ -358,10 +359,12 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   const rememberPreferenceRef = useRef(true);
   const memorySuggestionRequestId = useRef(0);
   const nextMessageId = useRef(0);
-  const [shareMemories, setShareMemories] = useState(true);
-  const [shareChatHistory, setShareChatHistory] = useState(true);
-  const [shareAboutMe, setShareAboutMe] = useState(true);
-  const [shareOnboardingSurvey, setShareOnboardingSurvey] = useState(true);
+  const [shareMemories, setShareMemories] = useState(false);
+  const [shareChatHistory, setShareChatHistory] = useState(false);
+  const [shareAboutMe, setShareAboutMe] = useState(false);
+  const [shareOnboardingSurvey, setShareOnboardingSurvey] = useState(false);
+  const [privacyPolicyAccepted, setPrivacyPolicyAccepted] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [aboutMe, setAboutMe] = useState('');
   const [assistantName, setAssistantName] = useState('Teddy');
   const [assistantCharacterId, setAssistantCharacterId] = useState<AssistantCharacterId>(DEFAULT_ASSISTANT_CHARACTER_ID);
@@ -404,6 +407,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       shareChatHistory,
       shareAboutMe,
       shareOnboardingSurvey,
+      privacyPolicyAccepted,
+      termsAccepted,
       aboutMe,
       assistantName,
       assistantCharacterId,
@@ -428,6 +433,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
     if ('shareChatHistory' in overrides) setShareChatHistory(nextSnapshot.shareChatHistory);
     if ('shareAboutMe' in overrides) setShareAboutMe(nextSnapshot.shareAboutMe);
     if ('shareOnboardingSurvey' in overrides) setShareOnboardingSurvey(nextSnapshot.shareOnboardingSurvey ?? false);
+    if ('privacyPolicyAccepted' in overrides) setPrivacyPolicyAccepted(nextSnapshot.privacyPolicyAccepted === true);
+    if ('termsAccepted' in overrides) setTermsAccepted(nextSnapshot.termsAccepted === true);
     if ('aboutMe' in overrides) setAboutMe(nextSnapshot.aboutMe);
     if ('assistantName' in overrides) setAssistantName(nextSnapshot.assistantName);
     if ('assistantCharacterId' in overrides) setAssistantCharacterId(nextSnapshot.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
@@ -486,6 +493,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       setShareChatHistory(data.shareChatHistory);
       setShareAboutMe(data.shareAboutMe);
       setShareOnboardingSurvey(data.shareOnboardingSurvey ?? false);
+      setPrivacyPolicyAccepted(data.privacyPolicyAccepted === true);
+      setTermsAccepted(data.termsAccepted === true);
       setAboutMe(data.aboutMe);
       setAssistantName(data.assistantName);
       setAssistantCharacterId(data.assistantCharacterId ?? DEFAULT_ASSISTANT_CHARACTER_ID);
@@ -515,6 +524,8 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
       shareChatHistory,
       shareAboutMe,
       shareOnboardingSurvey,
+      privacyPolicyAccepted,
+      termsAccepted,
       aboutMe,
       assistantName,
       assistantCharacterId,
@@ -1160,6 +1171,19 @@ function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; 
   };
 
   const rootInsetsStyle = { paddingTop: insets.top, paddingBottom: wide ? insets.bottom : 0 };
+  if (localDataReady && localDataOwner === owner && (!privacyPolicyAccepted || !termsAccepted)) {
+    return <React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Preparing your privacy choices…</Text></View>}><LazyOnboardingConsent onComplete={async allowAiContext => {
+      await persistLocalSnapshot({
+        privacyPolicyAccepted: true,
+        termsAccepted: true,
+        shareMemories: allowAiContext,
+        shareChatHistory: allowAiContext,
+        shareAboutMe: allowAiContext,
+        shareOnboardingSurvey: allowAiContext,
+      });
+    }} /></React.Suspense>;
+  }
+
   if (localDataReady && localDataOwner === owner && onboardingSurveyAnswers === undefined) {
     return <React.Suspense fallback={<View style={styles.wellbeingStudioLoading}><Text style={styles.wellbeingStudioLoadingText}>Preparing your welcome…</Text></View>}><LazyOnboardingSurvey onComplete={async (answers, createInitialMap) => {
       await persistLocalSnapshot({ onboardingSurveyAnswers: answers });
