@@ -56,7 +56,7 @@ export function OnboardingConsent({ onComplete }: { onComplete: (allowAiContext:
       <View style={styles.documentCard}>
         <View style={styles.documentHeader}><Text style={styles.documentTitle}>Privacy Policy</Text><Text style={styles.documentMeta}>How Teddy Bud handles your data</Text></View>
         <Pressable accessibilityRole="link" onPress={() => openPolicy(PRIVACY_URL, setPrivacyOpened)} style={styles.openButton}>
-          <Text style={styles.openButtonText}>{privacyOpened ? 'Open privacy policy again' : 'Read full Privacy Policy'}</Text><AppIcon name="external-link" color={teddyTheme.colors.primary} size={15} />
+          <Text style={styles.openButtonText}>{privacyOpened ? 'Open privacy policy again' : 'Read full Privacy Policy'}</Text><AppIcon name="arrow" color={teddyTheme.colors.primary} size={15} />
         </Pressable>
         <CheckRow checked={privacyAccepted} disabled={!privacyOpened} onPress={() => setPrivacyAccepted(value => !value)} title="I have read and agree to the Privacy Policy" description="Required to continue. Open the full policy first." />
       </View>
@@ -64,7 +64,7 @@ export function OnboardingConsent({ onComplete }: { onComplete: (allowAiContext:
       <View style={styles.documentCard}>
         <View style={styles.documentHeader}><Text style={styles.documentTitle}>Terms & Conditions</Text><Text style={styles.documentMeta}>Rules and conditions for using Teddy Bud</Text></View>
         <Pressable accessibilityRole="link" onPress={() => openPolicy(TERMS_URL, setTermsOpened)} style={styles.openButton}>
-          <Text style={styles.openButtonText}>{termsOpened ? 'Open Terms again' : 'Read full Terms & Conditions'}</Text><AppIcon name="external-link" color={teddyTheme.colors.primary} size={15} />
+          <Text style={styles.openButtonText}>{termsOpened ? 'Open Terms again' : 'Read full Terms & Conditions'}</Text><AppIcon name="arrow" color={teddyTheme.colors.primary} size={15} />
         </Pressable>
         <CheckRow checked={termsAccepted} disabled={!termsOpened} onPress={() => setTermsAccepted(value => !value)} title="I have read and agree to the Terms & Conditions" description="Required to continue. Open the full terms first." />
       </View>
