@@ -173,11 +173,14 @@ function AccessGate() {
       const loadingStartedAt = Date.now();
       try {
         // A device with no setup marker is a fresh install: show account creation first.
-        const freshInstall = await browserAuthService.shouldCreateAccount();
+        // Preserve legacy migration before deciding this device needs a new account.
+        const canMigrateLegacy = await browserAuthService.canMigrateLegacyAccount();
+        const freshInstall = await browserAuthService.shouldCreateAccount() && !canMigrateLegacy;
         if (freshInstall) {
           if (mounted) { setInitialMode('create'); setCanMigrateLegacy(false); }
           return;
         }
+        if (mounted) setCanMigrateLegacy(canMigrateLegacy);
         // If biometric sign-in was enrolled, require the device owner to unlock on every cold app launch.
         // A cancelled/failed prompt deliberately falls back to the username + password screen.
         const biometricReady = Platform.OS === 'android' && await browserAuthService.hasBiometricSignIn();
