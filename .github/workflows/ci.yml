@@ -241,7 +241,7 @@ jobs:
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[] | select(.expired == false) | [.name, .size_in_bytes] | @tsv' | sort
       - name: Download artifacts from this successful build run
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: teddy-bud-*
           path: source-artifacts
