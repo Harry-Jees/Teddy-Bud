@@ -21,7 +21,7 @@ function runInBackground(task: Promise<unknown>): void {
   task.then(undefined, error => console.error('A background Teddy Bud task failed.', error));
 }
 
-export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void }) {
+export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void; onStartImport?: () => void }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compact = width < 600;
@@ -166,6 +166,7 @@ export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAut
       </Pressable>
       {mode === 'login' && biometricReady && <Pressable accessibilityRole="button" accessibilityLabel="Sign in with biometrics" disabled={submitting} onPress={() => { runInBackground(signInWithBiometrics()); }} style={({ pressed }) => [styles.authBiometricButton, pressed && styles.pressed, submitting && styles.buttonDisabled]}><AppIcon name="fingerprint" color={C.cocoaDark} size={21} /><Text style={styles.authBiometricText}>Use biometrics</Text></Pressable>}
       {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => changeMode('recover')} style={styles.authLink}><Text style={styles.authLinkText}>Forgot password?</Text></Pressable>}
+      {mode === 'login' && <Pressable accessibilityRole="button" onPress={() => { setNotice('Sign in to your account, then choose Import backup in Settings to restore your .tdbot file.'); onStartImport?.(); }} style={styles.authLink}><Text style={styles.authLinkText}>Start with import (.tdbot)</Text></Pressable>}
       {canMigrateLegacy && mode !== 'recover' && mode !== 'migrate' && <Pressable accessibilityRole="button" onPress={() => changeMode('migrate')} style={styles.authLink}><Text style={styles.authLinkText}>Restore existing chats</Text></Pressable>}
       {mode === 'recover' && <Pressable accessibilityRole="button" onPress={() => changeMode('login')} style={styles.authLink}><Text style={styles.authLinkText}>Back to sign in</Text></Pressable>}
     </View>
