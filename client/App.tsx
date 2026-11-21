@@ -1951,6 +1951,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     return () => { show.remove(); hide.remove(); };
   }, []);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
+  const [composerActionsOpen, setComposerActionsOpen] = useState(false);
   const reduceMotion = useReducedMotionPreference();
   const mascotBreath = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -2138,7 +2139,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     onSend(selectedImage?.dataUrl);
     setSelectedImage(null);
   };
-  return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+  return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={[styles.chatHeader, wide && styles.chatHeaderWide]}>
       <View style={styles.chatHeaderCopy}><Text style={styles.pageTitle} numberOfLines={1}>{conversationTitle}</Text></View>
       <View style={styles.headerActions}>
@@ -2244,21 +2245,26 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     </Pressable>}
     </View>
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
-      {chatActionsOpen && !keyboardVisible && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Attach an image" onPress={async () => { setChatActionsOpen(false); try { setSelectedImage(await pickChatImage()); } catch (error) { Alert.alert('Could not add image', imagePickerErrorMessage(error)); } }} style={({ pressed }) => [{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 18, backgroundColor: C.surfaceAlt || C.surface, flexDirection: 'row', alignItems: 'center', gap: 6 }, pressed && styles.pressed]}>
-          <AppIcon name="image" color={C.cocoa} size={14} /><Text style={{ color: C.cocoa, fontSize: 12, fontWeight: '600' }}>Image · 5</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open crisis support" onPress={() => { setChatActionsOpen(false); setManualCrisisSupport(true); }} style={({ pressed }) => [{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 18, backgroundColor: C.surfaceAlt || C.surface, flexDirection: 'row', alignItems: 'center', gap: 6 }, pressed && styles.pressed]}>
-          <AppIcon name="heart" color={C.cocoa} size={14} /><Text style={{ color: C.cocoa, fontSize: 12, fontWeight: '600' }}>Support</Text>
-        </Pressable>
-        {onSaveOccasion && <Pressable accessibilityRole="button" accessibilityLabel="Save an occasion" onPress={() => { setChatActionsOpen(false); setOccasionDraft(''); setOccasionOpen(true); }} style={({ pressed }) => [{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 18, backgroundColor: C.surfaceAlt || C.surface, flexDirection: 'row', alignItems: 'center', gap: 6 }, pressed && styles.pressed]}>
-          <AppIcon name="sparkle" color={C.cocoa} size={14} /><Text style={{ color: C.cocoa, fontSize: 12, fontWeight: '600' }}>Save occasion</Text>
-        </Pressable>}
-      </View>}
+      {composerActionsOpen && !keyboardVisible && <Modal transparent animationType="fade" visible onRequestClose={() => setComposerActionsOpen(false)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: 110, paddingHorizontal: 16 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Dismiss composer actions" onPress={() => setComposerActionsOpen(false)} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(30,20,10,0.12)' }} />
+          <View style={{ alignSelf: 'flex-start', width: 190, padding: 6, borderRadius: 16, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border || '#E8DED3', gap: 4, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 8 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Attach an image" onPress={async () => { setComposerActionsOpen(false); try { setSelectedImage(await pickChatImage()); } catch (error) { Alert.alert('Could not add image', imagePickerErrorMessage(error)); } }} style={({ pressed }) => [{ paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }, pressed && styles.pressed]}>
+            <AppIcon name="image" color={C.cocoa} size={16} /><Text style={{ color: C.cocoa, fontSize: 13, fontWeight: '600' }}>Image · 5</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open crisis support" onPress={() => { setComposerActionsOpen(false); setManualCrisisSupport(true); }} style={({ pressed }) => [{ paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }, pressed && styles.pressed]}>
+            <AppIcon name="heart" color={C.cocoa} size={16} /><Text style={{ color: C.cocoa, fontSize: 13, fontWeight: '600' }}>Support</Text>
+          </Pressable>
+          {onSaveOccasion && <Pressable accessibilityRole="button" accessibilityLabel="Save an occasion" onPress={() => { setComposerActionsOpen(false); setOccasionDraft(''); setOccasionOpen(true); }} style={({ pressed }) => [{ paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }, pressed && styles.pressed]}>
+            <AppIcon name="sparkle" color={C.cocoa} size={16} /><Text style={{ color: C.cocoa, fontSize: 13, fontWeight: '600' }}>Save occasion</Text>
+          </Pressable>}
+          </View>
+        </View>
+      </Modal>}
       {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={__teddyBudExtractedStyles6.style1} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
       {editingMessageId !== null && editingMessageId !== undefined && <View style={__teddyBudExtractedStyles6.style2}><Text style={__teddyBudExtractedStyles6.style3}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={__teddyBudExtractedStyles6.style4}><Text style={__teddyBudExtractedStyles6.style5}>Cancel</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
-        <Pressable accessibilityRole="button" accessibilityLabel={chatActionsOpen ? "Close chat actions" : "Open chat actions"} onPress={() => setChatActionsOpen(value => !value)} style={({ pressed }) => [{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.surfaceAlt || C.surface, alignItems: 'center', justifyContent: 'center', marginRight: 8 }, pressed && styles.pressed]}><AppIcon name={chatActionsOpen ? "close" : "plus"} color={C.cocoa} size={20} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={composerActionsOpen ? "Close composer actions" : "Open composer actions"} onPress={() => setComposerActionsOpen(value => !value)} style={({ pressed }) => [{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.surfaceAlt || C.surface, alignItems: 'center', justifyContent: 'center', marginRight: 8 }, pressed && styles.pressed]}><AppIcon name={composerActionsOpen ? "close" : "plus"} color={C.cocoa} size={20} /></Pressable>
         <TextInput value={draft} onChangeText={setDraft} onFocus={() => { setComposerFocused(true); shouldAutoScrollRef.current = true; scrollRef.current?.scrollToEnd({ animated: true }); }} onBlur={() => setComposerFocused(false)} onSubmitEditing={submitMessage} enterKeyHint="send" blurOnSubmit={Platform.OS === 'web'} placeholder={`Message ${assistantName}…`} placeholderTextColor={C.muted} multiline style={styles.composerInput} accessibilityLabel={`Write a message to ${assistantName}`} {...(Platform.OS === 'web' ? { dataSet: { gramm: 'false' } } as Record<string, unknown> : {})} />
         <Pressable accessibilityRole="button" accessibilityLabel={speechListening ? 'Stop voice input' : 'Start voice input'} accessibilityHint="Speech is transcribed into your editable message. Nothing is sent until you press Send." onPress={speechListening ? stopSpeechInput : () => { runInBackground(startSpeechInput()); }} disabled={isSending} style={({ pressed }) => [styles.voiceButton, speechListening && styles.voiceButtonActive, isSending && styles.buttonDisabled, pressed && styles.pressed]}>
           {speechListening ? <AppIcon name="square" color={C.cocoa} size={17} /> : <AppIcon name="mic" color={C.cocoa} size={20} />}
