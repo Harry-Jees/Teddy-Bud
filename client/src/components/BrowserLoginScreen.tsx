@@ -21,7 +21,7 @@ function runInBackground(task: Promise<unknown>): void {
   task.then(undefined, error => console.error('A background Teddy Bud task failed.', error));
 }
 
-export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated }: { error: string | null; initialMode: 'login'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void; onStartImport?: () => void }) {
+export function BrowserLoginScreen({ error, initialMode, canMigrateLegacy, onAuthenticated, onStartImport }: { error: string | null; initialMode: 'login'; canMigrateLegacy: boolean; onAuthenticated: (session: StoredSession) => void; onStartImport?: () => void }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const compact = width < 600;
