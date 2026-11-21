@@ -2567,11 +2567,11 @@ function SettingsPage({ wide, username, reduceMotion, hapticsEnabled, careRemind
     <Text style={styles.settingsSectionLabel}>BACKUP & RESTORE</Text>
     <View style={styles.settingsCardForm}>
       <Text style={styles.settingTitle}>Account data backup</Text>
-      <Text style={styles.settingDescription}>Export chats, memories, and preferences as an encrypted .teddybud file. After reinstalling, sign in with the same username and import this file to restore your account data.</Text>
+      <Text style={styles.settingDescription}>Export chats, memories, and preferences as an encrypted .tdbot file. After reinstalling, sign in with the same username and import this file to restore your account data.</Text>
       <TextInput value={backupPassphrase} onChangeText={setBackupPassphrase} placeholder="Backup passphrase (12+ characters)" placeholderTextColor={C.muted} autoCapitalize="none" autoCorrect={false} secureTextEntry style={[styles.settingsTextInput, styles.backupPassphraseInput]} accessibilityLabel="Backup passphrase" />
       <View style={styles.backupActions}>
-        <Button label={backupBusy ? 'Working…' : 'Export .teddybud'} onPress={exportBackupFile} disabled={backupBusy || backupPassphrase.trim().length < 12} />
-        <Button label="Import account data" tone="quiet" onPress={chooseBackupFile} disabled={backupBusy || backupPassphrase.trim().length < 12} />
+        <Button label={backupBusy ? 'Working…' : 'Export .tdbot'} onPress={exportBackupFile} disabled={backupBusy || backupPassphrase.trim().length < 12} />
+        <Button label="Import .tdbot backup" tone="quiet" onPress={chooseBackupFile} disabled={backupBusy || backupPassphrase.trim().length < 12} />
       </View>
       {!!backupStatus && <Text accessibilityLiveRegion="polite" style={styles.backupStatus}>{backupStatus}</Text>}
       <Text style={styles.backupFootnote}>Your username and password restore account access; this encrypted file restores local chats, memories, and preferences. Keep the backup passphrase safe.</Text>
