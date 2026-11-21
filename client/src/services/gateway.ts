@@ -11,10 +11,10 @@ export type GatewayCapability = 'coding' | 'vision' | 'web_search';
 export interface GatewayModel { id: string; name?: string; capabilities: GatewayCapability[]; }
 export interface SendChatOptions { modelId?: string; task?: 'conversation' | 'coding' | 'vision'; imageDataUrl?: string; enableWebBrowsing?: boolean; memories?: string[]; crossChatContext?: string[]; aboutMe?: string; assistantName?: string; assistantCharacterId?: AssistantCharacterId; crisisConcern?: boolean; onTextChunk?: (text: string) => void; signal?: AbortSignal; }
 
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 350;
+const MAX_RETRIES = 1;
+const RETRY_DELAY_MS = 250;
 const REQUEST_TIMEOUT_MS = 120_000;
-const MAX_CONTEXT_CHARS = 80_000;
+const MAX_CONTEXT_CHARS = 32_000;
 const MAX_SHARED_MEMORY_CHARS = 4_000;
 const MAX_CROSS_CHAT_CONTEXT_CHARS = 1_800;
 // Route ordinary text (including coding) to the lower-cost text model.
@@ -505,7 +505,7 @@ export class GatewayService {
       messages,
       // React Native's fetch streaming support is inconsistent across Android versions. Use a normal JSON response on native platforms.
       stream: Platform.OS === 'web' && typeof options.onTextChunk === 'function',
-      max_tokens: options.task === 'coding' || options.task === 'vision' ? 220 : 4096,
+      max_tokens: options.task === 'coding' || options.task === 'vision' ? 220 : 1536,
       temperature: 0.65,
       top_p: 0.9,
     };
