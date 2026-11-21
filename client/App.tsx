@@ -164,7 +164,7 @@ function AccessGate() {
     style0: ({ flex: 1, opacity: loadingOpacity }) as const,
   });
   const [error, setError] = useState<string | null>(null);
-  const [initialMode, setInitialMode] = useState<'login'>('login');
+  const [initialMode, setInitialMode] = useState<'login' | 'create'>('login');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
 
   useEffect(() => {
@@ -172,6 +172,15 @@ function AccessGate() {
     const restore = async () => {
       const loadingStartedAt = Date.now();
       try {
+        // A device with no setup marker is a fresh install: show account creation first.
+        // Preserve legacy migration before deciding this device needs a new account.
+        const legacyMigrationAvailable = await browserAuthService.canMigrateLegacyAccount();
+        const freshInstall = await browserAuthService.shouldCreateAccount() && !legacyMigrationAvailable;
+        if (freshInstall) {
+          if (mounted) { setInitialMode('create'); setCanMigrateLegacy(false); }
+          return;
+        }
+        if (mounted) setCanMigrateLegacy(legacyMigrationAvailable);
         // If biometric sign-in was enrolled, require the device owner to unlock on every cold app launch.
         // A cancelled/failed prompt deliberately falls back to the username + password screen.
         const biometricReady = Platform.OS === 'android' && await browserAuthService.hasBiometricSignIn();
