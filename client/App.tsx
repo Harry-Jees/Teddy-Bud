@@ -1782,10 +1782,31 @@ function NavButton({ item, selected, onPress, collapsed = false, labelOpacity }:
   </Pressable>;
 }
 
+type HapticFeedbackType = 'tap' | 'selection' | 'success' | 'warning';
+
 function useHapticFeedback() {
   const { hapticsEnabled } = useContext(UISettingsContext);
-  return useCallback(() => {
-    if (hapticsEnabled) { try { Vibration.vibrate(8); } catch { /* Haptics must never interrupt navigation. */ } }
+  return useCallback((type: HapticFeedbackType = 'tap') => {
+    if (!hapticsEnabled || Platform.OS === 'web') return;
+    try {
+      if (Platform.OS === 'android') {
+        // Short, distinct pulse patterns; Android's vibration setting/system policy
+        // and the app's own toggle remain authoritative.
+        const patterns: Record<HapticFeedbackType, number[]> = {
+          tap: [0, 10],
+          selection: [0, 6, 28, 6],
+          success: [0, 12, 36, 12],
+          warning: [0, 18, 45, 18],
+        };
+        Vibration.vibrate(patterns[type], false);
+      } else {
+        // React Native's iOS vibration API does not expose impact styles.
+        // Keep it brief and avoid repeated or looping vibrations.
+        Vibration.vibrate();
+      }
+    } catch {
+      // Haptic feedback is optional and must never interrupt an interaction.
+    }
   }, [hapticsEnabled]);
 }
 
