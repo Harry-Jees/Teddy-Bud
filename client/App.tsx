@@ -2139,7 +2139,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     onSend(selectedImage?.dataUrl);
     setSelectedImage(null);
   };
-  return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}>
+  return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={[styles.chatHeader, wide && styles.chatHeaderWide]}>
       <View style={styles.chatHeaderCopy}><Text style={styles.pageTitle} numberOfLines={1}>{conversationTitle}</Text></View>
       <View style={styles.headerActions}>
