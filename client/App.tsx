@@ -166,6 +166,7 @@ function AccessGate() {
   const [error, setError] = useState<string | null>(null);
   const [initialMode, setInitialMode] = useState<'login'>('login');
   const [canMigrateLegacy, setCanMigrateLegacy] = useState(false);
+  const [restoreAfterSignIn, setRestoreAfterSignIn] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -253,8 +254,8 @@ function AccessGate() {
   // A valid in-memory session remains unlocked until its normal expiry.
 
   if (busy) return <View style={{ flex: 1, backgroundColor: C.canvas }}><Animated.View style={__teddyBudExtractedStyles0.style0}><AuthLoading /></Animated.View></View>;
-  if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
-  return <TeddyBud sessionToken={session.accessToken} username={session.username ?? ''} onLogout={() => {
+  if (!session) return <BrowserLoginScreen error={error} initialMode={initialMode} canMigrateLegacy={canMigrateLegacy} onStartImport={() => setRestoreAfterSignIn(true)} onAuthenticated={next => { setError(null); setInitialMode('login'); setSession(next); }} />;
+  return <TeddyBud sessionToken={session.accessToken} username={session.username ?? ''} initialImport={restoreAfterSignIn} onLogout={() => {
     browserAuthService.logout().then(() => setSession(null)).catch(logoutError => {
       const message = authErrorMessage(logoutError, 'sign-out');
       setError(message);
@@ -296,11 +297,11 @@ function AuthLoading() {
   </View>;
 }
 /** Coordinates navigation, local data, and feature screens for an authenticated device. */
-function TeddyBud({ sessionToken, username, onLogout }: { sessionToken: string; username: string; onLogout: () => void }) {
+function TeddyBud({ sessionToken, username, initialImport = false, onLogout }: { sessionToken: string; username: string; initialImport?: boolean; onLogout: () => void }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 800;
-  const [page, setPage] = useState<Page>('chat');
+  const [page, setPage] = useState<Page>(initialImport ? 'settings' : 'chat');
   const [lastDiscoverPage, setLastDiscoverPage] = useState<Page>('discover');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   useEffect(() => {
