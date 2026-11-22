@@ -1393,7 +1393,7 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
     style0: ({ flex: 1, minWidth: 0, overflow: 'hidden' }) as const,
     style1: ({
         width: width * frames.length,
-        height: '100%',
+        flex: 1,
         flexDirection: 'row',
         transform: [{ translateX }],
       }) as const,
@@ -1480,7 +1480,7 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
     >
       {frames.map((frame, index) => {
         const __teddyBudExtractedStyles3 = StyleSheet.create({
-          style0: ({ width, height: '100%', flexShrink: 0 }) as const,
+          style0: ({ width, flex: 1, flexShrink: 0 }) as const,
         });
         return <View
         key={`teddy-tab-frame-${index}`}
