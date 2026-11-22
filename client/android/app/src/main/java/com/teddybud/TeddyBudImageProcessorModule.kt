@@ -26,7 +26,7 @@ class TeddyBudImageProcessorModule(context: ReactApplicationContext) : ReactCont
       require(bounds.outWidth > 0 && bounds.outHeight > 0) { "This image format could not be decoded on this device." }
       val limit = maxDimension.coerceIn(640, 4096)
       var sample = 1
-      while (bounds.outWidth / (sample * 2) >= limit && bounds.outHeight / (sample * 2) >= limit) sample *= 2
+      while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= limit) sample *= 2
       val options = BitmapFactory.Options().apply { inSampleSize = sample.coerceAtLeast(1) }
       val bitmap = resolver.openInputStream(uri).use { stream ->
         requireNotNull(stream) { "The selected image could not be opened." }
@@ -34,8 +34,13 @@ class TeddyBudImageProcessorModule(context: ReactApplicationContext) : ReactCont
       } ?: throw IllegalArgumentException("This image format could not be decoded on this device.")
       val scale = minOf(1.0, limit.toDouble() / maxOf(bitmap.width, bitmap.height))
       val resized = if (scale < 1.0) Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt().coerceAtLeast(1), (bitmap.height * scale).toInt().coerceAtLeast(1), true) else bitmap
+      val outputBitmap = Bitmap.createBitmap(resized.width, resized.height, Bitmap.Config.RGB_565)
+      val canvas = android.graphics.Canvas(outputBitmap)
+      canvas.drawColor(android.graphics.Color.WHITE)
+      canvas.drawBitmap(resized, 0f, 0f, null)
       val output = ByteArrayOutputStream()
-      resized.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(70, 92), output)
+      outputBitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(70, 92), output)
+      outputBitmap.recycle()
       if (resized !== bitmap) resized.recycle()
       bitmap.recycle()
       val bytes = output.toByteArray()
