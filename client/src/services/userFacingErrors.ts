@@ -74,9 +74,7 @@ export function backupErrorMessage(error: unknown, operation: 'export' | 'import
 
 export function imagePickerErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
-  if (/^Choose an image smaller than 8 MB\.$/i.test(message)) return message;
-  if (/^Choose a JPEG, PNG, WebP, or GIF image\.$/i.test(message)) return message;
-  if (/^The selected image could not be read\.$/i.test(message)) return message;
-  if (/^Image selection is unavailable on this device\.$/i.test(message)) return message;
-  return 'The image could not be opened. Choose a JPEG, PNG, WebP, or GIF smaller than 8 MB, then try again.';
+  if (/^(This source image is larger than 100 MB and cannot be processed safely\.|The image could not be reduced to a supported upload size\.|Image processing is unavailable in this build\..*|This image format could not be decoded on this device\.|This image format is not supported\..*|The selected image could not be opened\.|The image could not be prepared for upload\.|This browser cannot prepare images for upload\..*|Choose a valid image file\.)/i.test(message)) return message;
+  if (/cancel|canceled|cancelled/i.test(message)) return 'Image selection was cancelled.';
+  return 'The image could not be prepared. Choose a JPEG, PNG, WebP, GIF, or supported phone image and try again.';
 }
