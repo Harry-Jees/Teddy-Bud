@@ -38,8 +38,6 @@ export async function pickChatImage(): Promise<PickedChatImage | null> {
     // Android document providers often report application/octet-stream even
     // for ordinary JPEG/PNG files. Prefer a recognized extension in that case.
     const mime = mimeForFile(file.type, file.name);
-    if (!mime) throw new Error('This image format is not supported. Choose a JPEG, PNG, WebP, GIF, or HEIC image.');
-
     if (IMAGE_PROCESSOR?.compress) {
       const base64 = await IMAGE_PROCESSOR.compress(file.uri, 2560, 86);
       if (!base64 || decodedBytes(base64) > MAX_UPLOAD_BYTES) {
@@ -48,6 +46,9 @@ export async function pickChatImage(): Promise<PickedChatImage | null> {
       return { dataUrl: `data:image/jpeg;base64,${base64}`, name: file.name || 'image.jpg' };
     }
 
+    if (!mime || !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) {
+      throw new Error('This image format is not supported. Choose a JPEG, PNG, WebP, or GIF image.');
+    }
     const base64 = await FileSystem.readFile(file.uri, 'base64');
     if (decodedBytes(base64) > MAX_UPLOAD_BYTES) {
       throw new Error('Image processing is unavailable in this build. Update Teddy Bud to resize this image automatically.');
