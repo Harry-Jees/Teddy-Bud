@@ -1312,7 +1312,7 @@ function TeddyBud({ sessionToken, username, initialImport = false, onLogout }: {
             const currentIndex = primaryTabIndex(page);
             const nextIndex = Math.max(0, Math.min(mobileNavItems.length - 1, currentIndex + direction));
             if (nextIndex !== currentIndex) setPage(mobileNavItems[nextIndex].id);
-          }} enabled={!wide}>
+          }} enabled={!wide && !keyboardVisible}>
             <AppErrorBoundary><View style={styles.pagerFrame}>{renderPageFrame('chat')}</View></AppErrorBoundary>
             <AppErrorBoundary><View style={styles.pagerFrame}>{renderPageFrame('discover')}</View></AppErrorBoundary>
             <AppErrorBoundary><View style={styles.pagerFrame}>{renderPageFrame('memories')}</View></AppErrorBoundary>
