@@ -39,11 +39,18 @@ class TeddyBudImageProcessorModule(context: ReactApplicationContext) : ReactCont
       canvas.drawColor(android.graphics.Color.WHITE)
       canvas.drawBitmap(resized, 0f, 0f, null)
       val output = ByteArrayOutputStream()
-      outputBitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(70, 92), output)
+      var encoded: ByteArray
+      var selectedQuality = quality.coerceIn(70, 92)
+      do {
+        output.reset()
+        outputBitmap.compress(Bitmap.CompressFormat.JPEG, selectedQuality, output)
+        encoded = output.toByteArray()
+        selectedQuality -= 8
+      } while (encoded.size > 8 * 1024 * 1024 && selectedQuality >= 70)
       outputBitmap.recycle()
       if (resized !== bitmap) resized.recycle()
       bitmap.recycle()
-      val bytes = output.toByteArray()
+      val bytes = encoded
       require(bytes.isNotEmpty() && bytes.size <= 8 * 1024 * 1024) { "The image could not be reduced to a supported size. Choose a smaller image." }
       promise.resolve(Base64.encodeToString(bytes, Base64.NO_WRAP))
     } catch (error: Exception) {
