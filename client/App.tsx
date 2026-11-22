@@ -1973,6 +1973,8 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     return () => { show.remove(); hide.remove(); };
   }, []);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
+  // Close the current chat's options sheet whenever a new conversation is opened.
+  useEffect(() => { setChatActionsOpen(false); }, [conversationId]);
   const reduceMotion = useReducedMotionPreference();
   const mascotBreath = useRef(new Animated.Value(0)).current;
   useEffect(() => {
