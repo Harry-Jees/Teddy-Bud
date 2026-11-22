@@ -2162,7 +2162,7 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     onSend(selectedImage?.dataUrl);
     setSelectedImage(null);
   };
-  return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+  return <KeyboardAvoidingView style={styles.chatPage} behavior={Platform.OS === 'ios' || Platform.OS === 'android' ? 'padding' : undefined}>
     <View style={[styles.chatHeader, wide && styles.chatHeaderWide]}>
       <View style={styles.chatHeaderCopy}><Text style={styles.pageTitle} numberOfLines={1}>{conversationTitle}</Text></View>
       <View style={styles.headerActions}>
@@ -2184,13 +2184,14 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     {!wide && <Modal transparent visible={chatActionsOpen} animationType="fade" onRequestClose={() => setChatActionsOpen(false)}>
       <View style={styles.chatActionsModalRoot}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close chat actions" onPress={() => setChatActionsOpen(false)} style={styles.chatActionsScrim} />
-        <View accessibilityViewIsModal style={[styles.chatActionsSheet, { paddingBottom: Math.max(bottomInset, 18) }]}>
-          <View style={styles.chatActionsSheetHeader}>
-            <Text style={styles.chatActionsSheetTitle}>Chat options</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Dismiss chat options" onPress={() => setChatActionsOpen(false)} style={({ pressed }) => [styles.chatActionsDismiss, pressed && styles.pressed]}><Text style={styles.chatActionsDismissText}>Done</Text></Pressable>
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Rename chat" disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onRenameChat(); }} style={({ pressed }) => [styles.chatActionsSheetItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.chatActionsSheetItemText}>Rename chat</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel={isPinned ? 'Unpin chat' : 'Pin chat'} accessibilityState={{ checked: isPinned }} disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onTogglePin(); }} style={({ pressed }) => [styles.chatActionsSheetItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed, pressed && !reduceMotion && styles.squeezePressed]}><Text style={styles.chatActionsSheetItemText}>{isPinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
+        <View accessibilityViewIsModal style={[styles.chatActionsPopup, { marginBottom: Math.max(bottomInset, 12) }]}>
+          <Text style={styles.chatActionsSheetTitle}>Chat options</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Add image" onPress={async () => { setChatActionsOpen(false); try { setSelectedImage(await pickChatImage()); } catch (error) { Alert.alert('Could not add image', imagePickerErrorMessage(error)); } }} style={({ pressed }) => [styles.chatActionsPopupItem, pressed && styles.pressed]}><AppIcon name="image" color={C.cocoa} size={17} /><Text style={styles.chatActionsSheetItemText}>Image</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open crisis support" onPress={() => { setChatActionsOpen(false); setManualCrisisSupport(true); }} style={({ pressed }) => [styles.chatActionsPopupItem, pressed && styles.pressed]}><AppIcon name="heart" color={C.cocoa} size={17} /><Text style={styles.chatActionsSheetItemText}>Support</Text></Pressable>
+          {onSaveOccasion && <Pressable accessibilityRole="button" accessibilityLabel="Save an occasion" onPress={() => { setChatActionsOpen(false); setOccasionDraft(''); setOccasionOpen(true); }} style={({ pressed }) => [styles.chatActionsPopupItem, pressed && styles.pressed]}><AppIcon name="sparkle" color={C.cocoa} size={17} /><Text style={styles.chatActionsSheetItemText}>Save occasion</Text></Pressable>}
+          <View style={styles.chatActionsPopupDivider} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Rename chat" disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onRenameChat(); }} style={({ pressed }) => [styles.chatActionsPopupItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed]}><AppIcon name="edit" color={C.cocoa} size={17} /><Text style={styles.chatActionsSheetItemText}>Rename chat</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel={isPinned ? 'Unpin chat' : 'Pin chat'} accessibilityState={{ checked: isPinned }} disabled={isSending || !canManageChat} onPress={() => { setChatActionsOpen(false); onTogglePin(); }} style={({ pressed }) => [styles.chatActionsPopupItem, (isSending || !canManageChat) && styles.buttonDisabled, pressed && styles.pressed]}><AppIcon name="pin" color={C.cocoa} size={17} /><Text style={styles.chatActionsSheetItemText}>{isPinned ? 'Unpin chat' : 'Pin chat'}</Text></Pressable>
         </View>
       </View>
     </Modal>}
@@ -2268,17 +2269,6 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     </Pressable>}
     </View>
     <View style={[styles.composerWrap, wide && styles.composerWrapWide]}>
-      {chatActionsOpen && !keyboardVisible && <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Attach an image" onPress={async () => { setChatActionsOpen(false); try { setSelectedImage(await pickChatImage()); } catch (error) { Alert.alert('Could not add image', imagePickerErrorMessage(error)); } }} style={({ pressed }) => [{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 18, backgroundColor: C.surfaceAlt || C.surface, flexDirection: 'row', alignItems: 'center', gap: 6 }, pressed && styles.pressed]}>
-          <AppIcon name="image" color={C.cocoa} size={14} /><Text style={{ color: C.cocoa, fontSize: 12, fontWeight: '600' }}>Image · 5</Text>
-        </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open crisis support" onPress={() => { setChatActionsOpen(false); setManualCrisisSupport(true); }} style={({ pressed }) => [{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 18, backgroundColor: C.surfaceAlt || C.surface, flexDirection: 'row', alignItems: 'center', gap: 6 }, pressed && styles.pressed]}>
-          <AppIcon name="heart" color={C.cocoa} size={14} /><Text style={{ color: C.cocoa, fontSize: 12, fontWeight: '600' }}>Support</Text>
-        </Pressable>
-        {onSaveOccasion && <Pressable accessibilityRole="button" accessibilityLabel="Save an occasion" onPress={() => { setChatActionsOpen(false); setOccasionDraft(''); setOccasionOpen(true); }} style={({ pressed }) => [{ paddingVertical: 9, paddingHorizontal: 12, borderRadius: 18, backgroundColor: C.surfaceAlt || C.surface, flexDirection: 'row', alignItems: 'center', gap: 6 }, pressed && styles.pressed]}>
-          <AppIcon name="sparkle" color={C.cocoa} size={14} /><Text style={{ color: C.cocoa, fontSize: 12, fontWeight: '600' }}>Save occasion</Text>
-        </Pressable>}
-      </View>}
       {selectedImage && <View style={styles.attachmentRow}><Image source={{ uri: selectedImage.dataUrl }} style={__teddyBudExtractedStyles6.style1} /><Text style={styles.attachmentText} numberOfLines={1}>{selectedImage.name}</Text><Pressable accessibilityRole="button" accessibilityLabel="Remove attached image" onPress={() => setSelectedImage(null)} style={styles.attachmentRemove}><Text style={styles.attachmentRemoveText}>×</Text></Pressable></View>}
       {editingMessageId !== null && editingMessageId !== undefined && <View style={__teddyBudExtractedStyles6.style2}><Text style={__teddyBudExtractedStyles6.style3}>Editing your last message — the reply after it will be replaced when you send.</Text><Pressable accessibilityRole="button" accessibilityLabel="Cancel message edit" onPress={onCancelEdit} style={__teddyBudExtractedStyles6.style4}><Text style={__teddyBudExtractedStyles6.style5}>Cancel</Text></Pressable></View>}
       <View style={[styles.composerCard, composerFocused && styles.composerCardFocused]}>
