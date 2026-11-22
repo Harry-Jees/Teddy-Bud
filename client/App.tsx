@@ -1464,15 +1464,11 @@ function SoftPageTransition({ transitionKey, children, onSwipe, enabled = true }
     },
   })).current;
 
-  if (!enabled) {
-    const __teddyBudExtractedStyles1 = StyleSheet.create({
-      style0: ({ flex: 1 }) as const,
-    });
-    return <View style={__teddyBudExtractedStyles1.style0}>{frames[currentIndex] ?? frames[0]}</View>;
-  }
-
+  // Keep every tab frame mounted when the keyboard opens. Switching to a
+  // single-frame tree here unmounts ChatPage, which blurs its TextInput and
+  // immediately dismisses Android's keyboard. Only disable gesture handlers.
   return <View
-    {...panResponder.panHandlers}
+    {...(enabled ? panResponder.panHandlers : {})}
     style={__teddyBudExtractedStyles2.style0}
   >
     <Animated.View
@@ -1966,12 +1962,6 @@ export function ChatPage({ wide, bottomInset = 0, conversationId, assistantName 
     style5: ({ color: C.cocoa, fontWeight: '700' }) as const,
   });
   const [selectedImage, setSelectedImage] = useState<{ dataUrl: string; name: string } | null>(null);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
-    return () => { show.remove(); hide.remove(); };
-  }, []);
   const [chatActionsOpen, setChatActionsOpen] = useState(false);
   // Close the current chat's options sheet whenever a new conversation is opened.
   useEffect(() => { setChatActionsOpen(false); }, [conversationId]);
